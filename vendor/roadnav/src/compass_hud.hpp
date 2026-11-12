@@ -518,7 +518,8 @@ public:
             if(tick%6==0&&!covered){const char* labels[]={"N","E","S","W"};text(x,Layout::labelY,labels[tick/6],.23f,235,.78f);}
         }
         const float hold=waypointHold_.progress(now);
-        compass::NoticeFrame noticeFrame{messages_.snapshot().alpha(now),now,minimap_.frontendAddress()};
+        const auto message=messages_.snapshot();
+        compass::NoticeFrame noticeFrame{message.alpha(now),now,minimap_.frontendAddress()};
         for(const auto& item:placed){
             const auto& marker=item.marker;const float x=mid+half*item.x,iconY=Layout::iconY;
             if(!tried_[marker.sprite]&&dictionary_.IsValid()){
