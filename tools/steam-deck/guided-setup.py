@@ -336,10 +336,7 @@ def run(dependency_source, updater_source, local_payload=None):
             local_version=updater.version_key(bundled[0].get('release_version'))
             saved_version=updater.version_key(saved.get('version'))
             current=saved.get('sha')==bundled[0]['sha'] or local_version and saved_version and saved_version>=local_version
-            game=Path(config['game']);prefix=config.get('prefix')
-            if not prefix:
-                candidates=dep.prefix_candidates(game)
-                if len(candidates)==1:prefix=candidates[0]
+            game=Path(config['game']);prefix=dep.existing_prefix(game) if sys.platform!='win32' else None
             checks=dep.inspect_setup(game,prefix)
             checks['fusionfix']=check_fusionfix(game,dep,payload_bridge(bundled[1]))
             if current and all(ok for ok,_ in checks.values()) and updater.bundle_files_intact(game,saved) and updater.updater_files_intact(saved):
