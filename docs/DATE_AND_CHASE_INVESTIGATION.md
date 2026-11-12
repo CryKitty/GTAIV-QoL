@@ -94,7 +94,8 @@ this PR does not redesign simultaneous automatic enemy/escape planner ownership.
 3. Pick up the date. Check preferred venues green, rejected venues red and
    baseline/unknown venues white. Finish/cancel and start another date: colours
    must not reuse the previous partner's scores. If every venue stays white,
-   report the local `Compass date:` availability messages rather than guessing.
+   use the existing configured QoL log-upload shortcut so the local `Compass date:`
+   availability messages can be reviewed; no file inspection/editing is required.
 4. Replay a moving-car enemy chase (including Bernie), with no manual waypoint.
    Check red guidance appears even after previous GPS use, follows the live car
    whether the marker belongs to driver or passenger, and survives route refresh.
