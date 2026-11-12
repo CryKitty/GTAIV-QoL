@@ -16,6 +16,7 @@
 
 // Change only the minimap layout position. Keep all native preferences and
 // visibility answers intact, including those used by wanted stars and messages.
+static_assert(Scripting::BLIP_DATE==54,"Compass date classification follows the supported SDK");
 class CompassHud {
     using RadarNative=void (__cdecl*)(GameTypes::scrNativeCallContext*);
     MinimapLayout minimap_;
@@ -484,12 +485,12 @@ public:
             const unsigned sprite=static_cast<unsigned>(GetBlipSprite(blip));if(sprite>=128||sprite==BLIP_PLAYER||sprite==BLIP_NORTH)continue;
             const float distance=roadnav::distance2D(playerPoint,point);
             const bool outingVenue=social_&&compass::socialVenue(sprite);
-            if(!compass::markerInRange(distance,range,IsBlipShortRange(blip)!=0&&!outingVenue)){++rangeFiltered;continue;}
+            if(!compass::markerInRange(distance,range,IsBlipShortRange(blip)!=0&&!outingVenue,sprite)){++rangeFiltered;continue;}
             ColourIndex col=0;GetBlipColour(blip,&col);
             const auto type=GetBlipInfoIdType(blip);
             const bool entity=type==BLIP_TYPE_CAR||type==BLIP_TYPE_CHAR||type==BLIP_TYPE_OBJECT||type==BLIP_TYPE_PICKUP;
             const bool enemy=enemyMarker(blip,col,sprite);
-            if(mission&&!entity&&!enemy&&!outingVenue&&compass::ambientMissionSprite(sprite))continue;
+            if(compass::hideAmbientMissionMarker(mission,entity,enemy,outingVenue,sprite))continue;
             const int priority=sprite==BLIP_WAYPOINT?3:(sprite<=BLIP_OBJECTIVE_5?2:0);
             const bool police=policeMarker(blip);
             const bool objective=!outingVenue&&!police&&awareness::objectiveLabel(mission,enemy,entity,sprite,blip.Get()==missionTarget.Get(),haveMissionPoint?roadnav::distance2D(point,missionPoint):100000.0f);
