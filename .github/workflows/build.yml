@@ -89,6 +89,13 @@ jobs:
           if errorlevel 1 exit /b 1
           build\navigation-profile.exe
           if errorlevel 1 exit /b 1
+      - name: Test sustained moving wrong-way primary road-line replanning
+        shell: cmd
+        run: |
+          cl /nologo /std:c++17 /EHsc /W4 /WX /O2 /MT tests\primary_route_replan.cpp /Fe:build\primary-route-replan-tests.exe
+          if errorlevel 1 exit /b 1
+          build\primary-route-replan-tests.exe
+          if errorlevel 1 exit /b 1
       - name: Test default manual and police escape road-line rendering
         timeout-minutes: 2
         shell: cmd
