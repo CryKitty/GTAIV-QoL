@@ -9,6 +9,14 @@
 using namespace roadnav;
 int main(){
     {
+        const Vec3 car{400,250,10};
+        assert(routeDestinationMatches({{0,0,0},{400,250,9}},car));
+        assert(!routeDestinationMatches({{0,0,0},{0,200,0}},car)); // leftover other-goal GPS
+        assert(!routeDestinationMatches({{0,0,0},{400,250,30}},car)); // wrong elevation
+        assert(!routeDestinationMatches({},car));
+    }
+
+    {
         // Mission coordinates are distinct from the road node, including Z.
         const Vec3 mission{3.125f,90.875f,2.75f};
         auto line=roadLine({{0,0,0},{0,95,0}},Vec3{},20);

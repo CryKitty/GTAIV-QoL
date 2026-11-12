@@ -26,8 +26,9 @@ inline bool missionYellow(unsigned colour){
     return r>160&&g>140&&b<120&&std::abs(static_cast<int>(r)-static_cast<int>(g))<100;
 }
 struct ChaseCandidate {std::uint32_t handle;float distance,speed;bool vehicle=false;};
-inline bool allowChase(bool enabled,bool waypoint,bool ownsRoute,bool existingRoute){
-    return enabled&&!waypoint&&(ownsRoute||!existingRoute);
+inline bool chaseEnabled(bool legacy,bool roadLine,bool enemyLine){return legacy||(roadLine&&enemyLine);}
+inline bool allowChase(bool enabled,bool waypoint,bool ownsRoute,bool authoritativeRoute){
+    return enabled&&!waypoint&&(ownsRoute||!authoritativeRoute);
 }
 inline std::uint32_t chooseChaseTarget(const std::vector<ChaseCandidate>& candidates,std::uint32_t previous){
     std::uint32_t best=0;float closest=3000;
@@ -53,6 +54,7 @@ inline bool inRange(float distance,float range){return std::isfinite(distance)&&
 // matching radar behaviour. Only short-range POIs use the local radar radius.
 // BLIP_DATE (heart) is the shared romance/date sprite in the supported SDK.
 inline bool dateMarker(unsigned sprite){return sprite==54;}
+inline const char* fallbackSymbol(unsigned sprite){return dateMarker(sprite)?"<3":sprite==8?"X":sprite<=5?"*":".";}
 inline bool markerInRange(float distance,float range,bool shortRange,unsigned sprite=0){
     return std::isfinite(distance)&&distance>=0&&(!shortRange||dateMarker(sprite)||inRange(distance,range));
 }
@@ -67,10 +69,10 @@ inline std::array<unsigned,3> markerColour(unsigned value){
     case 13:return {95,190,185};case 14:return {240,225,150};default:return {230,232,224};
     }
 }
-// GET_FIRST/NEXT_BLIP_INFO_ID accepts category IDs, NOT radar sprite IDs.
-// The original SDK labels this parameter eBlipSprite; SHDN's corrected API
-// and its waypoint enumeration use categories 0 through 9 instead.
-constexpr std::array<unsigned,10> blipCategories{{0,1,2,3,4,5,6,7,8,9}};
+// Native filters are sprites: GTA IV taxi::sub_33217 scans 0..109, then
+// separately reads each returned blip's entity type. Include all supported
+// compass sprites so late-created contact/date markers need no memory-table fallback.
+constexpr auto blipCategories=[](){std::array<unsigned,128> values{};for(unsigned i=0;i<values.size();++i)values[i]=i;return values;}();
 template<class Backend> std::vector<std::uint32_t> collectBlips(Backend& backend){
     std::vector<std::uint32_t> result;
     for(unsigned category:blipCategories){
@@ -141,7 +143,7 @@ struct DamageFlash {
 // Restaurants and activities relevant to a date or friend outing, using the
 // game's radar sprite IDs. Shops and unrelated mission contacts stay filtered.
 inline bool socialVenue(unsigned sprite){switch(sprite){
-    case 21:case 22:case 47:case 48:case 49:case 51:case 52:case 56:case 57:case 66:case 67:case 70:case 71:return true;
+    case 21:case 22:case 46:case 47:case 48:case 49:case 51:case 52:case 56:case 57:case 66:case 67:case 70:case 71:return true;
     default:return false;
 }}
 inline bool ambientMissionSprite(unsigned sprite){return (sprite>=21&&sprite<=52)||sprite==54||(sprite>=56&&sprite<=64)||sprite==66||sprite==67||sprite==69||sprite==70||sprite==71||sprite==74||sprite==75||sprite==79||(sprite>=83&&sprite<=92);}
@@ -156,6 +158,9 @@ struct Marker {std::uint32_t handle=0;unsigned sprite=0;float bearing=0,distance
 struct Placement {Marker marker;float x=0;bool rear=false;};
 inline std::vector<Placement> layout(std::vector<Marker> markers){
     std::stable_sort(markers.begin(),markers.end(),[](const Marker& a,const Marker& b){
+        // An initiated date/contact must not be occluded by a nearer shop at
+        // the same bearing (or by every rearward POI clamped to the strip edge).
+        if(dateMarker(a.sprite)!=dateMarker(b.sprite))return dateMarker(a.sprite);
         if(a.distance!=b.distance)return a.distance<b.distance;
         if(a.priority!=b.priority)return a.priority>b.priority;
         return std::fabs(a.bearing)<std::fabs(b.bearing);

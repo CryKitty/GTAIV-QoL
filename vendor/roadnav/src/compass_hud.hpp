@@ -26,7 +26,19 @@ class CompassHud {
     CompassController controller_{};bool waypointDownLast_=false;
     compass::WaypointVehicleGate vehicleGate_{};bool inputShooting_=false;DWORD inputReportAt_=0;
     Scripting::Blip compassWaypoint_{};
-    DWORD socialAt_=0;bool social_=false;
+    DWORD socialAt_=0;bool social_=false,dating_=false;
+    std::array<datecompass::Venue,datecompass::venueCount> dateVenues_{};
+    bool dateTableValid_=false,dateTableReported_=false;DWORD dateTableAt_=0;
+    void readDateVenues(DWORD now){
+        if(dateTableAt_&&now-dateTableAt_<1000)return;dateTableAt_=now;
+        using GlobalAddress=void*(__cdecl*)(unsigned);
+        const auto module=GetModuleHandleA("ScriptHook.dll");
+        const auto address=module?reinterpret_cast<GlobalAddress>(GetProcAddress(module,"?GetGlobalAddress@Game@@SAPAXI@Z")):nullptr;
+        datecompass::Table words{};
+        const bool previous=dateTableValid_;
+        dateTableValid_=address&&read(reinterpret_cast<std::uintptr_t>(address(datecompass::venueGlobal)),words)&&datecompass::venues(words,dateVenues_);
+        if((!dateTableReported_||previous!=dateTableValid_)&&log_){log_(dateTableValid_?"Compass date: live 29-place table validated (read-only)":"Compass date: live venue table unavailable; icons stay neutral");dateTableReported_=true;}
+    }
     unsigned compassWaypointSource_=0;roadnav::Vec3 compassWaypointPoint_{};
     compass::WaypointFeedback feedback_{};float feedbackAnchor_=compass::StripLayout::center;
     const char* waypointFeedback_="";
@@ -80,7 +92,7 @@ class CompassHud {
     std::vector<Scripting::Blip> blips_;
     std::array<std::string,128> names_{};
     std::array<Scripting::Texture,128> textures_{};
-    std::array<bool,128> tried_{};
+    std::array<bool,128> tried_{};std::array<DWORD,128> textureRetry_{};DWORD dictionaryRetry_=0;
     Scripting::TextureDict dictionary_{};
     DWORD scanAt_=0,logAt_=0;
     compass::FrameGate frameGate_{};
@@ -313,6 +325,15 @@ public:
     void setForwardRouteHelper(unsigned handle){forwardRouteHelper_=handle;}
     unsigned missionRouteAge(unsigned target){return awareness_.routeRequestAge(target);}
     bool navigationTargetEnemy(Scripting::Blip target){Scripting::ColourIndex colour=0;Scripting::GetBlipColour(target,&colour);return enemyMarker(target,colour,static_cast<unsigned>(Scripting::GetBlipSprite(target)));}
+    bool navigationChasePosition(Scripting::Blip target,roadnav::Vec3& point){
+        using namespace Scripting;if(!DoesBlipExist(target))return false;
+        if(GetBlipInfoIdType(target)==BLIP_TYPE_CHAR){auto ped=GetBlipInfoIdPedIndex(target);
+            if(ped.IsValid()&&DoesCharExist(ped)&&IsCharInAnyCar(ped)){Vehicle car{};GetCarCharIsUsing(ped,&car);
+                if(car.IsValid()&&DoesVehicleExist(car)){GetCarCoordinates(car,&point.x,&point.y,&point.z);return std::isfinite(point.x)&&std::isfinite(point.y)&&std::isfinite(point.z);}}
+        }
+        return position(target,point);
+    }
+    bool navigationChasePosition(unsigned target,roadnav::Vec3& point){return navigationChasePosition(asBlip(target),point);}
     bool navigationTargetPosition(unsigned target,roadnav::Vec3& point){return navigationTargetPosition(asBlip(target),point);}
     bool navigationTargetPosition(Scripting::Blip target,roadnav::Vec3& point){return Scripting::DoesBlipExist(target)&&position(target,point);}
     void refreshNavigationBlips(){const DWORD now=GetTickCount();if(!scanAt_||now-scanAt_>=500){scan();scanAt_=now;}reconcileCompassWaypoint();}
@@ -400,7 +421,7 @@ public:
         {std::lock_guard<std::mutex> lock(hostilityMutex_);hostility_={};}
         for(auto texture:textures_)if(texture.IsValid())Scripting::ReleaseTexture(texture);
         // GetTxd borrows the game-owned dictionary; never unload it.
-        textures_={};tried_={};dictionary_={};blips_.clear();enemies_.clear();healthDamage_={};armourDamage_={};blipTable_=0;initialized_=false;scanAt_=0;frameGate_={};scanLogged_=startupComplete_=false;
+        textures_={};tried_={};textureRetry_={};dictionaryRetry_=0;dictionary_={};blips_.clear();enemies_.clear();healthDamage_={};armourDamage_={};blipTable_=0;initialized_=false;scanAt_=0;frameGate_={};scanLogged_=startupComplete_=false;
     }
     void notifyArrival(DWORD now,unsigned target=0){
         const float anchor=target&&target==feedback_.target?feedback_.x:compass::StripLayout::center;
@@ -455,9 +476,10 @@ public:
         const float liveRange=getRange?getRange():0;const bool live=std::isfinite(liveRange)&&liveRange>=10&&liveRange<=5000;
         const float range=live?liveRange:fallbackRange_;
         const bool mission=GetMissionFlag()!=0;
-        if(!mission){social_=false;socialAt_=0;}
-        else if(!socialAt_||now-socialAt_>=1000){
-            socialAt_=now;social_=false;
+        if(!socialAt_||now-socialAt_>=1000){
+            socialAt_=now;social_=false;dating_=false;
+            for(const char* name:{"go_on_date","date_activity","date_food"})if(GetNumberOfInstancesOfStreamedScript(name)){dating_=true;social_=true;}
+
             // These are the shipped outing scripts, not the resident friendship
             // managers or dating contact scripts, which run outside outings too.
             for(const char* name:{"go_on_date","date_activity","date_food",
@@ -469,6 +491,8 @@ public:
                 "jimhangout","terryhangout","clayhangout","dominicanfriend","friends1","friends2"})
                 if(GetNumberOfInstancesOfStreamedScript(name)){social_=true;break;}
         }
+        const auto datePreferences=awareness_.datePreferences(dating_,now);
+        if(dating_)readDateVenues(now);else{dateTableValid_=false;dateTableAt_=0;dateTableReported_=false;}
         const auto missionBrief=awareness_.brief(mission);
         auto missionTarget=navigationMissionTarget();
         roadnav::Vec3 missionPoint{};const bool haveMissionPoint=missionTarget.IsValid()&&position(missionTarget,missionPoint);
@@ -495,6 +519,7 @@ public:
             const bool police=policeMarker(blip);
             const bool objective=!outingVenue&&!police&&awareness::objectiveLabel(mission,enemy,entity,sprite,blip.Get()==missionTarget.Get(),haveMissionPoint?roadnav::distance2D(point,missionPoint):100000.0f);
             if(police)col=enemy?9:3;else if(friendMarker(blip))col=8;else if(enemy)col=9;else if(objective&&sprite!=BLIP_WAYPOINT)col=5;
+            if(dating_&&outingVenue)col=datecompass::colour(datecompass::match(datePreferences,dateVenues_,dateTableValid_,sprite,point));
             markers.push_back({blip.Get(),sprite,compass::relativeBearing(point.x-playerPoint.x,point.y-playerPoint.y,rotation.z),distance,col,std::min(alpha,255u),priority,enemy,objective});
         }
         if(!startupComplete_&&log_)log_("Compass: marker snapshot ready");
@@ -528,10 +553,11 @@ public:
         auto caption=feedback_.draw(now);
         const auto message=messages_.snapshot();
         compass::NoticeFrame noticeFrame{message.alpha(now),now,minimap_.frontendAddress()};
+        if(!dictionary_.IsValid()&&(!dictionaryRetry_||now-dictionaryRetry_>=1000)){dictionary_=GetTxd("blips");dictionaryRetry_=now;}
         for(const auto& item:placed){
             const auto& marker=item.marker;const float x=mid+half*item.x,iconY=Layout::iconY;
-            if(!tried_[marker.sprite]&&dictionary_.IsValid()){
-                tried_[marker.sprite]=true;if(!names_[marker.sprite].empty())textures_[marker.sprite]=GetTexture(dictionary_,names_[marker.sprite].c_str());
+            if(dictionary_.IsValid()&&(!tried_[marker.sprite]||(!textures_[marker.sprite].IsValid()&&now-textureRetry_[marker.sprite]>=1000))){
+                tried_[marker.sprite]=true;textureRetry_[marker.sprite]=now;if(!names_[marker.sprite].empty())textures_[marker.sprite]=GetTexture(dictionary_,names_[marker.sprite].c_str());
             }
             const bool centered=marker.handle==focused_;const float scale=compass::iconScale(marker.enemy,marker.priority>=2);const float height=(centered?.023f:.020f)*2.10f*scale;
             if(textures_[marker.sprite].IsValid()){
@@ -539,7 +565,7 @@ public:
                 if(!startupComplete_&&log_){char line[80];std::snprintf(line,sizeof(line),"Compass: drawing texture sprite=%u",marker.sprite);log_(line);}
                 const auto rgb=compass::markerColour(marker.colour);
                 NativeInvoke::Invoke<NATIVE_DRAW_SPRITE,ScriptVoid>(textures_[marker.sprite],x,iconY,height/aspect,height,0.0f,rgb[0],rgb[1],rgb[2],std::min(marker.alpha,210u));
-            }else {++fallbackIcons;const auto rgb=compass::markerColour(marker.colour);textStyle(.672f*scale,marker.alpha);SetTextColour(static_cast<u8>(rgb[0]),static_cast<u8>(rgb[1]),static_cast<u8>(rgb[2]),static_cast<u8>(marker.alpha));DisplayTextWithLiteralString(x,iconY-.011f,"STRING",marker.sprite==BLIP_WAYPOINT?"X":(marker.sprite<=BLIP_OBJECTIVE_5?"*":"."));}
+            }else {++fallbackIcons;const auto rgb=compass::markerColour(marker.colour);textStyle(.672f*scale,marker.alpha);SetTextColour(static_cast<u8>(rgb[0]),static_cast<u8>(rgb[1]),static_cast<u8>(rgb[2]),static_cast<u8>(marker.alpha));DisplayTextWithLiteralString(x,iconY-.011f,"STRING",compass::fallbackSymbol(marker.sprite));}
             const bool holding=hold>0&&marker.handle==waypointHold_.target;
             if(holding){caption=compass::caption("Setting waypoint",x);noticeFrame.holdX=x;noticeFrame.holdY=iconY;noticeFrame.holdRadius=height*.62f;noticeFrame.holdProgress=hold;}
             if(centered||holding){
