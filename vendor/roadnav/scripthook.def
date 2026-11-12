@@ -1,0 +1,7 @@
+LIBRARY ScriptHook.dll
+EXPORTS
+    ??0ScriptThread@@QAE@XZ
+    ??1ScriptThread@@UAE@XZ
+    ?RegisterThread@ScriptHookManager@@SAXPAVScriptThread@@PAUHINSTANCE__@@@Z
+    ?SpeedyInvoke@NativeInvoke@@CAXPAVNativeContext@@I@Z
+    ?Wait@ScriptingHelpers@@SAXI@Z

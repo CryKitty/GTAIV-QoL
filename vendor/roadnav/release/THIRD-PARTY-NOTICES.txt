@@ -1,0 +1,22 @@
+RoadNav v0.7.0
+
+RoadNav implementation and original chevron geometry: CryKitty's RoadNav project.
+No additional reuse license for the original RoadNav code is granted by this
+notice. Third-party terms remain applicable.
+
+Native GTA IV ScriptHook / ScriptHook SDK: Aru, Copyright (C) 2009, Aru.
+The included SCRIPT-HOOK-LICENSE.txt is the SDK license used by this project.
+Its terms include a non-commercial restriction. Preserve these notices and that
+license with this release. Dependency DLLs are not included in this package.
+
+The SDK D3D hook service interface was adapted with local pure-interface
+declarations to avoid importing interface constructors. Its original copyright
+and license notice remain in the repository source header.
+
+GPS route memory layout documentation:
+https://github.com/garuspl/gta4-gps-hud
+No original C# code, DLLs or artwork from that project are bundled here.
+
+The mod contains no Rockstar game assets and is not affiliated with Rockstar
+Games, Take-Two Interactive, Square Enix, or the creators of Sleeping Dogs.
+The chevron artwork is original geometric drawing, not extracted artwork.

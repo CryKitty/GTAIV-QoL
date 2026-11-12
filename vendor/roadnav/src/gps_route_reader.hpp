@@ -1,0 +1,31 @@
+#pragma once
+#include "marker_geometry.hpp"
+#include <array>
+#include <cmath>
+#include <cstdint>
+#include <limits>
+namespace roadnav {
+struct NativeGpsRoute {int slot=-1,state=0;std::vector<Vec3> points;};
+// The two native buffers can simultaneously contain old and new requests.
+// Copy each consistently, then choose the endpoint belonging to our request.
+template<class Read> bool readGpsRoute(std::uintptr_t slots,Read read,NativeGpsRoute& result,const Vec3* target=nullptr){
+    constexpr std::size_t stride=0xdb0,countAt=0xd60,stateAt=0xd64,maxPoints=countAt/16;
+    result={};float best=std::numeric_limits<float>::max();
+    for(int slot=0;slot<2;++slot){
+        const auto base=slots+static_cast<std::uintptr_t>(slot)*stride;std::int32_t count=0,state=0;
+        if(!read(base+countAt,&count,4)||!read(base+stateAt,&state,4)||count<2||count>static_cast<int>(maxPoints)||(state!=2&&state!=3&&state!=5))continue;
+        std::array<float,maxPoints*4> raw{};if(!read(base,raw.data(),static_cast<std::size_t>(count)*16))continue;
+        std::vector<Vec3> points;bool valid=true;points.reserve(count);
+        for(int i=0;i<count;++i){const auto at=static_cast<std::size_t>(i)*4;const Vec3 point{raw[at],raw[at+1],raw[at+2]};
+            if(!std::isfinite(point.x)||!std::isfinite(point.y)||!std::isfinite(point.z)||std::fabs(point.x)>6000||std::fabs(point.y)>6000||std::fabs(point.z)>2000){valid=false;break;}
+            points.push_back(point);
+        }
+        std::int32_t countAfter=0,stateAfter=0;
+        if(!valid||!read(base+countAt,&countAfter,4)||!read(base+stateAt,&stateAfter,4)||countAfter!=count||stateAfter!=state)continue;
+        const float error=target?distance2D(points.back(),*target)+4*std::fabs(points.back().z-target->z):0;
+        if(error<best){result={slot,state,std::move(points)};best=error;}
+        if(!target)return true;
+    }
+    return result.points.size()>1;
+}
+}

@@ -1,0 +1,17 @@
+# Native builds
+build/
+out/
+*.obj
+*.o
+*.pdb
+*.ilk
+*.exp
+*.lib
+*.asi
+*.dll
+*.log
+
+# Local configuration
+GTAIV-QoL.ini
+.DS_Store
+

@@ -1,0 +1,6 @@
+LIBRARY ScriptHook.dll
+EXPORTS
+    ??0ScriptThread@@QAE@XZ
+    ??1ScriptThread@@UAE@XZ
+    ??0ID3DDeviceHook@@QAE@XZ
+    ?SpeedyInvoke@NativeInvoke@@CAXPAVNativeContext@@I@Z

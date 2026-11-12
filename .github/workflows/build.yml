@@ -1,0 +1,394 @@
+name: Build GTAIV-QoL beta bundle
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    tags: ['v*-beta.*']
+  pull_request:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  build:
+    runs-on: windows-2025-vs2026
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Validate beta tag against canonical branch
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        run: python tools/check-beta-tag.py "${{ github.ref_name }}"
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x86
+      - name: Build native 32-bit ASI
+        shell: cmd
+        run: build.bat
+      - name: Test passive crash capture preserves exception delivery
+        shell: cmd
+        run: |
+          cl /nologo /std:c++17 /EHsc /W4 /WX /O2 /MT tests\passive_crash_capture.cpp /Fe:build\passive-crash-tests.exe
+          if errorlevel 1 exit /b 1
+          build\passive-crash-tests.exe
+          if errorlevel 1 exit /b 1
+      - name: Test compass focus, hold waypoint, antialiased icon and damage policy
+        shell: cmd
+        run: |
+          cl /nologo /std:c++17 /EHsc /W4 /WX /O2 /MT tests\compass.cpp /Fe:build\compass-tests.exe
+          if errorlevel 1 exit /b 1
+          build\compass-tests.exe
+          if errorlevel 1 exit /b 1
+      - name: Test unread text native observer preserves phone calls
+        shell: cmd
+        run: |
+          cl /nologo /std:c++17 /EHsc /W4 /WX /O2 /MT tests\phone_notifications.cpp build\buffer.obj build\hook.obj build\trampoline.obj build\hde32.obj /Fe:build\phone-notification-tests.exe
+          if errorlevel 1 exit /b 1
+          build\phone-notification-tests.exe
+          if errorlevel 1 exit /b 1
+      - name: Test taxi value text and x86 renderer continuation
+        shell: cmd
+        run: |
+          cl /nologo /std:c++17 /EHsc /W4 /WX /O2 /MT tests\menu_value_text.cpp build\buffer.obj build\hook.obj build\trampoline.obj build\hde32.obj /Fe:build\menu-value-tests.exe
+          if errorlevel 1 exit /b 1
+          build\menu-value-tests.exe
+          if errorlevel 1 exit /b 1
+      - name: Test police probe decoder against captured CE code
+        shell: cmd
+        run: |
+          cl /nologo /std:c++17 /EHsc /W4 /WX /O2 /MT tests\police_probe_decode.cpp build\hde32.obj /Fe:build\police-probe-tests.exe
+          if errorlevel 1 exit /b 1
+          build\police-probe-tests.exe
+          if errorlevel 1 exit /b 1
+      - name: Test radar queue without RTTI, tail calls, isolated hooks and unchanged HUD draws
+        shell: cmd
+        run: |
+          cl /nologo /std:c++17 /EHsc /W4 /WX /O2 /MT tests\minimap_ring.cpp build\buffer.obj build\hook.obj build\trampoline.obj build\hde32.obj /Fe:build\minimap-ring-tests.exe
+          if errorlevel 1 exit /b 1
+          build\minimap-ring-tests.exe
+          if errorlevel 1 exit /b 1
+      - name: Test radar-only geometry and preservation of all HUD visibility answers
+        shell: cmd
+        run: |
+          cl /nologo /std:c++17 /EHsc /W4 /WX /O2 /MT tests\minimap_layout.cpp build\buffer.obj build\hook.obj build\trampoline.obj build\hde32.obj /Fe:build\minimap-layout-tests.exe
+          if errorlevel 1 exit /b 1
+          build\minimap-layout-tests.exe
+          if errorlevel 1 exit /b 1
+
+      - name: Test RoadNav forward, ramp and U-turn cues
+        shell: cmd
+        run: |
+          cl /nologo /std:c++17 /EHsc /W4 /WX /O2 /MT tests\roadnav_navigation.cpp /Fe:build\roadnav-navigation-tests.exe
+          if errorlevel 1 exit /b 1
+          build\roadnav-navigation-tests.exe
+          if errorlevel 1 exit /b 1
+      - name: Check navigation equivalence and measure CPU stages
+        shell: cmd
+        run: |
+          cl /nologo /std:c++17 /EHsc /W4 /WX /O2 /MT tests\navigation_profile.cpp /Fe:build\navigation-profile.exe
+          if errorlevel 1 exit /b 1
+          build\navigation-profile.exe
+          if errorlevel 1 exit /b 1
+      - name: Test default manual and police escape road-line rendering
+        timeout-minutes: 2
+        shell: cmd
+        run: |
+          cl /nologo /std:c++17 /EHsc /W4 /WX /O2 /MT tests\road_line_renderer.cpp d3d9.lib user32.lib /Fe:build\road-line-renderer-tests.exe
+          if errorlevel 1 exit /b 1
+          build\road-line-renderer-tests.exe
+          if errorlevel 1 exit /b 1
+      - name: Test voice metadata gains and persistent shared feature settings
+        shell: cmd
+        run: |
+          cl /nologo /std:c++17 /EHsc /W4 /WX /O2 /MT tests\voice_metadata.cpp /Fe:build\voice-metadata-tests.exe
+          if errorlevel 1 exit /b 1
+          build\voice-metadata-tests.exe
+          if errorlevel 1 exit /b 1
+          cl /nologo /std:c++17 /EHsc /W4 /WX /O2 /MT tests\voice_volume.cpp build\buffer.obj build\hook.obj build\trampoline.obj build\hde32.obj /Fe:build\voice-volume-tests.exe
+          if errorlevel 1 exit /b 1
+          build\voice-volume-tests.exe
+          if errorlevel 1 exit /b 1
+          cl /nologo /std:c++17 /EHsc /W4 /WX /O2 /MT tests\voice_slider.cpp /Fe:build\voice-slider-tests.exe
+          if errorlevel 1 exit /b 1
+          build\voice-slider-tests.exe
+          if errorlevel 1 exit /b 1
+          cl /nologo /std:c++17 /EHsc /W4 /WX /O2 /MT tests\cutscene_mix.cpp /Fe:build\cutscene-mix-tests.exe
+          if errorlevel 1 exit /b 1
+          build\cutscene-mix-tests.exe
+          if errorlevel 1 exit /b 1
+          cl /nologo /std:c++17 /EHsc /W4 /WX /O2 /MT tests\cutscene_output.cpp /Fe:build\cutscene-output-tests.exe
+          if errorlevel 1 exit /b 1
+          build\cutscene-output-tests.exe
+          if errorlevel 1 exit /b 1
+          cl /nologo /std:c++17 /EHsc /W4 /WX /O2 /MT tests\qol_settings.cpp /Fe:build\qol-settings-tests.exe
+          if errorlevel 1 exit /b 1
+          build\qol-settings-tests.exe
+          if errorlevel 1 exit /b 1
+      - name: Test range policy and signature fail-closed behavior
+        shell: cmd
+        run: |
+          cl /nologo /std:c++17 /EHsc /W4 /WX /O2 /MT tests\zoom.cpp build\buffer.obj build\hook.obj build\trampoline.obj build\hde32.obj version.lib /Fe:build\zoom-tests.exe
+          if errorlevel 1 exit /b 1
+          build\zoom-tests.exe
+          if errorlevel 1 exit /b 1
+      - name: Test guarded data-table update
+        shell: cmd
+        run: |
+          cl /nologo /std:c++17 /EHsc /W4 /WX /O2 /MT tests\data_update.cpp version.lib /Fe:build\data-tests.exe
+          if errorlevel 1 exit /b 1
+          build\data-tests.exe
+          if errorlevel 1 exit /b 1
+      - name: Test range-trace address decoding against captured code
+        shell: cmd
+        run: |
+          cl /nologo /std:c++17 /EHsc /W4 /WX /O2 /MT tests\trace_targets.cpp version.lib /Fe:build\trace-tests.exe
+          if errorlevel 1 exit /b 1
+          build\trace-tests.exe
+          if errorlevel 1 exit /b 1
+      - name: Test runtime opening latch, guarded writes and companion decoding
+        shell: cmd
+        run: |
+          cl /nologo /std:c++17 /EHsc /W4 /WX /O2 /MT tests\opening_zoom.cpp version.lib /Fe:build\opening-tests.exe
+          if errorlevel 1 exit /b 1
+          build\opening-tests.exe
+          if errorlevel 1 exit /b 1
+      - name: Test candidate acceptance decoding against captured instructions
+        shell: cmd
+        run: |
+          cl /nologo /std:c++17 /EHsc /W4 /WX /O2 /MT tests\acceptance_decode.cpp version.lib /Fe:build\acceptance-tests.exe
+          if errorlevel 1 exit /b 1
+          build\acceptance-tests.exe
+          if errorlevel 1 exit /b 1
+      - name: Test bounded probe encoding round trips
+        shell: cmd
+        run: |
+          cl /nologo /std:c++17 /EHsc /W4 /WX /O2 /MT tests\probe_codec.cpp /Fe:build\codec-tests.exe
+          if errorlevel 1 exit /b 1
+          build\codec-tests.exe
+          if errorlevel 1 exit /b 1
+      - name: Test interactive-only native zoom, constant patch and manual latch
+        shell: cmd
+        run: |
+          cl /nologo /std:c++17 /EHsc /W4 /WX /O2 /MT tests\native_zoom.cpp version.lib user32.lib /Fe:build\native-zoom-tests.exe
+          if errorlevel 1 exit /b 1
+          build\native-zoom-tests.exe
+          if errorlevel 1 exit /b 1
+      - name: Test cutscene pause state machine (no game hooks)
+        shell: cmd
+        run: |
+          cl /nologo /std:c++17 /EHsc /W4 /WX /O2 /MT tests\cutscene_pause_state.cpp /Fe:build\cutscene-state-tests.exe
+          if errorlevel 1 exit /b 1
+          build\cutscene-state-tests.exe
+          if errorlevel 1 exit /b 1
+      - name: Test read-only diagnostics discovery and bounds
+        shell: cmd
+        run: |
+          cl /nologo /std:c++17 /EHsc /W4 /WX /O2 /MT tests\runtime_diagnostics.cpp version.lib user32.lib /Fe:build\diagnostics-tests.exe
+          if errorlevel 1 exit /b 1
+          build\diagnostics-tests.exe
+          if errorlevel 1 exit /b 1
+      - name: Test native pause toggle and transition policy
+        shell: cmd
+        run: |
+          cl /nologo /std:c++17 /EHsc /W4 /WX /O2 /MT tests\pause_session.cpp /Fe:build\pause-session-tests.exe
+          if errorlevel 1 exit /b 1
+          build\pause-session-tests.exe
+          if errorlevel 1 exit /b 1
+      - name: Test ScriptHook legacy native lookup and fallback
+        shell: cmd
+        run: |
+          cl /nologo /std:c++17 /EHsc /W4 /WX /O2 /MT tests\pause_natives.cpp /Fe:build\pause-native-tests.exe
+          if errorlevel 1 exit /b 1
+          build\pause-native-tests.exe
+          if errorlevel 1 exit /b 1
+      - name: Test captured audio engine stop/resume and recovery
+        shell: cmd
+        run: |
+          cl /nologo /std:c++17 /EHsc /W4 /WX /O2 /MT tests\audio_engine_capture.cpp build\buffer.obj build\hook.obj build\trampoline.obj build\hde32.obj /Fe:build\audio-engine-tests.exe
+          if errorlevel 1 exit /b 1
+          build\audio-engine-tests.exe
+          if errorlevel 1 exit /b 1
+      - name: Test DirectSound cursor-preserving pause and playback guards
+        shell: cmd
+        run: |
+          cl /nologo /std:c++17 /EHsc /W4 /WX /O2 /MT tests\directsound_capture.cpp build\buffer.obj build\hook.obj build\trampoline.obj build\hde32.obj dxguid.lib /Fe:build\directsound-tests.exe
+          if errorlevel 1 exit /b 1
+          build\directsound-tests.exe
+          if errorlevel 1 exit /b 1
+      - name: Test cinematic timeline detour and resume compensation
+        shell: cmd
+        run: |
+          cl /nologo /std:c++17 /EHsc /W4 /WX /O2 /MT tests\cutscene_timeline.cpp build\buffer.obj build\hook.obj build\trampoline.obj build\hde32.obj /Fe:build\timeline-tests.exe
+          if errorlevel 1 exit /b 1
+          build\timeline-tests.exe
+          if errorlevel 1 exit /b 1
+      - name: Test pause blur, label, render state restoration and device reset
+        timeout-minutes: 2
+        shell: cmd
+        run: |
+          cl /nologo /std:c++17 /EHsc /W4 /WX /O2 /MT tests\pause_overlay.cpp build\buffer.obj build\hook.obj build\trampoline.obj build\hde32.obj d3d9.lib gdi32.lib user32.lib /Fe:build\overlay-tests.exe
+          if errorlevel 1 exit /b 1
+          build\overlay-tests.exe
+          if errorlevel 1 exit /b 1
+      - name: Verify PE32, loader export and unsupported-host load
+        shell: pwsh
+        run: |
+          $headers = dumpbin /headers build/GTAIV-QoL.asi | Out-String
+          if ($headers -notmatch '14C machine \(x86\)' -or $headers -notmatch '10B magic') { throw 'Expected PE32 x86 DLL' }
+          $exports = dumpbin /exports build/GTAIV-QoL.asi | Out-String
+          if ($exports -notmatch '\sInitializeASI\s') { throw 'Missing loader export' }
+          # PowerShell is x64; use a small x86 executable for the actual load test.
+          # Test stub is only for unsupported-host DLL load verification; never packaged.
+          cl /nologo /EHsc /MT /LD tests/scripthook_stub.cpp /Fe:build/ScriptHook.dll
+          if ($LASTEXITCODE) { throw 'ScriptHook loader stub compilation failed' }
+          $pauseHeaders = dumpbin /headers build/GTAIV-QoL-Pause.asi | Out-String
+          if ($pauseHeaders -notmatch '14C machine \(x86\)' -or $pauseHeaders -notmatch '10B magic') { throw 'Pause companion must be PE32 x86' }
+          @'
+          #include <windows.h>
+          int main() {
+            HMODULE m = LoadLibraryA("GTAIV-QoL.asi");
+            if (!m) return 1;
+            auto init = reinterpret_cast<void(*)()>(GetProcAddress(m,"InitializeASI"));
+            if (!init) return 2;
+            init(); init();
+            FreeLibrary(m);
+            m = LoadLibraryA("GTAIV-QoL-Pause.asi");
+            if (!m) return 3;
+            init = reinterpret_cast<void(*)()>(GetProcAddress(m,"InitializeASI"));
+            if (!init) return 4;
+            init(); init();
+            FreeLibrary(m);
+            return 0;
+          }
+          '@ | Set-Content build/load-test.cpp
+          cl /nologo /EHsc /MT build/load-test.cpp /Fe:build/load-test.exe
+          if ($LASTEXITCODE) { throw 'Load-test compilation failed' }
+          @'
+          [DefaultMapZoom]
+          Enabled=0
+          [Diagnostics]
+          LogToFile=1
+          BroadCapture=1
+          '@ | Set-Content build/GTAIV-QoL.ini
+          Push-Location build
+          ./load-test.exe
+          if ($LASTEXITCODE) { throw 'ASI load-test failed' }
+          $log = Get-Content GTAIV-QoL.log -Raw
+          if ($log -notmatch 'Broad diagnostics skipped: unsupported executable version') { throw 'Unsupported-host diagnostics did not fail closed' }
+          if ($log -notmatch 'ASI initialization completed without scanning or installing a hook') { throw 'Disabled startup path did not complete' }
+          $pauseLog = Get-Content GTAIV-QoL-pause.log -Raw
+          if ($pauseLog -notmatch 'unsupported executable; no pause script registered') { throw 'Pause companion did not reject unsupported host' }
+          Pop-Location
+      - name: Restore exact verified menu host from public tree
+        shell: cmd
+        run: |
+          python tools\restore-verified-menu-host.py build
+          if errorlevel 1 exit /b 1
+      - name: Verify FusionFix PE mapping and relocation
+        timeout-minutes: 2
+        shell: cmd
+        run: |
+          cl /nologo /std:c++17 /EHsc /W4 /WX /O2 /MT tests\fusionfix_loader.cpp /Fe:build\fusionfix-loader.exe
+          if errorlevel 1 exit /b 1
+          build\fusionfix-loader.exe "%CD%\build\GTAIV.EFLC.FusionFix.asi"
+          if errorlevel 1 exit /b 1
+          build\fusionfix-loader.exe "%CD%\build\GTAIV.EFLC.FusionFix.asi" relocate
+          if errorlevel 1 exit /b 1
+      - name: Package experiment
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path package | Out-Null
+          Copy-Item build/GTAIV-QoL.asi package/
+          Copy-Item build/GTAIV-QoL-Pause.asi package/
+          Copy-Item vendor/scripthook/LICENSE.md package/ScriptHook-LICENSE.md
+          Copy-Item GTAIV-QoL.ini.example package/GTAIV-QoL.ini
+          Copy-Item README.md package/
+          Copy-Item docs/TESTING.md package/
+          Copy-Item docs/CUTSCENE_PAUSE.md package/
+          Copy-Item docs/DIAGNOSTICS.md package/
+          Copy-Item docs/UPDATER.md package/
+          Copy-Item assets/README.md package/Pause-label-CREDITS.md
+          Copy-Item vendor/minhook/LICENSE.txt package/MinHook-LICENSE.txt
+          Get-FileHash package/GTAIV-QoL.asi -Algorithm SHA256 | Format-List
+      - name: Verify and package Deck log helper
+        shell: pwsh
+        run: |
+          python -m pip install unicorn==2.1.4
+          python -m unittest discover -s tests -p 'test_*.py' -v
+          if ($LASTEXITCODE) { throw 'Helper tests failed' }
+          python tools/steam-deck/package-log-helper.py
+          if ($LASTEXITCODE) { throw 'Helper packaging failed' }
+          Copy-Item tools/steam-deck/dist/Upload-QoL-Log.desktop package/
+          python tools/steam-deck/package-pause-test.py
+          if ($LASTEXITCODE) { throw 'Native pause test installer packaging failed' }
+          python tools/steam-deck/package-guided-setup.py
+          if ($LASTEXITCODE) { throw 'Guided installer packaging failed' }
+          python tools/steam-deck/package-updater.py
+          if ($LASTEXITCODE) { throw 'Updater payload packaging failed' }
+          python tools/steam-deck/package-nexus.py
+          if ($LASTEXITCODE) { throw 'Nexus beta archive packaging failed' }
+          Copy-Item tools/steam-deck/dist/Install-QoL-Pause-Test.desktop package/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GTAIV-QoL-native-pause-test-x86
+          path: package/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GTAIV-QoL-Deck-Log-Helper
+          path: |
+            tools/steam-deck/dist/Upload-QoL-Log.desktop
+            tools/steam-deck/dist/GTAIV-QoL-Deck-Log-Helper.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GTAIV-QoL-native-pause-test-Deck-installer
+          path: |
+            tools/steam-deck/dist/Install-QoL-Pause-Test.desktop
+            tools/steam-deck/dist/START-HERE.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GTAIV-QoL-Nexus-beta-Deck
+          path: build/GTAIV-QoL-*-beta.*-Deck.zip
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GTAIV-QoL-public-beta-update
+          path: build/GTAIV-QoL-update.zip
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GTAIV-QoL-update-payload
+          path: build/update-payload/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GTAIV-QoL-updater-Deck
+          path: |
+            tools/steam-deck/dist/Update-GTAIV-QoL.desktop
+            tools/steam-deck/dist/UPDATER-START-HERE.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GTAIV-QoL-overlay-preview
+          path: build/pause-overlay-preview.bmp
+          if-no-files-found: ignore
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GTAIV-QoL-guided-installer-Deck
+          path: |
+            tools/steam-deck/dist/Install-GTAIV-QoL.desktop
+            tools/steam-deck/dist/INSTALL-START-HERE.txt
+  updater-ui:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install native window test dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq xvfb xauth xdotool x11-utils libxft2 imagemagick fonts-dejavu-core python3-pil
+      - name: Exercise updater window and collapsed changelog
+        run: xvfb-run -a /usr/bin/python3 tests/progress_ui_smoke.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GTAIV-QoL-updater-preview
+          path: build/updater-*.png

@@ -1,0 +1,67 @@
+#pragma once
+#include <atomic>
+#include "qol_settings_api.h"
+namespace qolsettings {
+struct Definition {const char* section;const char* key;int initial;int maximum;};
+constexpr Definition definitions[QOL_SETTING_COUNT]={
+    {"RoadNav","Enabled",1,1},{"DefaultMapZoom","Enabled",1,1},
+    {"CutscenePause","Enabled",1,1},{"VoiceVolume","Enabled",1,1},
+    {"VoiceVolume","GameplayPercent",100,400},{"VoiceVolume","CutscenePercent",100,1600},
+    {"Compass","Enabled",1,1},{"RoadNav","DestinationColours",1,1},{"RoadGPSLine","Enabled",1,1},{"Camera","TaxiRearFOV",70,120},
+    {"RoadGPSLine","ViewBendStrengthPercent",100,100}
+};
+std::atomic<int> values[QOL_SETTING_COUNT];
+char path[MAX_PATH]{};
+SRWLOCK writeLock=SRWLOCK_INIT;
+INIT_ONCE initialized=INIT_ONCE_STATIC_INIT;
+std::atomic<unsigned> menuRows{0};
+void Load(){
+    for(unsigned i=0;i<QOL_SETTING_COUNT;++i){const auto& d=definitions[i];
+        const int read=static_cast<int>(GetPrivateProfileIntA(d.section,d.key,d.initial,path));
+        values[i].store(read>=0&&read<=d.maximum?read:d.initial);
+    }
+}
+BOOL CALLBACK Initialize(PINIT_ONCE,void*,void**) {
+    const DWORD size=GetModuleFileNameA(nullptr,path,MAX_PATH);
+    if(!size||size>=MAX_PATH){path[0]=0;return TRUE;}
+    char* slash=strrchr(path,'\\');if(!slash){path[0]=0;return TRUE;}
+    const auto left=MAX_PATH-static_cast<std::size_t>(slash-path+1);
+    if(left<sizeof("GTAIV-QoL.ini")){path[0]=0;return TRUE;}
+    strcpy_s(slash+1,left,"GTAIV-QoL.ini");
+    Load();
+    return TRUE;
+}
+void Ensure(){InitOnceExecuteOnce(&initialized,Initialize,nullptr,nullptr);}
+int32_t __cdecl Get(uint32_t id){Ensure();return id<QOL_SETTING_COUNT?values[id].load():-1;}
+int32_t __cdecl Set(uint32_t id,int32_t value){
+    Ensure();if(id>=QOL_SETTING_COUNT||value<0||value>definitions[id].maximum||!path[0])return 0;
+    char text[16];sprintf_s(text,"%d",value);
+    AcquireSRWLockExclusive(&writeLock);
+    const bool ok=WritePrivateProfileStringA(definitions[id].section,definitions[id].key,text,path)!=0;
+    if(ok)values[id].store(value);
+    ReleaseSRWLockExclusive(&writeLock);return ok?1:0;
+}
+void __cdecl MenuReady(uint32_t rows){menuRows.store(rows);}
+const QolSettingsApi api{sizeof(QolSettingsApi),1,Get,Set,MenuReady};
+
+// The verified menu host has one reserved, never-shown gameplay-voice row.
+// Its UI-only adapter maps that row to Off/Flat/Twisted; the normal settings
+// ABI and reserved gameplay-voice value stay unchanged for existing clients.
+int32_t __cdecl UiGet(uint32_t id){
+    if(id==QOL_GAMEPLAY_VOICE)return Get(QOL_GPS_LINE)?(Get(QOL_GPS_VIEW_BEND)>0?2:1):0;
+    return Get(id==QOL_VOCAL_SLIDERS?QOL_TAXI_FOV:id);
+}
+int32_t __cdecl UiSet(uint32_t id,int32_t value){
+    if(id==QOL_GAMEPLAY_VOICE){
+        if(value<0||value>2)return 0;
+        if(value&&!Set(QOL_GPS_VIEW_BEND,value==2?100:0))return 0;
+        if(!Set(QOL_GPS_LINE,value?1:0))return 0;
+        return WritePrivateProfileStringA("RoadGPSLine","ViewBendMenuVersion","1",path)?1:0;
+    }
+    if(id==QOL_VOCAL_SLIDERS&&value>=0&&value<40)value=40;
+    const auto result=Set(id==QOL_VOCAL_SLIDERS?QOL_TAXI_FOV:id,value);
+    if(result&&id==QOL_CUTSCENE_VOICE)return Set(QOL_VOCAL_SLIDERS,1);return result;
+}
+void __cdecl UiReady(uint32_t rows){MenuReady((rows&~((1u<<QOL_GAMEPLAY_VOICE)|(1u<<QOL_VOCAL_SLIDERS)))|((rows&(1u<<QOL_GAMEPLAY_VOICE))?(1u<<QOL_GPS_LINE):0)|((rows&(1u<<QOL_VOCAL_SLIDERS))?(1u<<QOL_TAXI_FOV):0));}
+const QolSettingsApi uiApi{sizeof(QolSettingsApi),1,UiGet,UiSet,UiReady};
+}

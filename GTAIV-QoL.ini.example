@@ -1,0 +1,61 @@
+; 0.5.0 selects native zoom after interactive-map acceptance, not pause preview.
+[DefaultMapZoom]
+Enabled = 1
+ZoomPercent = 300
+[Diagnostics]
+LogToFile = 1
+; Read-only cutscene, timing, pause and audio discovery capture.
+BroadCapture = 1
+SampleIntervalMs = 500
+CaptureSeconds = 1800
+
+; Native game-thread pause attempt; the removed focus-loss setting is ignored.
+[CutscenePause]
+; Cutscene pause/resume: Esc or controller Start. Gameplay pause stays normal.
+; Blur the paused frame and show Paused at the bottom.
+Enabled = 1
+Overlay = 1
+ExperimentalFocusProbe = 0
+
+
+; Managed by the Game menu. Off hides all RoadNav cues immediately.
+[RoadNav]
+Enabled = 1
+; Automatic street guidance to moving red-marked enemies when no route is active.
+ChaseGuidance = 1
+; QoL toggle: red enemies, green custom waypoints, yellow missions; off = blue.
+DestinationColours = 1
+
+; Controls the entire game audio output during cutscenes; 100 is unchanged, max 1600.
+; Gameplay returns to its original volume. GameplayPercent is reserved.
+[VoiceVolume]
+OutputMixVersion = 1
+Enabled = 1
+GameplayPercent = 100
+CutscenePercent = 100
+
+; Top-mounted camera-relative compass replaces the minimap; toggle in QoL.
+; Health left, armour right. A centered marker reveals its distance only.
+[Compass]
+Enabled = 1
+; Used only if the live FusionFix radar range is unavailable.
+FallbackRadiusMeters = 300
+; 0 = feet, 1 = metres.
+MetricDistances = 0
+
+[Camera]
+TaxiFovSliderVersion = 1
+; Rear-seat taxi interior view only, 40–120 degrees. 0 preserves the vanilla view.
+TaxiRearFOV = 70
+
+[RoadGPSLine]
+; Independent experimental route ribbon, following native GPS rather than turn cues.
+Enabled = 1
+; Managed by Pause -> QoL -> Road Line (0/1/2): 0 Off, 1 Flat, 2 Twisted.
+; New installations default to Twisted. Updates preserve menu choices.
+ViewBendMenuVersion = 1
+ViewBendStrengthPercent = 100
+; Maximum cross-section roll (0-85 degrees), strongest at side-on turns.
+ViewBendMaxDegrees = 75
+; 25-400: higher values delay the roll until nearer a perpendicular turn.
+ViewBendResponsePercent = 100
