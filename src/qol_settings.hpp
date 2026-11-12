@@ -8,7 +8,9 @@ constexpr Definition definitions[QOL_SETTING_COUNT]={
     {"CutscenePause","Enabled",1,1},{"VoiceVolume","Enabled",1,1},
     {"VoiceVolume","GameplayPercent",100,400},{"VoiceVolume","CutscenePercent",100,1600},
     {"Compass","Enabled",1,1},{"RoadNav","DestinationColours",1,1},{"RoadGPSLine","Enabled",1,1},{"Camera","TaxiRearFOV",70,120},
-    {"RoadGPSLine","ViewBendStrengthPercent",100,100}
+    {"RoadGPSLine","ViewBendStrengthPercent",100,100},
+    {"RoadGPSLine","ShowPoliceEscape",1,1},{"RoadGPSLine","ShowMission",1,1},
+    {"RoadGPSLine","ShowFriend",1,1},{"RoadGPSLine","ShowEnemy",1,1},{"RoadGPSLine","ShowCustom",1,1}
 };
 std::atomic<int> values[QOL_SETTING_COUNT];
 char path[MAX_PATH]{};
@@ -49,9 +51,11 @@ const QolSettingsApi api{sizeof(QolSettingsApi),1,Get,Set,MenuReady};
 // The verified menu host has one reserved, never-shown gameplay-voice row.
 // Its UI-only adapter maps that row to Road Line On/Off; the normal settings
 // ABI and reserved gameplay-voice value stay unchanged for existing clients.
+// Appended UI rows 7..11 map to the five new IDs 11..15.
+unsigned UiId(unsigned id){return id>=7&&id<12?id+4:id==3?QOL_TAXI_FOV:id==4?QOL_GPS_LINE:id;}
 int32_t __cdecl UiGet(uint32_t id){
     if(id==QOL_GAMEPLAY_VOICE)return Get(QOL_GPS_LINE)?1:0;
-    return Get(id==QOL_VOCAL_SLIDERS?QOL_TAXI_FOV:id);
+    return Get(UiId(id));
 }
 int32_t __cdecl UiSet(uint32_t id,int32_t value){
     if(id==QOL_GAMEPLAY_VOICE){
@@ -61,9 +65,9 @@ int32_t __cdecl UiSet(uint32_t id,int32_t value){
         return WritePrivateProfileStringA("RoadGPSLine","ViewBendMenuVersion","2",path)?1:0;
     }
     if(id==QOL_VOCAL_SLIDERS&&value>=0&&value<40)value=40;
-    const auto result=Set(id==QOL_VOCAL_SLIDERS?QOL_TAXI_FOV:id,value);
+    const auto result=Set(UiId(id),value);
     if(result&&id==QOL_CUTSCENE_VOICE)return Set(QOL_VOCAL_SLIDERS,1);return result;
 }
-void __cdecl UiReady(uint32_t rows){MenuReady((rows&~((1u<<QOL_GAMEPLAY_VOICE)|(1u<<QOL_VOCAL_SLIDERS)))|((rows&(1u<<QOL_GAMEPLAY_VOICE))?(1u<<QOL_GPS_LINE):0)|((rows&(1u<<QOL_VOCAL_SLIDERS))?(1u<<QOL_TAXI_FOV):0));}
+void __cdecl UiReady(uint32_t rows){unsigned actual=0;for(unsigned id=0;id<12;++id)if(rows&(1u<<id))actual|=1u<<UiId(id);MenuReady(actual);}
 const QolSettingsApi uiApi{sizeof(QolSettingsApi),1,UiGet,UiSet,UiReady};
 }

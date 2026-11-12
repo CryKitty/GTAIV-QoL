@@ -49,6 +49,12 @@ TaxiFovSliderVersion = 1
 TaxiRearFOV = 70
 
 [RoadGPSLine]
+; Individual pause-menu switches; Enabled remains the master switch.
+ShowPoliceEscape=1
+ShowMission=1
+ShowFriend=1
+ShowEnemy=1
+ShowCustom=1
 ; Independent experimental route ribbon, following native GPS rather than turn cues.
 Enabled = 1
 ; Managed by Pause -> QoL -> Road Line: On (twisted) or Off.

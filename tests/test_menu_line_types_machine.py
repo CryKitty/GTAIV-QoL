@@ -1,0 +1,78 @@
+"""Run the actual public host's extra-row helpers at preferred/rebased addresses."""
+import importlib.util,struct,unittest,zlib
+from pathlib import Path
+try:
+ import unicorn
+ from unicorn.x86_const import UC_X86_REG_EAX,UC_X86_REG_ECX,UC_X86_REG_EDX,UC_X86_REG_EDI,UC_X86_REG_EBP,UC_X86_REG_ESI,UC_X86_REG_ESP
+except ImportError:
+ unicorn=None
+ROOT=Path(__file__).resolve().parents[1]
+s=importlib.util.spec_from_file_location('extended_menu',ROOT/'tools/restore-verified-menu-host.py');menu=importlib.util.module_from_spec(s);s.loader.exec_module(menu)
+@unittest.skipUnless(unicorn,'x86 emulator not installed')
+class LineTypeMenuTests(unittest.TestCase):
+ @classmethod
+ def setUpClass(cls):
+  cls.original=zlib.decompress((ROOT/'vendor/fusionfix-menu/verified-build91.asi.zlib').read_bytes())
+  cls.image=menu.navigation_menu(cls.original)
+ def machine(self,base,row):
+  raw=self.image;pe=struct.unpack_from('<I',raw,0x3c)[0];optional=pe+24
+  size=struct.unpack_from('<I',raw,optional+56)[0]
+  u=unicorn.Uc(unicorn.UC_ARCH_X86,unicorn.UC_MODE_32);u.mem_map(base,size);u.mem_write(base,raw[:0x400])
+  table=optional+struct.unpack_from('<H',raw,pe+20)[0]
+  for i in range(struct.unpack_from('<H',raw,pe+6)[0]):
+   virtual,rva,length,offset=struct.unpack_from('<IIII',raw,table+i*40+8)
+   u.mem_write(base+rva,raw[offset:offset+length])
+  u.mem_map(0x800000,0x10000)
+  for reg,value in [(UC_X86_REG_EDI,row),(UC_X86_REG_ESP,0x804000),(UC_X86_REG_EBP,0x808000),(UC_X86_REG_EAX,0x809000)]:u.reg_write(reg,value)
+  u.mem_write(0x809000,struct.pack('<I',0x12345678))
+  # Original rows must continue using the original caller's stack arrays.
+  for i in range(7):
+   u.mem_write(0x808000-0x54+i*4,struct.pack('<I',0x80a000+i*0x100))
+   u.mem_write(0x808000-0x38+i*4,struct.pack('<I',0x80b000+i*0x100))
+  return u
+ def test_all_rows_keys_labels_and_original_stack_contracts_after_rebase(self):
+  keys=['QOL_ESCAPE','QOL_MISSION','QOL_FRIEND','QOL_ENEMY','QOL_CUSTOM']
+  labels=['Police Escape Line','Mission Line','Friend Line','Enemy Line','Custom Line']
+  for base in [0x10000000,0x30000000]:
+   for row in range(12):
+    u=self.machine(base,row);site=base+0xd7c9a
+    u.emu_start(site,site+5,count=100)
+    key=u.reg_read(UC_X86_REG_ESI)
+    self.assertEqual(u.reg_read(UC_X86_REG_ESP),0x803ffc)
+    self.assertEqual(struct.unpack('<I',u.mem_read(0x803ffc,4))[0],key)
+    if row<7:self.assertEqual(key,0x80a000+row*0x100)
+    else:self.assertEqual(bytes(u.mem_read(key,16)).split(b'\0')[0].decode(),keys[row-7])
+    u=self.machine(base,row);site=base+0xd7cbc
+    u.emu_start(site,site+6,count=100);label=u.reg_read(UC_X86_REG_EDX)
+    self.assertEqual(u.reg_read(UC_X86_REG_ECX),0x12345678)
+    self.assertEqual(u.reg_read(UC_X86_REG_EAX),0x809000)
+    self.assertEqual(u.reg_read(UC_X86_REG_ESP),0x804000)
+    if row<7:self.assertEqual(label,0x80b000+row*0x100)
+    else:self.assertEqual(bytes(u.mem_read(label,64)).decode('utf-16le').rstrip('\0'),labels[row-7])
+    # Replace PUSH label / CALL assign: assign receives exactly [return,label,length].
+    u=self.machine(base,row);u.reg_write(UC_X86_REG_ECX,0x12345678);u.mem_write(0x804000,struct.pack('<I',17))
+    observed=[]
+    def stop(machine,address,size,unused):
+     if address==base+0x1c690:observed.extend(struct.unpack('<III',machine.mem_read(machine.reg_read(UC_X86_REG_ESP),12)));machine.emu_stop()
+    u.hook_add(unicorn.UC_HOOK_CODE,stop);u.emu_start(base+0xd7ce1,base+0xd7cea,count=100)
+    self.assertEqual(observed,[base+0xd7ce6,label,17]);self.assertEqual(u.reg_read(UC_X86_REG_ECX),0x12345678)
+    self.assertEqual(u.reg_read(UC_X86_REG_EDI),row)
+ def test_extra_rows_use_toggle_path_not_sliders(self):
+  base=0x10000000
+  for row in range(12):
+   u=self.machine(base,row);reached=[]
+   def stop(machine,address,size,unused):
+    if address in [base+0xd7cfc,base+0xd7dd3]:reached.append(address);machine.emu_stop()
+   u.hook_add(unicorn.UC_HOOK_CODE,stop);u.emu_start(base+0xd7cea,base+0xd7dd4,count=20)
+   self.assertEqual(reached,[base+0xd7cfc if row in [3,5] else base+0xd7dd3])
+ def test_append_only_section_keeps_loader_and_relocations_in_place(self):
+  old=menu.base_navigation_menu(self.original);new=self.image
+  pe=struct.unpack_from('<I',old,0x3c)[0];optional=pe+24
+  table=optional+struct.unpack_from('<H',old,pe+20)[0];count=struct.unpack_from('<H',old,pe+6)[0]
+  self.assertEqual(struct.unpack_from('<H',new,pe+6)[0],count+1)
+  self.assertEqual(new[table:table+count*40],old[table:table+count*40])
+  self.assertEqual(new[optional+96:optional+224],old[optional+96:optional+224]) # all directories incl relocations/exports
+  allowed=set(range(pe+6,pe+8))|set(range(optional+4,optional+8))|set(range(optional+56,optional+60))|set(range(optional+64,optional+68))|set(range(table+count*40,table+(count+1)*40))
+  for site,length in [(0xd709a,5),(0xd70bc,6),(0xd70e1,9),(0xd722c,1)]:allowed.update(range(site,site+length))
+  self.assertTrue(all(i in allowed for i,(a,b) in enumerate(zip(old,new)) if a!=b))
+  self.assertEqual(new[0xd722c],12)

@@ -8,11 +8,11 @@
         const auto api = getApi ? getApi(1) : nullptr;
         if (!api || api->version != 1 || api->size < sizeof(QolSettingsApi) || !api->Get || !api->Set)
             return;
-        const char* keys[] = { "QOL_ROADNAV", "QOL_AUTOZOOM", "QOL_CSPAUSE", "QOL_TAXI", "QOL_GPSLINE", "QOL_CUTVOICE", "QOL_COMPASS", "QOL_ROUTECOL" };
-        const wchar_t* labels[] = { L"RoadNav", L"Map Autozoom", L"Pause During Cutscenes", L"Taxi FOV (degrees)", L"Road Line", L"Cutscene Audio (%)", L"Compass HUD", L"RoadNav Destination Colors" };
+        const char* keys[] = { "QOL_ROADNAV", "QOL_AUTOZOOM", "QOL_CSPAUSE", "QOL_TAXI", "QOL_GPSLINE", "QOL_CUTVOICE", "QOL_COMPASS", "QOL_ESCAPE", "QOL_MISSION", "QOL_FRIEND", "QOL_ENEMY", "QOL_CUSTOM" };
+        const wchar_t* labels[] = { L"RoadNav", L"Map Autozoom", L"Pause During Cutscenes", L"Taxi FOV (degrees)", L"Road Line", L"Cutscene Audio (%)", L"Compass HUD", L"Police Escape Line", L"Mission Line", L"Friend Line", L"Enemy Line", L"Custom Line" };
         const auto qolScreen = AddScreen("QoL", MenuScreen::Audio);
         uint32_t rows = 0;
-        for (uint32_t id = 0; id < 7; ++id) // Verified host has seven existing row slots.
+        for (uint32_t id = 0; id < 12; ++id) // UI rows map to stable core setting IDs.
         {
             if (api->Get(id) < 0) continue; // Additive settings on older core versions.
             CText::menuTexts[GetHash(keys[id])] = labels[id];

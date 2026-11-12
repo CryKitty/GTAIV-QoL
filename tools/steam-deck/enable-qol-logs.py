@@ -247,6 +247,11 @@ def extend(source):
 
 def merge_preferences(previous, fresh):
     limits = {('Camera', 'TaxiRearFOV'): (0, 120), ('RoadGPSLine', 'Enabled'): (0, 1), ('RoadNav', 'Enabled'): (0, 1), ('RoadNav', 'ChaseGuidance'): (0, 1), ('RoadNav', 'DestinationColours'): (0, 1), ('DefaultMapZoom', 'Enabled'): (0, 1),
+              ('RoadGPSLine', 'ShowPoliceEscape'): (0, 1),
+              ('RoadGPSLine', 'ShowMission'): (0, 1),
+              ('RoadGPSLine', 'ShowFriend'): (0, 1),
+              ('RoadGPSLine', 'ShowEnemy'): (0, 1),
+              ('RoadGPSLine', 'ShowCustom'): (0, 1),
               ('RoadGPSLine', 'ViewBendStrengthPercent'): (0, 100),
               ('RoadGPSLine', 'ViewBendMaxDegrees'): (0, 85),
               ('RoadGPSLine', 'ViewBendResponsePercent'): (25, 400),

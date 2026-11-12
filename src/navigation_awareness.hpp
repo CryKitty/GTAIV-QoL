@@ -18,7 +18,15 @@ inline float rearTaxiFov(float authored,float desired,bool rear,float distance){
     if(!rear||!std::isfinite(authored)||!std::isfinite(distance)||distance>4.5f||distance<0||desired<40||desired>120||authored<35||authored>55)return authored;
     return std::clamp(desired+(authored-40),40.0f,120.0f);
 }
-enum class RouteKind {Blue,Custom,Mission,Enemy,Escape};
+enum class RouteKind {Blue,Custom,Mission,Enemy,Escape,Friend};
+struct LineTypes {
+    bool escape=true,mission=true,friendLine=true,enemy=true,custom=true;
+    bool visible(bool master,RouteKind kind)const{
+        if(!master)return false;
+        switch(kind){case RouteKind::Escape:return escape;case RouteKind::Mission:return mission;
+            case RouteKind::Enemy:return enemy;case RouteKind::Custom:return custom;default:return friendLine;}
+    }
+};
 inline RouteKind activeRoute(RouteKind matched,bool chase,bool waypointMatches){return chase?RouteKind::Enemy:waypointMatches?RouteKind::Custom:matched;}
 inline std::array<unsigned,3> routeColour(RouteKind kind,bool enabled,unsigned now=0){
     if(kind==RouteKind::Escape)return (now/400)%2?std::array<unsigned,3>{35,110,255}:std::array<unsigned,3>{245,45,45};

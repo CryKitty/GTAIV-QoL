@@ -243,7 +243,7 @@ DWORD WINAPI AutoZoom(LPVOID) {
     unsigned priorMenuRows=0;
     for (;;) {
         const unsigned rows=qolsettings::menuRows.load();
-        if(rows!=priorMenuRows){char line[100];sprintf_s(line,"QoL native menu registered rows mask=%02X (EF=all active controls)",rows);Log(line);priorMenuRows=rows;}
+        if(rows!=priorMenuRows){char line[100];sprintf_s(line,"QoL native menu registered rows mask=%04X",rows);Log(line);priorMenuRows=rows;}
         if(!qolsettings::Get(QOL_MAP_AUTOZOOM)) {RestoreZoomStop();gate={};Sleep(50);continue;}
         if(failed){Sleep(500);continue;}
         if(!decoded){

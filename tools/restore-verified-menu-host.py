@@ -12,7 +12,7 @@ import zlib
 import struct
 VERIFIED_SHA='29b726c2efca00de185c7afe00f763601979bccd4bee7dca996be77a8c33a29d'
 SOURCE_SHA='01cdd2d6e330637b632bff707471b960aa500d62'
-def navigation_menu(raw):
+def base_navigation_menu(raw):
     """Extend only the reserved menu row in the exact verified build91 PE.
 
     d7094: remove the reserved id4 skip (six-byte JE -> NOPs).
@@ -62,6 +62,75 @@ def navigation_menu(raw):
         data[offset:offset+len(before)]=after
     if len(data)!=len(raw):raise RuntimeError('Menu adaptation changed PE layout')
     return bytes(data)
+
+def line_type_menu(raw):
+    """Append position-independent row helpers; leave startup/old sections in place.
+
+    The five extra rows cannot index the original seven-element stack arrays.
+    Redirect those three reads to bounded helpers and extend the existing loop.
+    No new absolute addresses or base relocations are introduced.
+    """
+    data=bytearray(raw)
+    pe=struct.unpack_from('<I',data,0x3c)[0]
+    count=struct.unpack_from('<H',data,pe+6)[0]
+    optional=pe+24; table=optional+struct.unpack_from('<H',data,pe+20)[0]
+    if data[pe:pe+4]!=b'PE\0\0' or struct.unpack_from('<H',data,optional)[0]!=0x10b:
+        raise RuntimeError('Expected verified PE32 menu host')
+    align=lambda n,a:(n+a-1)//a*a
+    sa,fa=struct.unpack_from('<II',data,optional+32)
+    rva=align(struct.unpack_from('<I',data,optional+56)[0],sa)
+    raw_at=align(len(data),fa)
+    first_raw=min(struct.unpack_from('<I',data,table+i*40+20)[0] for i in range(count))
+    if table+(count+1)*40>first_raw:raise RuntimeError('No room for menu section header')
+    code=bytearray(); fixes=[]
+    def lookup(register,old):
+        # EAX preserved; ESI/EDX alone receives the selected string pointer.
+        start=len(code);code.extend(b'\x83\xff\x07\x73\x06'+old+b'\xeb\x17')
+        code.extend(b'\x50\xe8\0\0\0\0\x58')
+        anchor=len(code)-1 # popped return address points at POP EAX
+        if register=='esi':code.extend(bytes.fromhex('8bf7 83ee07 c1e604 8db430'))
+        else:code.extend(bytes.fromhex('8bd7 83ea07 c1e206 8d9410'))
+        displacement=len(code);code.extend(b'\0'*4+b'\x58')
+        fixes.append((displacement,anchor,register))
+        return start
+    key=lookup('esi',bytes.fromhex('8b74bdac'))
+    # Return to caller leaving the key pushed, as the replaced instructions did.
+    code.extend(bytes.fromhex('873424 56 8b742404 c3'))
+    label=lookup('edx',bytes.fromhex('8b54bdc8'))
+    code.extend(bytes.fromhex('8b08 c3'))
+    push_label=lookup('edx',bytes.fromhex('8b54bdc8'))
+    code.extend(bytes.fromhex('58 52 50 e9'))
+    jump=len(code);code.extend(struct.pack('<i',0x1c690-(rva+jump+4)))
+    keys_at=len(code)
+    for key_text in ['QOL_ESCAPE','QOL_MISSION','QOL_FRIEND','QOL_ENEMY','QOL_CUSTOM']:
+        code.extend(key_text.encode().ljust(16,b'\0'))
+    labels_at=len(code)
+    for label_text in ['Police Escape Line','Mission Line','Friend Line','Enemy Line','Custom Line']:
+        code.extend(label_text.encode('utf-16le').ljust(64,b'\0'))
+    for displacement,anchor,register in fixes:
+        struct.pack_into('<i',code,displacement,(keys_at if register=='esi' else labels_at)-anchor)
+    def patch(site,before,target):
+        expected=bytes.fromhex(before)
+        if data[site:site+len(expected)]!=expected:raise RuntimeError('Extra menu row contract differs from verified host')
+        site_rva=site+0xc00
+        data[site:site+len(expected)]=b'\xe8'+struct.pack('<i',rva+target-site_rva-5)+b'\x90'*(len(expected)-5)
+    patch(0xd709a,'8b74bdac56',key)
+    patch(0xd70bc,'8b54bdc88b08',label)
+    patch(0xd70e1,'ff74bdc8e8a649f4ff',push_label)
+    if data[0xd722a:0xd722d]!=bytes.fromhex('83ff07'):raise RuntimeError('Menu row count differs')
+    data[0xd722c]=12
+    size=align(len(code),fa)
+    header=struct.pack('<8sIIIIIIHHI',b'.qolmenu',len(code),rva,size,raw_at,0,0,0,0,0x60000020)
+    data[table+count*40:table+(count+1)*40]=header
+    struct.pack_into('<H',data,pe+6,count+1)
+    struct.pack_into('<I',data,optional+4,struct.unpack_from('<I',data,optional+4)[0]+size)
+    struct.pack_into('<I',data,optional+56,align(rva+len(code),sa))
+    struct.pack_into('<I',data,optional+64,0) # no stale optional checksum
+    data.extend(b'\0'*(raw_at-len(data))+code+b'\0'*(size-len(code)))
+    return bytes(data)
+
+def navigation_menu(raw):
+    return line_type_menu(base_navigation_menu(raw))
 
 def restore(source,out,expected=VERIFIED_SHA):
     source=Path(source)

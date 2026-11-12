@@ -40,7 +40,7 @@ class MenuRecoveryTests(unittest.TestCase):
   for offset,value in sites.items():raw[offset:offset+len(value)]=value
   raw=bytes(raw)
   with patch.object(m,'VERIFIED_SHA',hashlib.sha256(raw).hexdigest()):
-   changed=m.navigation_menu(raw)
+   changed=m.base_navigation_menu(raw)
    self.assertEqual(len(changed),len(raw))
    self.assertIn(b'QoLSettings_UiApi\0',changed)
    self.assertIn('Road Line'.encode('utf-16le'),changed)
