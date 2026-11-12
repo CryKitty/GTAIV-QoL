@@ -110,6 +110,14 @@ int main(){
         fill(0,target);fill(1,{0,300,0});assert(readGpsRoute(0,read,route,&target)&&route.slot==0);
         fill(0,{300,0,30});fill(1,target);assert(readGpsRoute(0,read,route,&target)&&route.slot==1);
         assert(readGpsRoute(0,read,route)&&route.slot==0); // Preserve ordinary legacy selection.
+        fill(0,target);fill(1,target);
+        const float newStart[3]={100,0,0};std::memcpy(memory.data()+0xdb0,newStart,sizeof(newStart));
+        const Vec3 currentStart{100,0,0};
+        assert(readGpsRoute(0,read,route,&target)&&route.slot==0);
+        assert(readGpsRoute(0,read,route,&target,&currentStart)&&route.slot==1);
+        fill(0,target);fill(1,{target.x+60,target.y,target.z});
+        std::memcpy(memory.data()+0xdb0,newStart,sizeof(newStart));
+        assert(readGpsRoute(0,read,route,&target,&currentStart)&&route.slot==0); // Endpoint ownership still wins.
         // Primary and escape readers can consume opposite native buffers in
         // the same tick without either snapshot being overwritten by the other.
         const Vec3 escapeTarget{0,300,0};fill(0,escapeTarget);fill(1,target);
