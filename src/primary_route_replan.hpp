@@ -32,6 +32,7 @@ inline bool movingAgainstRoute(const std::vector<Vec3>& path,Vec3 player,Vec3 he
 struct PrimaryWrongWay {
     bool observing=false,attempted=false;std::uint32_t since=0,last=0,attemptAt=0;unsigned target=0;
     void cancel(){observing=false;target=0;}
+    bool retaining(std::uint32_t now)const{return observing||(attempted&&now-attemptAt<10000);}
     bool update(std::uint32_t now,unsigned goal,bool opposite){
         if(!goal||!opposite){cancel();return false;}
         if(!observing||target!=goal||now-last>600){observing=true;since=now;target=goal;}

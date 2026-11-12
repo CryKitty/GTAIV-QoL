@@ -945,7 +945,7 @@ protected:
         if(!arrows){cues_={};gTurnRenderer.clear();}
         const int lineMode=lineEnabled?(viewBend_.strength>0?2:1):0;
         if(lineMode!=loggedLineMode_){char status[180];std::snprintf(status,sizeof(status),"Road GPS Line: pause-menu mode=%d (%s); shared primary/escape visibility gate=%s",lineMode,lineMode==2?"Twisted":lineMode==1?"Flat":"Off",lineEnabled?"enabled":"disabled");event(status);loggedLineMode_=lineMode;}
-        if(!lineEnabled){primaryWrongWay_.cancel();finishForwardRoute(GetTickCount());forwardRestoreAt_=0;line_={};escapeLine_={};gRoadLineRenderer.clear();gEscapeLineRenderer.clear();}
+        if(!lineEnabled){primaryWrongWay_={};finishForwardRoute(GetTickCount());forwardRestoreAt_=0;line_={};escapeLine_={};gRoadLineRenderer.clear();gEscapeLineRenderer.clear();}
         if(!arrows&&!lineEnabled){if(escapeReplan_.observed)event("Police escape: dropped; navigation disabled by user");clearChase();hide();haveArrival_=false;previousTick_=0;return;}
         const DWORD now=GetTickCount();
         if(!tickLogged_){event("ScriptHook RunTick entered");tickLogged_=true;}
@@ -1034,7 +1034,7 @@ protected:
             // two-second cache expiry; target changes still invalidate it.
             bool routeAvailable=freshRoute;
             if(!freshRoute&&routeTarget==recentTarget_&&!recentRoute_.points.empty()&&
-               (escapeActive_||primaryWrongWay_.observing||forwardRouteHelper_.IsValid()||forwardRestoreAt_||roadnav::keepRoadLineRoute(recentRoute_.points,player,now-recentRouteAt_))){
+               (escapeActive_||primaryWrongWay_.retaining(now)||forwardRouteHelper_.IsValid()||forwardRestoreAt_||roadnav::keepRoadLineRoute(recentRoute_.points,player,now-recentRouteAt_))){
                 route=recentRoute_;routeAvailable=true;
             }
             if(lineEnabled&&now-lastCueLog_>5000){char status[180];std::snprintf(status,sizeof(status),"Road line routes: primary=%u points=%u escape=%u planning=%u escape-points=%u",routeTarget,static_cast<unsigned>(route.points.size()),escapeActive_?1u:0u,escapePlanning_?1u:0u,static_cast<unsigned>(escapeShown_.points.size()));event(status);}
@@ -1062,7 +1062,7 @@ protected:
                     const auto stats=roadnav::fitRoadSurface(nextLine,player,line_,probe);
                     roadnav::stabilizeRoadSurface(nextLine,line_);
                     if(now-lastCueLog_>5000){char status[160];std::snprintf(status,sizeof(status),"Road surface: sampled=%u reused=%u missing=%u points=%u",stats.sampled,stats.reused,stats.missing,static_cast<unsigned>(nextLine.points.size()));event(status);}
-                    if(nextLine.visible()||(!primaryWrongWay_.observing&&!forwardRouteHelper_.IsValid()&&!forwardRestoreAt_))line_=std::move(nextLine);
+                    if(nextLine.visible()||(!primaryWrongWay_.retaining(now)&&!forwardRouteHelper_.IsValid()&&!forwardRestoreAt_))line_=std::move(nextLine);
                 }
                 if(!route.points.empty())routeKind_=awareness::activeRoute(compass_.routeKind(route.points.back()),chaseRoute_.IsValid()&&guidanceEnemy_,waypoint);
                 if(waypoint && !route.points.empty()){

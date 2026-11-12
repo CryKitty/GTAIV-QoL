@@ -33,6 +33,10 @@ int main(){
     assert(brief.update(6200,1,true));
     for(unsigned t=6400;t<16200;t+=200)assert(!brief.update(t,1,true));
     assert(brief.update(16200,1,true)); // Ten-second request backoff, not every tick.
+    PrimaryWrongWay failedRequest;
+    for(unsigned t=0;t<=3000;t+=200)failedRequest.update(t,1,true);
+    assert(failedRequest.retaining(3000)&&failedRequest.retaining(12999));
+    assert(!failedRequest.retaining(13000)); // No one-tick blank on a failed attempt.
     PrimaryWrongWay sustained;
     for(unsigned t=0;t<3000;t+=200)assert(!sustained.update(t,1,movingAgainstRoute(old,{0,-static_cast<float>(t)*.01f,0},backwards,velocity)));
     assert(sustained.update(3000,1,movingAgainstRoute(old,{0,-30,0},backwards,velocity)));
