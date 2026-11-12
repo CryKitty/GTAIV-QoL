@@ -26,6 +26,7 @@ inline bool missionYellow(unsigned colour){
     return r>160&&g>140&&b<120&&std::abs(static_cast<int>(r)-static_cast<int>(g))<100;
 }
 struct ChaseCandidate {std::uint32_t handle;float distance,speed;bool vehicle=false;};
+inline bool chaseEnabled(bool legacy,bool roadLine,bool enemyLine){return legacy||(roadLine&&enemyLine);}
 inline bool allowChase(bool enabled,bool waypoint,bool ownsRoute,bool authoritativeRoute){
     return enabled&&!waypoint&&(ownsRoute||!authoritativeRoute);
 }

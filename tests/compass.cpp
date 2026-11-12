@@ -108,6 +108,10 @@ int main(){
         // even when an unowned/stale GPS buffer exists. Real goals still win.
         const std::vector<compass::ChaseCandidate> chase{{77,450,20,true}};
         assert(compass::chooseChaseTarget(chase,0)==77);
+        assert(compass::chaseEnabled(false,true,true)); // Pause-menu On overrides old hidden gate.
+        assert(!compass::chaseEnabled(false,true,false));
+        assert(!compass::chaseEnabled(false,false,true));
+        assert(compass::chaseEnabled(true,false,false)); // Legacy turn-cue behaviour unchanged.
         assert(compass::allowChase(true,false,false,false));
         assert(!compass::allowChase(true,true,false,false));
         assert(!compass::allowChase(true,false,false,true));

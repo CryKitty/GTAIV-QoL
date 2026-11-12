@@ -75,6 +75,12 @@ Driver/passenger blips resolve their occupied vehicle's live center for the
 helper and the per-frame fitted endpoint. The earlier bounded tracking/surface
 rules remain; no long off-road connector is invented.
 
+A second possible generation gate was the legacy hidden `RoadNav.ChaseGuidance`
+setting. Its shipped default is On; the user's stored legacy value is unknown.
+Road Line + Enemy Line On now enables chase generation even if that legacy flag
+is Off, so the pause-menu request never requires an INI fix. Existing turn-cue
+behaviour when the ribbon is disabled retains the legacy policy.
+
 Enemy Line Off correctly suppresses drawing, as does master Off. Neither was Off
 in the user's reported chase. Type-switch changes are now recorded locally to
 make future generation-versus-visibility checks explicit. No session log proves

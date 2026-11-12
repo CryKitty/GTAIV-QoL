@@ -808,9 +808,10 @@ class RoadNavScript final : public ScriptThread {
         missionRetryTarget_=0;
         // A residual native GPS buffer is not an authoritative destination.
         // Manual waypoints and live fixed mission goals were handled above.
-        if(!compass::allowChase(chaseEnabled_||mission.IsValid(),waypoint,owns,mission.IsValid()&&!movingMission)){clearChase();return;}
+        const bool chaseEnabled=compass::chaseEnabled(chaseEnabled_,qolclient::Enabled(QOL_GPS_LINE,true),qolclient::Enabled(QOL_LINE_ENEMY,true));
+        if(!compass::allowChase(chaseEnabled||mission.IsValid(),waypoint,owns,mission.IsValid()&&!movingMission)){clearChase();return;}
         auto target=movingMission?mission:compass_.chaseTarget(player,ped,chaseTarget_);
-        if(!mission.IsValid()&&!chaseEnabled_){clearChase();return;}
+        if(!mission.IsValid()&&!chaseEnabled){clearChase();return;}
         guidanceEnemy_=true;
         if(!target.IsValid()){clearChase();return;}
         guidanceEnemy_=compass_.navigationTargetEnemy(target);
