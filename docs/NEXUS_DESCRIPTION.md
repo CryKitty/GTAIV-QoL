@@ -7,7 +7,7 @@ A guided-install bundle of seven quality-of-life components for GTA IV Complete 
 ## Included mods
 
 - **Road Navigation Line:** a road-fitted native-GPS ribbon with Off, Flat and Twisted modes. Police escape guidance uses a narrower flashing red/blue ribbon alongside the normal route.
-- **RoadNav Turn Guidance:** directional chevrons, linked turns, destination cues and wrong-way/U-turn guidance. Includes automatic eligible-enemy guidance when no explicit route is selected and destination colour styling.
+- **Turn Arrows:** directional chevrons, linked turns, destination cues and wrong-way/U-turn guidance. Includes automatic eligible-enemy guidance when no explicit route is selected and destination colour styling.
 - **Map Autozoom:** opens the interactive pause map at 300%, leaving subsequent manual pan/zoom under your control.
 - **Pause Cutscenes:** Esc or controller Start pauses supported voiced cutscenes, including dialogue, actors and camera, over a blurred Paused frame. Press again to resume; no time limit.
 - **Cutscene Audio:** a pause-menu slider for the whole cutscene output mix, restoring gameplay gain afterward. It is not an isolated speech/dialogue control.

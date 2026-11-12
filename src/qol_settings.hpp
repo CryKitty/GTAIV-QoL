@@ -1,6 +1,8 @@
 #pragma once
 #include <atomic>
+#include <cwchar>
 #include "qol_settings_api.h"
+#include "qol_menu_labels.hpp"
 namespace qolsettings {
 struct Definition {const char* section;const char* key;int initial;int maximum;};
 constexpr Definition definitions[QOL_SETTING_COUNT]={
@@ -46,7 +48,7 @@ int32_t __cdecl Set(uint32_t id,int32_t value){
     ReleaseSRWLockExclusive(&writeLock);return ok?1:0;
 }
 void __cdecl MenuReady(uint32_t rows){menuRows.store(rows);}
-const QolSettingsApi api{sizeof(QolSettingsApi),1,Get,Set,MenuReady};
+const QolSettingsApi api{sizeof(QolSettingsApi),1,Get,Set,MenuReady,nullptr};
 
 // The verified menu host has one reserved, never-shown gameplay-voice row.
 // Its UI-only adapter maps that row to Road Line On/Off; the normal settings
@@ -58,6 +60,7 @@ int32_t __cdecl UiGet(uint32_t id){
     return Get(UiId(id));
 }
 int32_t __cdecl UiSet(uint32_t id,int32_t value){
+    if(id>=7&&id<12&&!Get(QOL_GPS_LINE))return 0; // Disabled children retain their own choices.
     if(id==QOL_GAMEPLAY_VOICE){
         if(value<0||value>1)return 0;
         if(value&&!Set(QOL_GPS_VIEW_BEND,100))return 0;
@@ -69,5 +72,11 @@ int32_t __cdecl UiSet(uint32_t id,int32_t value){
     if(result&&id==QOL_CUTSCENE_VOICE)return Set(QOL_VOCAL_SLIDERS,1);return result;
 }
 void __cdecl UiReady(uint32_t rows){unsigned actual=0;for(unsigned id=0;id<12;++id)if(rows&(1u<<id))actual|=1u<<UiId(id);MenuReady(actual);}
-const QolSettingsApi uiApi{sizeof(QolSettingsApi),1,UiGet,UiSet,UiReady};
+int32_t __cdecl UiLabel(const char* key,wchar_t* text,uint32_t capacity){
+    const auto label=qolmenu::label(key,Get(QOL_GPS_LINE)!=0);
+    if(!label||!text)return 0;
+    const auto length=std::wcslen(label);if(length>=capacity)return 0;
+    std::memcpy(text,label,(length+1)*sizeof(wchar_t));return 1;
+}
+const QolSettingsApi uiApi{sizeof(QolSettingsApi),1,UiGet,UiSet,UiReady,UiLabel};
 }

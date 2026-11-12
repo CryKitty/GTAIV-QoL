@@ -3,8 +3,10 @@
 Install through the existing updater after this PR is merged. No file edits are
 needed. Pause → QoL → Road Line is the master On/Off switch. The five additional
 On/Off switches are Police Escape Line, Mission Line, Friend Line, Enemy Line and
-Custom Line. They all start On, apply live, and survive restart/update. Master Off
-hides every ribbon without overwriting the individual choices. RoadNav turn cues
+Custom Line. They sit directly beneath Road Line, indented beneath their master.
+While Road Line is Off their labels are grey and changes are blocked; turning
+Road Line On restores interactivity without changing any saved type choice. They all start On, apply live, and survive restart/update. Master Off
+hides every ribbon without overwriting the individual choices. Turn Arrows
 and Compass HUD keep their independent controls.
 
 Mission, friendly and hostile destinations use their marker classification;
@@ -44,7 +46,10 @@ Police escape scheduling and sustained wrong-way trigger timings are unchanged.
 
 1. With GTA IV closed, run the installed Update GTA IV QoL shortcut after merge,
    then launch the game. Pause → QoL: confirm five plain On/Off line switches,
-   initially On, beside the existing master Road Line control.
+   initially On, directly under the existing master Road Line control and indented.
+   Turn master Off: check grey labels and that click/left/right/confirm cannot
+   change the retained choices. Turn it On: check choices can be edited again.
+   Check the separate turn-guidance row reads Turn Arrows.
 2. During suitable missions/outing/combat, hide and restore Mission, Friend,
    Enemy and Custom independently. During a chase with a simultaneous manual
    route, hide Police Escape and confirm the manual route stays; hide Custom
@@ -67,3 +72,8 @@ actual x86 menu helpers before/after rebasing, Windows PE mapping, D3D9 visibili
 shared caption geometry/lifetimes, exact destination coordinates and bounded live
 endpoint tracking. Native GTA routing and Deck visual acceptance require the
 in-game checks above; no FPS improvement is claimed.
+
+Heart/date icons (the SDK's shared BLIP_DATE sprite) remain on the compass at
+any finite distance, even during a mission. The centered distance readout is
+unchanged. Check a far-away date heart with Compass HUD On, then turn Compass HUD
+Off/On; the map itself and other local POI distance limits are unchanged.

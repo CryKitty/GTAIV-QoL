@@ -81,11 +81,31 @@ def line_type_menu(raw):
     rva=align(struct.unpack_from('<I',data,optional+56)[0],sa)
     raw_at=align(len(data),fa)
     first_raw=min(struct.unpack_from('<I',data,table+i*40+20)[0] for i in range(count))
-    if table+(count+1)*40>first_raw:raise RuntimeError('No room for menu section header')
-    code=bytearray(); fixes=[]
+    if table+(count+2)*40>first_raw:raise RuntimeError('No room for menu section header')
+    code=bytearray(); fixes=[]; turn_fixes=[]
+    # Registration order is independent of persistent setting/callback IDs.
+    # Road Line's children are contiguous before Compass HUD (audio is elsewhere).
+    order=[0,1,2,3,4,7,8,9,10,11,5,6]
+    next_rows=[12]*12
+    for a,b in zip(order,order[1:]):next_rows[a]=b
+    next_row=len(code)
+    code.extend(bytes.fromhex('50 e800000000 58'))
+    row_anchor=len(code)-1
+    code.extend(bytes.fromhex('0fb6bc38'));row_fix=len(code);code.extend(b'\0'*4)
+    code.extend(bytes.fromhex('58 83ff0c 0f82'))
+    j=len(code);code.extend(struct.pack('<i',0xd7c80-(rva+j+4)))
+    code.extend(b'\xe9');j=len(code);code.extend(struct.pack('<i',0xd7e33-(rva+j+4)))
+    row_table=len(code);code.extend(bytes(next_rows))
+    struct.pack_into('<i',code,row_fix,row_table-row_anchor)
     def lookup(register,old):
         # EAX preserved; ESI/EDX alone receives the selected string pointer.
-        start=len(code);code.extend(b'\x83\xff\x07\x73\x06'+old+b'\xeb\x17')
+        start=len(code)
+        if register=='edx':
+            code.extend(bytes.fromhex('85ff 7510 50 e800000000 58 8d90'))
+            turn_anchor=len(code)-3
+            turn_fix=len(code);code.extend(b'\0'*4+bytes.fromhex('58 eb22'))
+            turn_fixes.append((turn_fix,turn_anchor))
+        code.extend(b'\x83\xff\x07\x73\x06'+old+b'\xeb\x17')
         code.extend(b'\x50\xe8\0\0\0\0\x58')
         anchor=len(code)-1 # popped return address points at POP EAX
         if register=='esi':code.extend(bytes.fromhex('8bf7 83ee07 c1e604 8db430'))
@@ -101,12 +121,42 @@ def line_type_menu(raw):
     push_label=lookup('edx',bytes.fromhex('8b54bdc8'))
     code.extend(bytes.fromhex('58 52 50 e9'))
     jump=len(code);code.extend(struct.pack('<i',0x1c690-(rva+jump+4)))
+    # Capture the optional label callback on the same game-thread registration
+    # path. A separate RW (non-executable) slot holds the runtime API pointer.
+    capture=len(code);code.extend(bytes.fromhex('50 e800000000 58'))
+    capture_anchor=len(code)-1
+    code.extend(bytes.fromhex('89b0'));capture_fix=len(code);code.extend(b'\0'*4)
+    code.extend(bytes.fromhex('58 8975f0 85f6 c3'))
+    decorate=len(code);code.extend(bytes.fromhex('60 e800000000 58'))
+    decorate_anchor=len(code)-1
+    code.extend(bytes.fromhex('8b80'));decorate_fix=len(code);code.extend(b'\0'*4)
+    fallback_jumps=[]
+    def fallback_if(op):
+        code.extend(bytes.fromhex(op));fallback_jumps.append(len(code));code.append(0)
+    code.extend(bytes.fromhex('85c0'));fallback_if('74')
+    code.extend(bytes.fromhex('833818'));fallback_if('72')
+    code.extend(bytes.fromhex('8b4014 85c0'));fallback_if('74')
+    code.extend(bytes.fromhex('6a3c ff750c ff7508 ffd0 83c40c 85c0'));fallback_if('74')
+    # Callback handled the row: bypass the stock copy, unwind the original
+    # prologue and return nullptr. Other rows execute the displaced pushes.
+    code.extend(bytes.fromhex('61 83c404 31c0 c9 c3'))
+    fallback=len(code)
+    for j in fallback_jumps:code[j]=fallback-j-1
+    code.extend(bytes.fromhex('61 5a 56 57 8b7d08 52 c3'))
+    # The native frontend caches copied row labels. Refill after the master
+    # setter so grey/normal labels update immediately without leaving QoL.
+    setter=len(code)
+    code.extend(bytes.fromhex('55 8bec 56 8bf1 8b4508 0fb610 85d2 0f95c2 0fb6d2 52 ff7608 8b4604 ff500c 83c408 837e0804 750c 50 6a00 e8'))
+    j=len(code);code.extend(struct.pack('<i',0xd90d0-(rva+j+4)))
+    code.extend(bytes.fromhex('83c404 58 5e 5d c20400'))
     keys_at=len(code)
     for key_text in ['QOL_ESCAPE','QOL_MISSION','QOL_FRIEND','QOL_ENEMY','QOL_CUSTOM']:
         code.extend(key_text.encode().ljust(16,b'\0'))
     labels_at=len(code)
     for label_text in ['Police Escape Line','Mission Line','Friend Line','Enemy Line','Custom Line']:
         code.extend(label_text.encode('utf-16le').ljust(64,b'\0'))
+    turns_at=len(code);code.extend('Turn Arrows\0'.encode('utf-16le'))
+    for displacement,anchor in turn_fixes:struct.pack_into('<i',code,displacement,turns_at-anchor)
     for displacement,anchor,register in fixes:
         struct.pack_into('<i',code,displacement,(keys_at if register=='esi' else labels_at)-anchor)
     def patch(site,before,target):
@@ -118,15 +168,25 @@ def line_type_menu(raw):
     patch(0xd70bc,'8b54bdc88b08',label)
     patch(0xd70e1,'ff74bdc8e8a649f4ff',push_label)
     if data[0xd722a:0xd722d]!=bytes.fromhex('83ff07'):raise RuntimeError('Menu row count differs')
-    data[0xd722c]=12
+    data[0xd7229:0xd7233]=b'\xe9'+struct.pack('<i',rva+next_row-0xd7e29-5)+b'\x90'*5
+    state_rva=align(rva+len(code),sa)
+    for displacement,anchor in [(capture_fix,capture_anchor),(decorate_fix,decorate_anchor)]:
+        struct.pack_into('<i',code,displacement,state_rva-(rva+anchor))
+    patch(0xd6fc8,'8975f085f6',capture)
+    patch(0xd8268,'56578b7d08',decorate)
+    patch(0xdf570,'558bec8b4508',setter)
+    data[0xdf570]=0xe9 # entry tail-jump, not a call-site shim
     size=align(len(code),fa)
     header=struct.pack('<8sIIIIIIHHI',b'.qolmenu',len(code),rva,size,raw_at,0,0,0,0,0x60000020)
     data[table+count*40:table+(count+1)*40]=header
-    struct.pack_into('<H',data,pe+6,count+1)
+    state_header=struct.pack('<8sIIIIIIHHI',b'.qoldata',4,state_rva,fa,raw_at+size,0,0,0,0,0xc0000040)
+    data[table+(count+1)*40:table+(count+2)*40]=state_header
+    struct.pack_into('<H',data,pe+6,count+2)
     struct.pack_into('<I',data,optional+4,struct.unpack_from('<I',data,optional+4)[0]+size)
-    struct.pack_into('<I',data,optional+56,align(rva+len(code),sa))
+    struct.pack_into('<I',data,optional+8,struct.unpack_from('<I',data,optional+8)[0]+fa)
+    struct.pack_into('<I',data,optional+56,align(state_rva+4,sa))
     struct.pack_into('<I',data,optional+64,0) # no stale optional checksum
-    data.extend(b'\0'*(raw_at-len(data))+code+b'\0'*(size-len(code)))
+    data.extend(b'\0'*(raw_at-len(data))+code+b'\0'*(size-len(code))+b'\0'*fa)
     return bytes(data)
 
 def navigation_menu(raw):

@@ -23,7 +23,7 @@ hold; it does not suppress genuine trigger presses or write game weapon state.
 Run the updater with GTA IV closed, then use **Pause → QoL → Road Line**.
 On shows the twisted manual/mission and police escape ribbons; Off hides them.
 Changes apply live. Flat was removed: legacy Flat and Twisted both migrate to On;
-Off stays Off. RoadNav turn cues remain an independent toggle. No file edits.
+Off stays Off. Turn Arrows remain an independent toggle. No file edits.
 
 ### Both lines invisible despite the menu being On
 

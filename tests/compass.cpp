@@ -3,6 +3,8 @@
 #include "../src/compass_overlay.hpp"
 #include "../src/compass_waypoint.hpp"
 #include "../src/compass_feedback.hpp"
+#include "../src/qol_menu_labels.hpp"
+#include <cwchar>
 #include "../src/navigation_awareness.hpp"
 #include "../src/police_escape.hpp"
 #include "../src/escape_gps_request.hpp"
@@ -58,6 +60,31 @@ struct FakeGps {
     void configure(unsigned){}
 };
 int main(){
+    {
+        // The SDK's shared heart/date sprite ignores distance on the compass,
+        // including while a mission filters ordinary ambient contact icons.
+        assert(!compass::hideAmbientMissionMarker(true,false,false,false,54));
+        assert(compass::hideAmbientMissionMarker(true,false,false,false,52));
+        assert(compass::dateMarker(54));assert(!compass::dateMarker(53)&&!compass::dateMarker(55));
+        for(float distance:{0.0f,50.0f,5000.0f,100000.0f}){
+            assert(compass::markerInRange(distance,100,true,54));
+            assert(compass::markerInRange(distance,100,false,3)); // mission/long-range unchanged
+        }
+        assert(!compass::markerInRange(5000,100,true,52)); // ordinary POI still local
+        assert(!compass::markerInRange(-1,100,true,54));
+        assert(!compass::markerInRange(std::numeric_limits<float>::infinity(),100,true,54));
+        const auto far=compass::layout({{123,54,0,5000,7,255,0,false,false}});
+        assert(far.size()==1&&far.front().marker.distance==5000); // distance is not rewritten
+        const char* keys[]={"QOL_ESCAPE","QOL_MISSION","QOL_FRIEND","QOL_ENEMY","QOL_CUSTOM"};
+        for(const auto key:keys){
+            assert(std::wcsncmp(qolmenu::label(key,true),L"    ",4)==0);
+            assert(!std::wcsstr(qolmenu::label(key,true),L"~c~"));
+            assert(std::wcsstr(qolmenu::label(key,false),L"~c~"));
+            assert(std::wcsstr(qolmenu::label(key,false),L"~s~"));
+        }
+        assert(!qolmenu::label("QOL_TAXI",false));
+    }
+
     {
         // All hold/status/arrival messages use the same objective-label slot.
         compass::WaypointFeedback feedback;

@@ -1,5 +1,6 @@
 #pragma once
 #include <stdint.h>
+#include <stddef.h>
 
 // Versioned C boundary. No STL objects, ownership transfer or exceptions cross DLLs.
 enum QolSettingId {
@@ -16,5 +17,7 @@ struct QolSettingsApi {
     int32_t (__cdecl* Get)(uint32_t id);
     int32_t (__cdecl* Set)(uint32_t id, int32_t value);
     void (__cdecl* MenuReady)(uint32_t registeredRows);
+    // Optional additive tail; old version-1 hosts still use the first 20 bytes.
+    int32_t (__cdecl* MenuLabel)(const char* key,wchar_t* text,uint32_t capacity);
 };
 typedef const QolSettingsApi* (__cdecl* QolGetSettingsApi)(uint32_t version);

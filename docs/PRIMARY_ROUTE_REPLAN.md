@@ -15,7 +15,7 @@ Native GPS has two buffers which can both end at the same goal. After an opt-in 
 ## Stability and scope
 
 - Keep the previous primary snapshot/line while the new leg is pending; publish only a validated forward native path, and retain the previous valid surface if replacement fitting temporarily misses. Pending lead-in GPS has a 3-second timeout; a forward leg is bounded to 15 seconds, and new attempts have a 10-second minimum backoff. Restoration retains the last valid line until a current-origin primary path is available; retries are at most once per 10 seconds.
-- RoadNav Turn Guidance uses the original primary route/cue algorithm, not the temporary line leg. Its existing wrong-way/U-turn cue policy is unchanged.
+- Turn Arrows uses the original primary route/cue algorithm, not the temporary line leg. Its existing wrong-way/U-turn cue policy is unchanged.
 - Police escape is intentionally unchanged. Primary forward jobs are deferred while wanted/escape owns the shared GPS planner; its wanted/search transitions, retry backoff and last-good escape geometry remain intact. Moving entity/chase targets are not changed.
 - Changing/clearing the target, disabling Road Line, pausing, losing control, leaving the car or ending the script removes only the owned helper and restores the original route when it still exists.
 

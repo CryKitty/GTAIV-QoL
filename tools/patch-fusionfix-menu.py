@@ -16,7 +16,13 @@ def patch(root):
         raise RuntimeError('FusionFix source layout differs from the pinned menu bridge.')
     source = source.replace('#include <common.hxx>', '#include <common.hxx>\n#include "qol_settings_api.h"', 1)
     source = source.replace(call, call+'        AddQolBundleControls();\n', 1)
-    source = source.replace(declaration, (own/'tools/fusionfix-qol-menu.inc').read_text()+'\n'+declaration, 1)
+    bridge=(own/'tools/fusionfix-qol-menu.inc').read_text()
+    source = source.replace(declaration, bridge+'\n'+declaration, 1)
+    copy_row='    static const char* __cdecl CopyRowLabel(const char* label, wchar_t* text)\n    {\n'
+    # Retained build91 inputs deliberately omit the optional label API.
+    if 'static inline const QolSettingsApi* qolApi=' in bridge:
+        if source.count(copy_row)!=1:raise RuntimeError('FusionFix row-label bridge differs from pinned source')
+        source=source.replace(copy_row,copy_row+"        if (qolApi && qolApi->size >= sizeof(QolSettingsApi) && qolApi->MenuLabel && qolApi->MenuLabel(label,text,60)) return nullptr;\n",1)
     source += '\nextern \"C\" __declspec(dllexport) uint32_t QoLFusionFixBridgeVersion() { return 1; }\n'
     path.write_text(source, encoding='utf-8')
     shutil.copyfile(own/'src/qol_settings_api.h', root/'source/qol_settings_api.h')

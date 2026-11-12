@@ -14,6 +14,26 @@ int main(){
         assert(qolsettings::uiApi.Set(row,1));assert(qolsettings::api.Get(id)==1);
         assert(!qolsettings::uiApi.Set(row,2));
     }
+    // Disabling the master changes presentation/interactivity, never children.
+    for(unsigned row=7;row<12;++row)assert(qolsettings::uiApi.Set(row,static_cast<int>(row%2)));
+    assert(qolsettings::uiApi.Set(4,0));
+    const char* keys[]={"QOL_ESCAPE","QOL_MISSION","QOL_FRIEND","QOL_ENEMY","QOL_CUSTOM"};
+    for(unsigned row=7;row<12;++row){
+        wchar_t label[60]{};assert(qolsettings::uiApi.MenuLabel(keys[row-7],label,60));
+        assert(std::wcsncmp(label,L"    ~c~",7)==0&&std::wcsstr(label,L"~s~"));
+        assert(!qolsettings::uiApi.Set(row,static_cast<int>((row+1)%2)));
+        assert(qolsettings::uiApi.Get(row)==static_cast<int>(row%2));
+    }
+    qolsettings::Load();assert(qolsettings::uiApi.Set(4,1));
+    for(unsigned row=7;row<12;++row){
+        wchar_t label[60]{};assert(qolsettings::uiApi.MenuLabel(keys[row-7],label,60));
+        assert(std::wcsncmp(label,L"    ",4)==0&&!std::wcsstr(label,L"~c~"));
+        assert(qolsettings::uiApi.Get(row)==static_cast<int>(row%2));
+        assert(qolsettings::uiApi.Set(row,1));
+    }
+    wchar_t untouched[60]=L"stock";
+    assert(!qolsettings::uiApi.MenuLabel("QOL_TAXI",untouched,60));assert(std::wcscmp(untouched,L"stock")==0);
+    assert(!qolsettings::uiApi.MenuLabel(keys[0],untouched,2));assert(std::wcscmp(untouched,L"stock")==0);
     qolsettings::uiApi.MenuReady(0xfff);
     for(unsigned id=QOL_LINE_ESCAPE;id<QOL_SETTING_COUNT;++id)assert(qolsettings::menuRows.load()&(1u<<id));
     assert(!(qolsettings::menuRows.load()&(1u<<QOL_ROUTE_COLOURS)));

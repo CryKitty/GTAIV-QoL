@@ -51,8 +51,10 @@ inline bool radarDisplay(unsigned display){return display==2 || display==4;}
 inline bool inRange(float distance,float range){return std::isfinite(distance)&&std::isfinite(range)&&range>=10&&distance>=0&&distance<=range;}
 // Long-range mission/contact/waypoint markers remain visible at the edges,
 // matching radar behaviour. Only short-range POIs use the local radar radius.
-inline bool markerInRange(float distance,float range,bool shortRange){
-    return std::isfinite(distance)&&distance>=0&&(!shortRange||inRange(distance,range));
+// BLIP_DATE (heart) is the shared romance/date sprite in the supported SDK.
+inline bool dateMarker(unsigned sprite){return sprite==54;}
+inline bool markerInRange(float distance,float range,bool shortRange,unsigned sprite=0){
+    return std::isfinite(distance)&&distance>=0&&(!shortRange||dateMarker(sprite)||inRange(distance,range));
 }
 // Scripted custom colours are ARGB, unlike D3D's component argument order.
 inline std::array<unsigned,3> markerColour(unsigned value){
@@ -143,6 +145,7 @@ inline bool socialVenue(unsigned sprite){switch(sprite){
     default:return false;
 }}
 inline bool ambientMissionSprite(unsigned sprite){return (sprite>=21&&sprite<=52)||sprite==54||(sprite>=56&&sprite<=64)||sprite==66||sprite==67||sprite==69||sprite==70||sprite==71||sprite==74||sprite==75||sprite==79||(sprite>=83&&sprite<=92);}
+inline bool hideAmbientMissionMarker(bool mission,bool entity,bool enemy,bool outing,unsigned sprite){return mission&&!entity&&!enemy&&!outing&&!dateMarker(sprite)&&ambientMissionSprite(sprite);}
 inline bool hostileMarkerType(unsigned type){return type==1||type==2;} // Vehicle or person; location colour is not hostility.
 inline bool enemyColour(unsigned colour){
     if(colour<=255)return colour==1||colour==9||colour==10;
