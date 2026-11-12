@@ -22,7 +22,7 @@ class SteamWizardTests(unittest.TestCase):
    prefix=root/'steamapps/compatdata/12210/pfx';(prefix/'drive_c/windows').mkdir(parents=True)
    with patch.object(m,'steam_roots',return_value=[root]):
     command,environment=m.proton_command(prefix,None)
-   self.assertEqual(command,[str(wanted),'run']);self.assertEqual(environment['STEAM_COMPAT_DATA_PATH'],str(prefix.parent))
+   self.assertEqual(command,[str(wanted),'run']);self.assertEqual(environment['STEAM_COMPAT_DATA_PATH'],str(prefix.parent.resolve()))
  def test_default_mapping_and_exact_last_run_tool(self):
   m=load()
   with tempfile.TemporaryDirectory() as tmp:
