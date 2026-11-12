@@ -4,6 +4,7 @@
 #include "../src/compass_waypoint.hpp"
 #include "../src/compass_feedback.hpp"
 #include "../src/qol_menu_labels.hpp"
+#include "../src/date_compass.hpp"
 #include <cwchar>
 #include "../src/navigation_awareness.hpp"
 #include "../src/police_escape.hpp"
@@ -25,14 +26,14 @@ struct FakeBlips {
     std::vector<unsigned> firstCalls,nextCalls;
     unsigned index=0;
     std::uint32_t first(unsigned category){
-        assert(category<10);firstCalls.push_back(category);index=0;
+        assert(category<128);firstCalls.push_back(category);index=0;
         if(category==1)return 101;
         if(category==4)return 101; // Duplicate across categories must not hide a later marker.
-        if(category==8)return 808; // Pickup category is not excluded as a player icon.
+        if(category==8)return 808; // Waypoint sprite is not excluded as a player icon.
         return 0;
     }
     std::uint32_t next(unsigned category){
-        assert(category<10);nextCalls.push_back(category);++index;
+        assert(category<128);nextCalls.push_back(category);++index;
         if(category==1)return 101; // Broken iterator cycle must terminate.
         if(category==4 && index==1)return 404;
         return 0;
@@ -60,6 +61,61 @@ struct FakeGps {
     void configure(unsigned){}
 };
 int main(){
+    {
+        // A newly created contact/date sprite is discovered without radar-table
+        // addresses, survives mission/range gates, and wins overlap with shops.
+        struct LateDate {
+            bool initiated=false;
+            unsigned first(unsigned sprite){return initiated&&sprite==54?5401u:0u;}
+            unsigned next(unsigned){return 0u;}
+            bool exists(unsigned handle){return initiated&&handle==5401u;}
+        } backend;
+        assert(compass::collectBlips(backend).empty());backend.initiated=true;
+        const auto discovered=compass::collectBlips(backend);assert(discovered.size()==1&&discovered[0]==5401);
+        assert(compass::markerInRange(8000,100,true,54));assert(!compass::hideAmbientMissionMarker(true,false,false,false,54));
+        const auto icons=compass::layout({{11,21,1,20,0,255,0},{5401,54,1,8000,0,255,0}});
+        assert(icons.size()==1&&icons.front().marker.handle==5401);
+        assert(std::strcmp(compass::fallbackSymbol(54),"<3")==0);
+        assert(std::strcmp(compass::fallbackSymbol(8),"X")==0);
+        using namespace datecompass;
+        std::array<std::uint32_t,argumentWords> words{};words[0]=123;words[2]=3;words[14]=venueCount;
+        for(unsigned i=0;i<venueCount;++i)words[15+i]=50;
+        words[15]=70;words[16]=0;words[17]=35;words[18]=95;
+        auto prefs=preferences(words);assert(prefs.valid&&prefs.girlfriend==3);
+        Session session;assert(!session.current(false,1).valid);session.begin(prefs,2);
+        assert(!session.current(false,3).valid);assert(session.current(true,4).valid);
+        assert(!session.current(false,5).valid);assert(!session.current(true,6).valid); // no stale girlfriend
+        session.begin(prefs,0xfffffff0u);assert(session.current(true,32).valid);
+        auto invalid=words;invalid[14]=28;assert(!preferences(invalid).valid);
+        invalid=words;invalid[2]=5;assert(!preferences(invalid).valid);
+        invalid=words;invalid[15]=101;assert(!preferences(invalid).valid);
+        Table table{};table[0]=venueCount;
+        for(unsigned i=0;i<venueCount;++i){auto* row=table.data()+1+i*recordWords;
+            std::memcpy(row,"VENUE",6);row[8]=21;row[9]=1;
+            const roadnav::Vec3 point{100.0f+100*i,200,10};std::memcpy(row+10,&point,sizeof(point));}
+        std::array<Venue,venueCount> places{};assert(venues(table,places));
+        assert(match(prefs,places,true,21,{100,200,10})==Preference::Liked);
+        assert(match(prefs,places,true,21,{200,200,10})==Preference::Disliked);
+        assert(preference(35)==Preference::Neutral&&preference(50)==Preference::Neutral&&preference(34)==Preference::Disliked&&preference(95)==Preference::Liked);
+        assert(colour(Preference::Liked)==8&&colour(Preference::Disliked)==9&&colour(Preference::Unknown)==0xffffffffu&&colour(Preference::Neutral)==0xffffffffu);
+        assert(match(prefs,places,false,21,{100,200,10})==Preference::Unknown);
+        assert(match({},places,true,21,{100,200,10})==Preference::Unknown);
+        assert(match(prefs,places,true,22,{100,200,10})==Preference::Unknown);
+        places[1]=places[0];assert(match(prefs,places,true,21,{100,200,10})==Preference::Unknown);
+        table[0]=28;assert(!venues(table,places));table[0]=venueCount;
+        table[1+8]=200;assert(!venues(table,places));
+        // A hostile ped riding in a vehicle is a moving vehicle chase candidate,
+        // even when an unowned/stale GPS buffer exists. Real goals still win.
+        const std::vector<compass::ChaseCandidate> chase{{77,450,20,true}};
+        assert(compass::chooseChaseTarget(chase,0)==77);
+        assert(compass::allowChase(true,false,false,false));
+        assert(!compass::allowChase(true,true,false,false));
+        assert(!compass::allowChase(true,false,false,true));
+        awareness::LineTypes switches;switches.enemy=false;
+        assert(!switches.visible(true,awareness::RouteKind::Enemy));switches.enemy=true;
+        assert(switches.visible(true,awareness::RouteKind::Enemy));
+    }
+
     {
         // The SDK's shared heart/date sprite ignores distance on the compass,
         // including while a mission filters ordinary ambient contact icons.
@@ -375,7 +431,7 @@ int main(){
     assert(compass::meterSpan(0,true).left==healthFull.right);
     FakeBlips native;
     const auto handles=compass::collectBlips(native);
-    assert(native.firstCalls.size()==10);
+    assert(native.firstCalls.size()==128);
     for(unsigned i=0;i<10;++i)assert(native.firstCalls[i]==i);
     assert((handles==std::vector<std::uint32_t>{101,404,808}));
 

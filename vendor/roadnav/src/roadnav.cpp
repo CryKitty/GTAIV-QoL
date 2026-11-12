@@ -806,13 +806,15 @@ class RoadNavScript final : public ScriptThread {
             return;
         }
         missionRetryTarget_=0;
-        if(!owns&&existingRoute&&!movingMission){clearChase();return;}
+        // A residual native GPS buffer is not an authoritative destination.
+        // Manual waypoints and live fixed mission goals were handled above.
+        if(!compass::allowChase(chaseEnabled_||mission.IsValid(),waypoint,owns,mission.IsValid()&&!movingMission)){clearChase();return;}
         auto target=movingMission?mission:compass_.chaseTarget(player,ped,chaseTarget_);
         if(!mission.IsValid()&&!chaseEnabled_){clearChase();return;}
         guidanceEnemy_=true;
         if(!target.IsValid()){clearChase();return;}
         guidanceEnemy_=compass_.navigationTargetEnemy(target);
-        roadnav::Vec3 targetPoint{};if(!compass_.navigationTargetPosition(target,targetPoint)){clearChase();return;}
+        roadnav::Vec3 targetPoint{};if(!compass_.navigationChasePosition(target,targetPoint)){clearChase();return;}
         const DWORD now=GetTickCount();
         if(owns&&target.Get()==chaseTarget_){
             if(now-chaseRefreshAt_<200||roadnav::distance2D(targetPoint,chasePoint_)<1)return;
@@ -835,7 +837,7 @@ class RoadNavScript final : public ScriptThread {
         }
     }
     awareness::RouteKind loggedKind_=awareness::RouteKind::Blue;int loggedColours_=-1;
-    DWORD forkLogAt_=0;
+    DWORD forkLogAt_=0;unsigned loggedLineTypes_=~0u;
     std::vector<roadnav::Vec3> forkHints(const std::vector<roadnav::Vec3>& points,roadnav::Vec3 player,float speed){
         using namespace roadnav;std::vector<Vec3> hints;if(points.size()<3)return hints;
         const float anchor=nearestDistanceAlong(points,player),end=routeLength2D(points);float along=0;unsigned checked=0,nativeNodes=0,rejoined=0,crossings=0;
@@ -1007,7 +1009,7 @@ protected:
                 }else primaryWarmAt_=0;
             }
             Route route;
-            const bool readPrimary=readRoute(delta,route,primaryLocated?&primaryPoint:nullptr,primaryReplanned_&&!escapeActive_?&player:nullptr);
+            const bool readPrimary=readRoute(delta,route,primaryLocated?&primaryPoint:chaseTarget_&&!escapeActive_?&chasePoint_:nullptr,primaryReplanned_&&!escapeActive_?&player:nullptr);
             bool freshRoute=readPrimary&&!(primaryChanged&&!primaryLocated)&&(!escapeActive_||primaryLocated)&&
                 (!primaryLocated||(!route.points.empty()&&roadnav::distance2D(route.points.back(),primaryPoint)<=65));
             // An ahead-leg job borrows the buffer, never the primary snapshot
@@ -1015,7 +1017,7 @@ protected:
             if(forwardRouteHelper_.IsValid()||(forwardRestoreAt_&&
                (now-forwardRestoreAt_<200||!roadnav::primaryOriginMatches(route.points,player))))freshRoute=false;
             if(freshRoute&&primaryWarmAt_)primaryWarmAt_=0;
-            const unsigned routeTarget=primaryLocated?primary.Get():(escapeActive_?0:chaseTarget_);
+            unsigned routeTarget=primaryLocated?primary.Get():(escapeActive_?0:chaseTarget_);
             // Capture the primary path before the escape planner borrows GTA's
             // single GPS buffer. Never accept a candidate as the primary path.
             if(freshRoute){recentRoute_=route;recentRouteAt_=now;recentTarget_=routeTarget;}
@@ -1034,6 +1036,10 @@ protected:
             if(!updateEscape(ped,player,existingEscape,escapeNative)&&!forwardRouteHelper_.IsValid())
                 updateChase(ped,player,waypoint,readPrimary,route.points.empty()?nullptr:&route.points.back());
             if(escapeActive_&&!escapePlanning_&&primaryLocated&&(wasPlanning||primaryChanged))restorePrimaryGps();
+            if(chaseTarget_&&!escapeActive_&&!primaryLocated&&routeTarget!=chaseTarget_){
+                // The old unowned GPS buffer cannot become the new enemy route.
+                freshRoute=false;routeTarget=chaseTarget_;recentRoute_={};recentRouteAt_=0;line_={};
+            }
             // An escape candidate must never displace either displayed route.
             // Keep the primary path throughout planning, without its normal
             // two-second cache expiry; target changes still invalidate it.
@@ -1069,7 +1075,7 @@ protected:
                     roadnav::stabilizeRoadSurface(nextLine,line_);
                     roadnav::Vec3 exact{};
                     if(primaryLocated)roadnav::pinDestination(nextLine,primaryPoint);
-                    else if(tracked&&compass_.navigationTargetPosition(chaseTarget_,exact))roadnav::pinDestination(nextLine,exact);
+                    else if(tracked&&compass_.navigationChasePosition(chaseTarget_,exact))roadnav::pinDestination(nextLine,exact);
                     if(now-lastCueLog_>5000){char status[160];std::snprintf(status,sizeof(status),"Road surface: sampled=%u reused=%u missing=%u points=%u",stats.sampled,stats.reused,stats.missing,static_cast<unsigned>(nextLine.points.size()));event(status);}
                     if(nextLine.visible()||(!tracked&&!primaryWrongWay_.retaining(now)&&!forwardRouteHelper_.IsValid()&&!forwardRestoreAt_))line_=std::move(nextLine);
                 }
@@ -1125,7 +1131,7 @@ protected:
             if(cues_.destination.visible){
                 roadnav::Vec3 exact{};
                 if(primaryLocated)roadnav::pinDestination(cues_,primaryPoint);
-                else if(chaseTarget_&&!escapeActive_&&compass_.navigationTargetPosition(chaseTarget_,exact))roadnav::pinDestination(cues_,exact);
+                else if(chaseTarget_&&!escapeActive_&&compass_.navigationChasePosition(chaseTarget_,exact))roadnav::pinDestination(cues_,exact);
                 else snapGround(cues_.destination.position);
             }
             if((!wasVisible_&&cues_.visible()) || cues_.count!=lastCueCount_ || cues_.destination.visible!=lastDestination_ || now-lastCueLog_>5000){
@@ -1159,10 +1165,12 @@ protected:
             if(!std::isfinite(farClip)||farClip<=nearClip||farClip>20000)farClip=1500;
             const awareness::LineTypes types{qolclient::Enabled(QOL_LINE_ESCAPE,true),qolclient::Enabled(QOL_LINE_MISSION,true),
                 qolclient::Enabled(QOL_LINE_FRIEND,true),qolclient::Enabled(QOL_LINE_ENEMY,true),qolclient::Enabled(QOL_LINE_CUSTOM,true)};
+            const unsigned typeMask=(types.escape?1u:0u)|(types.mission?2u:0u)|(types.friendLine?4u:0u)|(types.enemy?8u:0u)|(types.custom?16u:0u);
+            if(typeMask!=loggedLineTypes_){char state[160];std::snprintf(state,sizeof(state),"Road line type switches: escape=%u mission=%u friend=%u enemy=%u custom=%u",types.escape?1u:0u,types.mission?1u:0u,types.friendLine?1u:0u,types.enemy?1u:0u,types.custom?1u:0u);event(state);loggedLineTypes_=typeMask;}
             const bool primaryShown=types.visible(lineEnabled,routeKind_);
             auto displayedLine=line_;
             if(chaseTarget_&&!escapeActive_){roadnav::Vec3 live{};
-                if(compass_.navigationTargetPosition(chaseTarget_,live)){
+                if(compass_.navigationChasePosition(chaseTarget_,live)){
                     roadnav::trackLineEndpoint(displayedLine,live);roadnav::pinDestination(displayedLine,live);
                 }
             }
