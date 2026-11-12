@@ -28,7 +28,7 @@ class CompassHud {
     unsigned compassWaypointSource_=0;roadnav::Vec3 compassWaypointPoint_{};
     DWORD waypointFeedbackAt_=0;
     const char* waypointFeedback_="";
-    unsigned routeHelper_=0;
+    unsigned routeHelper_=0,forwardRouteHelper_=0;
     inline static compass::Hostility hostility_{};
     inline static std::mutex hostilityMutex_;
     inline static RadarNative originalEnemy_=nullptr,originalFriendly_=nullptr;
@@ -308,6 +308,7 @@ public:
     }
     void requestNavigationRoute(Scripting::Blip blip,bool enabled){awareness_.requestInternalRoute(blip,enabled);}
     void setRouteHelper(unsigned handle){routeHelper_=handle;awareness_.internalRoute(handle);}
+    void setForwardRouteHelper(unsigned handle){forwardRouteHelper_=handle;}
     unsigned missionRouteAge(unsigned target){return awareness_.routeRequestAge(target);}
     bool navigationTargetEnemy(Scripting::Blip target){Scripting::ColourIndex colour=0;Scripting::GetBlipColour(target,&colour);return enemyMarker(target,colour,static_cast<unsigned>(Scripting::GetBlipSprite(target)));}
     bool navigationTargetPosition(Scripting::Blip target,roadnav::Vec3& point){return Scripting::DoesBlipExist(target)&&position(target,point);}
@@ -323,7 +324,7 @@ public:
         if(!mission)return {};
         refreshNavigationBlips();Blip only{},yellow{};unsigned count=0,yellowCount=0;
         for(auto blip:blips_){
-            if(blip.Get()==routeHelper_||!DoesBlipExist(blip)||policeMarker(blip))continue;
+            if(blip.Get()==routeHelper_||blip.Get()==forwardRouteHelper_||!DoesBlipExist(blip)||policeMarker(blip))continue;
             const auto sprite=static_cast<unsigned>(GetBlipSprite(blip));const auto type=GetBlipInfoIdType(blip);
             if(!compass::radarDisplay(NativeInvoke::Invoke<NATIVE_GET_BLIP_INFO_ID_DISPLAY,u32>(blip))||!compass::readBlipAlpha<NativeCalls>(blip.Get()))continue;
             if(blip.Get()==requested&&!compass::ambientMissionSprite(sprite))return blip;
@@ -341,7 +342,7 @@ public:
         refreshNavigationBlips();using namespace Scripting;
         auto result=GetMissionFlag()?awareness::RouteKind::Mission:awareness::RouteKind::Blue;float best=65;
         for(auto blip:blips_){
-            if(!DoesBlipExist(blip)||policeMarker(blip))continue;const auto sprite=static_cast<unsigned>(GetBlipSprite(blip));
+            if(blip.Get()==forwardRouteHelper_||!DoesBlipExist(blip)||policeMarker(blip))continue;const auto sprite=static_cast<unsigned>(GetBlipSprite(blip));
             if(sprite!=BLIP_WAYPOINT&&sprite>BLIP_OBJECTIVE_5)continue;
             if(!compass::radarDisplay(NativeInvoke::Invoke<NATIVE_GET_BLIP_INFO_ID_DISPLAY,u32>(blip)))continue;
             roadnav::Vec3 point{};if(!position(blip,point))continue;const float distance=roadnav::distance2D(endpoint,point);if(distance>best)continue;
@@ -472,7 +473,7 @@ public:
         std::vector<compass::Marker> markers;
         unsigned displayFiltered=0,invalidPosition=0,rangeFiltered=0,alphaFiltered=0,textureIcons=0,fallbackIcons=0;
         for(auto blip:blips_){
-            if(blip.Get()==routeHelper_||!DoesBlipExist(blip))continue;
+            if(blip.Get()==routeHelper_||blip.Get()==forwardRouteHelper_||!DoesBlipExist(blip))continue;
             const auto display=NativeInvoke::Invoke<NATIVE_GET_BLIP_INFO_ID_DISPLAY,u32>(blip);
             if(!compass::radarDisplay(display)){++displayFiltered;continue;}
             const auto alpha=compass::readBlipAlpha<NativeCalls>(blip.Get());if(!alpha){++alphaFiltered;continue;}
