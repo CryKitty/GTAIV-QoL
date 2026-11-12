@@ -660,9 +660,9 @@ class RoadNavScript final : public ScriptThread {
         ForwardGps api{compass_};
         if(!eligible){finishForwardRoute(now);primaryWrongWay_.cancel();return;}
         if(forwardRouteHelper_.IsValid()){
-            if(!api.exists(forwardRouteHelper_)||roadnav::distance2D(goal,forwardGoal_)>5||
+            if(!api.exists(forwardRouteHelper_)||!roadnav::samePrimaryGoal(goal,forwardGoal_)||
                now-forwardRequestedAt_>15000||roadnav::reachedForwardNode(player,forwardTarget_,forwardHeading_)){
-                finishForwardRoute(now,roadnav::distance2D(goal,forwardGoal_)<=5);event("Road line replan: original destination restored; last route retained");return;
+                finishForwardRoute(now,roadnav::samePrimaryGoal(goal,forwardGoal_));event("Road line replan: original destination restored; last route retained");return;
             }
             if(forwardWaiting_){
                 Route candidate;

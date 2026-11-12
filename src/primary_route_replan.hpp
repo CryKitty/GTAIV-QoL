@@ -29,12 +29,13 @@ inline bool movingAgainstRoute(const std::vector<Vec3>& path,Vec3 player,Vec3 he
     return (heading.x*nearest.direction.x+heading.y*nearest.direction.y)/h<-.5f&&
         (velocity.x*nearest.direction.x+velocity.y*nearest.direction.y)/speed<-.5f;
 }
+inline bool samePrimaryGoal(Vec3 a,Vec3 b){return distance2D(a,b)<=2&&std::fabs(a.z-b.z)<=3;}
 struct PrimaryWrongWay {
     bool observing=false,attempted=false;std::uint32_t since=0,last=0,attemptAt=0;unsigned target=0,identity=0;Vec3 goalPoint{};
     void cancel(){observing=false;target=0;}
     bool retaining(std::uint32_t now)const{return observing||(attempted&&now-attemptAt<10000);}
     bool update(std::uint32_t now,unsigned goal,bool opposite,Vec3 destination={}){
-        if(goal!=identity||distance2D(destination,goalPoint)>2||std::fabs(destination.z-goalPoint.z)>3){
+        if(goal!=identity||!samePrimaryGoal(destination,goalPoint)){
             identity=goal;goalPoint=destination;observing=false;attempted=false;
         }
         if(!goal||!opposite){cancel();return false;}
