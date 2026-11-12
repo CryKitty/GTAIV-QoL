@@ -32,6 +32,8 @@ class SteamWizardTests(unittest.TestCase):
     self.config(root,'"0" { "name" "proton_selected" }');self.assertEqual(m.configured_proton(prefix),wanted)
     (root/'config/config.vdf').unlink();(prefix.parent/'config_info').write_text('fixture-version\n'+str(wanted.parent/'files/share/fonts')+'\n'+str(wanted.parent/'files/share/default_pfx'))
     self.assertEqual(m.configured_proton(prefix),wanted)
+    (root/'alias').mkdir();(prefix.parent/'config_info').write_text(str(root/'alias/../steamapps/common/Proton configured/files/share/fonts'))
+    self.assertEqual(m.configured_proton(prefix),wanted)
  def test_missing_configured_tool_never_uses_another_installed_version(self):
   m=load()
   with tempfile.TemporaryDirectory() as tmp:
@@ -39,6 +41,14 @@ class SteamWizardTests(unittest.TestCase):
    prefix=root/'steamapps/compatdata/12210/pfx'
    with patch.object(m,'steam_roots',return_value=[root]):
     with self.assertRaisesRegex(m.SetupError,'configured in Steam is unavailable'):m.configured_proton(prefix)
+ def test_tool_on_sd_library_uses_its_steam_root_configuration(self):
+  m=load()
+  with tempfile.TemporaryDirectory() as tmp:
+   root=Path(tmp)/'Steam';sd=Path(tmp)/'SD card';root.mkdir();sd.mkdir()
+   wanted=self.tool(sd,'Proton selected','sd_tool');self.config(root,'"12210" { "name" "sd_tool" }')
+   (root/'config/libraryfolders.vdf').write_text('"libraryfolders" { "1" { "path" "'+sd.as_posix()+'" } }')
+   prefix=sd/'steamapps/compatdata/12210/pfx'
+   with patch.object(m,'steam_roots',return_value=[root]):self.assertEqual(m.configured_proton(prefix),wanted)
  def test_ready_review_and_finished_screen_have_only_applicable_actions(self):
   m=load();screens=[];actions=iter(['next','install','done'])
   class UI:

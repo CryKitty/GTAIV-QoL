@@ -500,8 +500,9 @@ def proton_tools():
     tools=[]
     for root in steam_roots():
         libraries=[root]
-        try:libraries += [Path(p) for p in vdf_values((root/'steamapps/libraryfolders.vdf').read_text(), 'path')]
-        except (OSError,UnicodeError):pass
+        for config in (root/'steamapps/libraryfolders.vdf',root/'config/libraryfolders.vdf'):
+            try:libraries += [Path(p) for p in vdf_values(config.read_text(encoding='utf-8'), 'path')]
+            except (OSError,UnicodeError):pass
         tools.extend(root.glob('compatibilitytools.d/*/proton'))
         for library in libraries:tools.extend(library.glob('steamapps/common/Proton*/proton'))
     return list(dict.fromkeys(p.resolve() for p in tools if p.is_file() and os.access(p,os.X_OK)))
@@ -575,7 +576,8 @@ def configured_proton(prefix):
         path=Path(prefix).parent/'config_info'
         if path.stat().st_size>4*1024*1024:raise SetupError('Steam game configuration is too large.')
         info=path.read_text(encoding='utf-8')
-        matches=[tool for tool in tools if any(line==str(tool.parent) or line.startswith(str(tool.parent)+os.sep) for line in info.splitlines())]
+        recorded=[Path(line).resolve() for line in info.splitlines() if Path(line).is_absolute()]
+        matches=[tool for tool in tools if any(path==tool.parent or tool.parent in path.parents for path in recorded)]
         if len(matches)==1:return matches[0]
     except (OSError,UnicodeError):pass
     raise SetupError('Setup could not read Steam game compatibility settings. Launch GTA IV once from Steam, close it, then Retry.')
