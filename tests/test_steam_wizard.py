@@ -41,6 +41,8 @@ class SteamWizardTests(unittest.TestCase):
    prefix=root/'steamapps/compatdata/12210/pfx'
    with patch.object(m,'steam_roots',return_value=[root]):
     with self.assertRaisesRegex(m.SetupError,'configured in Steam is unavailable'):m.configured_proton(prefix)
+    (root/'config/config.vdf').write_bytes(b'\xff\xfeinvalid')
+    with self.assertRaisesRegex(m.SetupError,'could not be read'):m.configured_proton(prefix)
  def test_tool_on_sd_library_uses_its_steam_root_configuration(self):
   m=load()
   with tempfile.TemporaryDirectory() as tmp:

@@ -558,7 +558,8 @@ def configured_proton(prefix):
                 entry=mapping.get('12210',mapping.get('0',{}))
                 if not isinstance(entry,dict):raise SetupError('Steam game configuration is incomplete. Launch GTA IV once from Steam, close it, then Retry.')
                 if entry.get('name'):names.append(entry['name'])
-        except (OSError,UnicodeError):pass
+        except FileNotFoundError:pass
+        except (OSError,UnicodeError):raise SetupError('Steam game configuration could not be read. Launch GTA IV once from Steam, close it, then Retry.') from None
     names=set(names)
     if len(names)>1:raise SetupError('Steam game configuration is ambiguous. Launch GTA IV once from Steam, close it, then Retry.')
     if names:
