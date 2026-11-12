@@ -8,12 +8,12 @@ The canonical source and development-build branch is **[main](https://github.com
 
 | Component | What it does | Pause-menu control |
 | --- | --- | --- |
-| Road Navigation Line | Draws a surface-fitted native-GPS ribbon, with camera-facing twisted presentation. Includes separate red/blue police escape guidance alongside manual/mission routes. Sustained moving wrong-way driving requests a forward lead-in for manual/fixed primary destinations after three seconds; see [replanning](docs/PRIMARY_ROUTE_REPLAN.md). | QoL → Road Line: On / Off |
+| Road Navigation Line | Draws a surface-fitted native-GPS ribbon, with camera-facing twisted presentation. Includes separate red/blue police escape guidance alongside manual/mission routes. Sustained moving wrong-way driving requests a forward lead-in for manual/fixed primary destinations after three seconds; see [replanning](docs/PRIMARY_ROUTE_REPLAN.md). | QoL → Road Line: On / Off; Police Escape / Mission / Friend / Enemy / Custom Line |
 | RoadNav turn guidance | Directional turn chevrons, linked turns, destination cues and wrong-way/U-turn guidance. Also supports automatic guidance toward eligible moving enemies when no explicit route is selected. | QoL → RoadNav |
 | Map Autozoom | Opens the interactive pause map at 300% while preserving subsequent manual navigation. | QoL → Map Autozoom |
 | Pause Cutscenes | Pauses picture, dialogue, actors and camera together in supported voiced cutscenes, with a blurred frame and Paused label. Press Esc or controller Start again to resume; no time limit. | QoL → Pause During Cutscenes |
 | Cutscene Audio | Changes the **whole game output mix during cutscenes**, then restores gameplay gain. It is not a separate dialogue-only slider. Default 100%; range 0–1600%. | Audio → Cutscene Audio (%) |
-| Compass HUD | Replaces the minimap with a camera-relative compass, centered-marker distance, health/armour feedback and unread-message indicator. Hold D-pad Left for 0.9 seconds to set/clear a focused waypoint on foot or in a vehicle. A filling ring surrounds the hovered icon, with “Setting waypoint” below it. | QoL → Compass HUD |
+| Compass HUD | Replaces the minimap with a camera-relative compass, centered-marker distance, health/armour feedback and unread-message indicator. Hold D-pad Left for 0.9 seconds to set/clear a focused waypoint on foot or in a vehicle. A filling ring surrounds the hovered icon, with hold/result/arrival captions below the icon in the objective-label style. | QoL → Compass HUD |
 | Taxi FOV Slider | Adjusts the rear-seat taxi interior camera, 40–120 degrees, default 70. | QoL → Taxi FOV (degrees) |
 
 Destination colours, police escape planning, compass waypoint/notification features and road-line recovery are included within these components, not extra ASIs to install. See the [code-backed inventory and package map](docs/BUNDLE_INVENTORY.md).
@@ -53,3 +53,5 @@ See [known issues and acceptance checklist](docs/KNOWN_ISSUES.md). Performance n
 GTAIV-QoL project code is licensed under the **MIT licence**, copyright 2026 Avary Cooney; see [LICENSE](LICENSE). Vendored components and the modified FusionFix host retain their existing licences and notices. The build preserves those notices in the installer. The Paused artwork uses supplied Pricedown Black artwork by Typodermic; no font installation or font software redistribution is required. See [artwork credits](assets/README.md).
 
 Developers: use the canonical branch's existing `build.bat` in an MSVC x86 developer prompt. CI runs the normal build, native and Python tests, updater UI checks and beta packaging. [BUNDLE.md](docs/BUNDLE.md) describes the current architecture; [NEXUS_DESCRIPTION.md](docs/NEXUS_DESCRIPTION.md) is the release-page draft.
+
+Individual line controls, precise destination anchors, moving-target limitations and updater/pause-menu acceptance checks: [Road-line controls](docs/ROAD_LINE_CONTROLS.md).

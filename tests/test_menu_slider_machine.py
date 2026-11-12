@@ -16,7 +16,7 @@ class SliderMachineTests(unittest.TestCase):
   sites={0xd7094:'0f848f010000',0xd70ea:'83ff040f82e000000083ff060f84d7000000',0xd712e:'c74424100000a040',0xd719a:'c74424100000a040',0xd7139:'c744240c0000c843c744240800000000',0xd71a5:'c744240c0000c843c744240800000000',0xd715d:'8b4dec6a07',0xd7986:'8bc46a6556c7402400000000',0x230:'ca661e00'}
   for offset,value in sites.items():raw[offset:offset+len(bytes.fromhex(value))]=bytes.fromhex(value)
   for offset,text in [(0x2724b8,b'QoLSettings_GetApi'),(0x272500,b'QOL_GAMEVOICE'),(0x2725b4,'Gameplay Voices (%)'.encode('utf-16le')),(0x272650,'Cutscene Voice Volume'.encode('utf-16le')),(0x272700,'Cutscene Voices (%)'.encode('utf-16le')),(0x272780,b'QOL_VOICES')]:raw[offset:offset+len(text)]=text
-  with patch.object(menu,'VERIFIED_SHA',hashlib.sha256(raw).hexdigest()):return menu.navigation_menu(bytes(raw))
+  with patch.object(menu,'VERIFIED_SHA',hashlib.sha256(raw).hexdigest()):return menu.base_navigation_menu(bytes(raw))
  def machine(self,row):
   u=unicorn.Uc(unicorn.UC_ARCH_X86,unicorn.UC_MODE_32);u.mem_map(0x1000000,0x300000);u.mem_write(0x1000000,self.fixture());u.mem_map(0x800000,0x10000)
   for reg,value in [(UC_X86_REG_EDI,row),(UC_X86_REG_ESP,0x804000),(UC_X86_REG_EBP,0x808000),(UC_X86_REG_EAX,0x11223344)]:u.reg_write(reg,value)

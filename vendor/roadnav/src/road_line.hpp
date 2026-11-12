@@ -2,7 +2,7 @@
 #include "turn_cue.hpp"
 
 namespace roadnav {
-struct RoadLine {std::vector<Vec3> points;std::vector<float> bank;std::vector<std::array<float,2>> edges;float ahead=0;bool endsAtDestination=false;bool visible()const{return points.size()>1;}};
+struct RoadLine {std::vector<Vec3> points;std::vector<float> bank;std::vector<std::array<float,2>> edges;float ahead=0;bool endsAtDestination=false;Vec3 destination{};bool destinationPinned=false;bool visible()const{return points.size()>1;}};
 inline float roadLineLookAhead(float speed){
     const float v=std::isfinite(speed)?std::clamp(speed,0.0f,80.0f):0;
     return std::clamp(35+5*v+.025f*v*v,35.0f,300.0f);
@@ -58,10 +58,11 @@ inline bool keepRoadLineRoute(const std::vector<Vec3>& points,Vec3 player,unsign
     return distance2D(player,nearest)<=12&&std::fabs(player.z-nearest.z)<=4;
 }
 // Separate native-GPS consumer; the original RoadNav maneuver logic is untouched.
-inline RoadLine roadLine(const std::vector<Vec3>& route,Vec3 player,float speed){
+inline RoadLine roadLine(const std::vector<Vec3>& route,Vec3 player,float speed,bool tracked=false){
     RoadLine line;if(route.size()<2)return line;
     const float start=nearestDistanceAlong(route,player)+4;
-    const float end=std::min(routeLength2D(route),start+roadLineLookAhead(speed));
+    const float end=std::min(routeLength2D(route),start+(tracked?1200.0f:roadLineLookAhead(speed)));
+    const float spacing=tracked?std::max(1.5f,(end-start)/400):1.5f;
     if(end<=start+1)return line;
     float along=0;
     for(std::size_t i=1;i<route.size();++i){
@@ -71,12 +72,12 @@ inline RoadLine roadLine(const std::vector<Vec3>& route,Vec3 player,float speed)
         if(length>.001f&&segmentEnd>start&&along<end){
             const float a=std::max(start,along),b=std::min(end,segmentEnd);
             if(line.points.empty())line.points.push_back(smoothRoadPoint(route,i,(a-along)/length));
-            for(float d=(std::floor(a/1.5f)+1)*1.5f;d<b&&line.points.size()<500;d+=1.5f)line.points.push_back(smoothRoadPoint(route,i,(d-along)/length));
+            for(float d=(std::floor(a/spacing)+1)*spacing;d<b&&line.points.size()<500;d+=spacing)line.points.push_back(smoothRoadPoint(route,i,(d-along)/length));
             if(line.points.size()<500)line.points.push_back(smoothRoadPoint(route,i,(b-along)/length));
         }
         along=segmentEnd;if(along>=end)break;
     }
-    line.ahead=routeLength2D(line.points);line.bank=roadLineBank(line.points);line.endsAtDestination=end>=routeLength2D(route)-.01f;return line;
+    line.ahead=routeLength2D(line.points);line.bank=roadLineBank(line.points);line.endsAtDestination=end>=routeLength2D(route)-.01f&&!line.points.empty()&&distance2D(line.points.back(),route.back())<.01f;return line;
 }
 // Shared mitered cross sections keep neighboring ribbon quads joined smoothly.
 inline float roadLineBankHeight(Vec3 point,Vec3 player){

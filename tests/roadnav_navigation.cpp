@@ -2,11 +2,41 @@
 #include <cstring>
 #include "../vendor/roadnav/src/cue_geometry.hpp"
 #include "../vendor/roadnav/src/road_surface.hpp"
+#include "../vendor/roadnav/src/tracked_destination.hpp"
 #include "../vendor/roadnav/src/road_projection.hpp"
 #include <cassert>
 #include <cstdio>
 using namespace roadnav;
 int main(){
+    {
+        // Mission coordinates are distinct from the road node, including Z.
+        const Vec3 mission{3.125f,90.875f,2.75f};
+        auto line=roadLine({{0,0,0},{0,95,0}},Vec3{},20);
+        assert(line.endsAtDestination);pinDestination(line,mission);
+        const auto pin=roadLineDestination(line);
+        assert(pin.x==mission.x&&pin.y==mission.y&&pin.z==mission.z);
+        auto cues=routeCues({{0,0,0},{0,45,0}},Vec3{},10);pinDestination(cues,mission);
+        assert(cues.destination.visible&&cues.destination.position.x==mission.x&&cues.destination.position.y==mission.y&&cues.destination.position.z==mission.z);
+        const std::vector<Vec3> chase{{0,0,0},{0,200,0},{0,400,0},{0,600,0}};
+        assert(!roadLine(chase,Vec3{},0).endsAtDestination);
+        const auto base=roadLine(chase,Vec3{},0,true);
+        assert(base.endsAtDestination&&base.points.size()<=500);
+        for(float travel=0;travel<=25;travel+=.25f){
+            auto live=base;const Vec3 car{1.25f,600+travel,1.0f};
+            assert(trackLineEndpoint(live,car));const auto endpoint=live.points.back();
+            assert(distance2D(endpoint,car)<.001f&&std::fabs(endpoint.z-car.z)<.001f);
+            assert(distance2D(roadLineDestination(live),car)<.001f);
+        }
+        auto trimmed=base;assert(trackLineEndpoint(trimmed,{1,585,1}));assert(trimmed.points.back().y==585);
+        for(const Vec3 invalid:std::vector<Vec3>{{0,700,1},{40,600,1},{0,600,20}}){
+            auto safe=base;assert(!trackLineEndpoint(safe,invalid));assert(safe.points.back().y==600);}
+        auto missing=base;missing.endsAtDestination=false;
+        assert(!trackLineEndpoint(missing,{0,605,1})); // no fabricated unstreamed tail
+        auto fitted=base;fitted.edges.assign(fitted.points.size(),{.24f,.24f});
+        assert(trackLineEndpoint(fitted,{0,605,1}));assert(fitted.edges.size()==fitted.points.size());
+        assert(fitted.bank.size()==fitted.points.size()&&fitted.edges.back()[0]==1);
+    }
+
     // The experiment is opt-in: disabled and forward-aligned sections preserve
     // the baseline. Side-on sections roll as a whole without sinking below road.
     const auto flatSection=roadLineSection(std::vector<Vec3>{{0,0,0},{0,20,0}},0,1);

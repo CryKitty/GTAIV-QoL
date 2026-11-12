@@ -24,6 +24,18 @@ if __name__ == '__main__':
 """
 
 class HelperTests(unittest.TestCase):
+    def test_individual_line_choices_survive_updates_and_new_installs_default_on(self):
+        keys=['ShowPoliceEscape','ShowMission','ShowFriend','ShowEnemy','ShowCustom']
+        fresh=(ROOT/'GTAIV-QoL.ini.example').read_bytes()
+        import configparser
+        def values(data):
+            ini=configparser.ConfigParser();ini.read_string(data.decode());return [ini.getint('RoadGPSLine',key) for key in keys]
+        self.assertEqual(values(fresh),[1]*5)
+        for off in range(5):
+            old=('[RoadGPSLine]\n'+''.join('%s=%d\n'%(key,int(i!=off)) for i,key in enumerate(keys))).encode()
+            expected=[int(i!=off) for i in range(5)]
+            self.assertEqual(values(helper.merge_preferences(old,fresh)),expected)
+
     def test_cutscene_output_migration_does_not_activate_old_unused_boost(self):
         fresh=b'[VoiceVolume]\nOutputMixVersion=1\nCutscenePercent=100\n[Camera]\nTaxiRearFOV=70\n'
         self.assertIn(b'TaxiRearFOV=120',helper.merge_preferences(b'[Camera]\nTaxiFovSliderVersion=1\nTaxiRearFOV=120\n',fresh))

@@ -6,14 +6,14 @@ GTAIV-QoL is a bundle of **seven components**, not a single navigation mod. The 
 
 - **GTAIV-QoL.asi:** shared versioned settings API, pause-menu adapter and 300% interactive Map Autozoom.
 - **GTAIV-QoL-Pause.asi:** synchronized voiced-cutscene pause/overlay/audio capture, Cutscene Audio output gain, statically linked RoadNav, road ribbons, compass and taxi view controls.
-- **Modified FusionFix 5.1.2 menu host:** the verified existing host with bounded menu adaptations; not an official FusionFix binary. Existing row slots, startup, PE layout and public settings IDs are retained. The UI adapter maps the reserved gameplay-voice row to a Road Line toggle and the former voice-enable row to Taxi FOV. Existing third-party notices remain in the installer.
+- **Modified FusionFix 5.1.2 menu host:** the verified existing host with bounded menu adaptations; not an official FusionFix binary. Startup, original sections/relocations and existing public settings IDs are retained. A new position-independent section supplies the five added line-type rows. The UI adapter maps the reserved gameplay-voice row to a Road Line toggle and the former voice-enable row to Taxi FOV. Existing third-party notices remain in the installer.
 - **GTAIV-QoL.ini:** managed settings with working defaults. Players use only the pause menu; manual edits are not an installation/test step.
 
 RoadNav is linked from its vendored source into the companion, not loaded as a third ASI. The installer backs up/removes duplicate standalone RoadNav copies from root/plugins/scripts. Both bundled ASIs and the menu host are installed through the same checksum/backup/rollback path; no component is separately dropped from the Nexus archive.
 
 ## Current menu
 
-QoL contains RoadNav, Map Autozoom, Pause During Cutscenes, Taxi FOV, Road Line, and Compass HUD. Audio contains Cutscene Audio (%). Road Line **On (twisted) / Off** applies live to primary and police ribbons; the independent RoadNav toggle controls turn cues. Taxi FOV is 40–120 degrees. Cutscene Audio is 0–1600%, defaults to 100%, affects the whole cutscene output mix, and restores gameplay gain afterward. Reserved GameplayPercent is not a gameplay-volume feature.
+QoL contains RoadNav, Map Autozoom, Pause During Cutscenes, Taxi FOV, Road Line, and Compass HUD. Audio contains Cutscene Audio (%). Road Line **On (twisted) / Off** applies live to primary and police ribbons; the five individual Police Escape / Mission / Friend / Enemy / Custom Line switches default On and hide only their own ribbon. The independent RoadNav toggle controls turn cues. Taxi FOV is 40–120 degrees. Cutscene Audio is 0–1600%, defaults to 100%, affects the whole cutscene output mix, and restores gameplay gain afterward. Reserved GameplayPercent is not a gameplay-volume feature.
 
 D-pad Left selects a focused compass waypoint after a 900ms hold on foot or in a vehicle. Phone, combat, pause, cutscene, focus/control and vehicle-context transitions cancel the hold until release. D-pad Left is reserved during eligible gameplay; other controller values, steering and triggers are forwarded. Arrival clears owned pins near the destination. Compass also includes unread-text indication, health/armour damage feedback, social venues and hostile/friendly/objective styling.
 

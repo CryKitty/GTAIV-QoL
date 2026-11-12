@@ -581,7 +581,7 @@ class RoadNavScript final : public ScriptThread {
     roadnav::PrimaryWrongWay primaryWrongWay_{};
     Route forwardRoute_{};roadnav::Vec3 forwardTarget_{},forwardHeading_{},forwardGoal_{};
     DWORD forwardRequestedAt_=0,forwardRestoreAt_=0;bool forwardWaiting_=false,primaryReplanned_=false;
-    Route recentRoute_{};DWORD recentRouteAt_=0,arrivalUntil_=0;unsigned recentTarget_=0,arrivalTarget_=0;bool arrivalArmed_=false;roadnav::Vec3 arrivalPoint_{};DWORD arrivalSeen_=0;
+    Route recentRoute_{};DWORD recentRouteAt_=0;unsigned recentTarget_=0,arrivalTarget_=0;bool arrivalArmed_=false;roadnav::Vec3 arrivalPoint_{};DWORD arrivalSeen_=0;
     awareness::RouteKind routeKind_=awareness::RouteKind::Blue;
     roadnav::Vec3 cachedEnd_{},cachedWaypoint_{};
     DWORD cachedAt_=0;
@@ -814,9 +814,15 @@ class RoadNavScript final : public ScriptThread {
         guidanceEnemy_=compass_.navigationTargetEnemy(target);
         roadnav::Vec3 targetPoint{};if(!compass_.navigationTargetPosition(target,targetPoint)){clearChase();return;}
         const DWORD now=GetTickCount();
-        if(existingRoute&&target.Get()==chaseTarget_&&chaseRoute_.IsValid()&&Scripting::DoesBlipExist(chaseRoute_)&&
-           (roadnav::distance2D(targetPoint,chasePoint_)<5||now-chaseRefreshAt_<1000))return;
-        if(owns&&!existingRoute&&now-chaseRefreshAt_<12000)return;
+        if(owns&&target.Get()==chaseTarget_){
+            if(now-chaseRefreshAt_<200||roadnav::distance2D(targetPoint,chasePoint_)<1)return;
+            EscapeGps api{compass_};
+            if(api.move(chaseRoute_,targetPoint)){
+                Scripting::SetRoute(chaseRoute_,true);chasePoint_=targetPoint;chaseRefreshAt_=now;return;
+            }
+            // Older hosts without SET_BLIP_COORDINATES use a replacement helper.
+            // The last fitted line/recent route remain visible during GPS refresh.
+        }
         clearChase();
         using namespace Scripting;
         // Coordinate blips have separate ownership; never request an entity blip
@@ -939,7 +945,6 @@ protected:
         const DWORD renderNow=GetTickCount();attachRenderer(renderNow);
         using namespace Scripting;
         compass_.tick();
-        if(arrivalUntil_&&static_cast<LONG>(arrivalUntil_-GetTickCount())>0)compass_.drawArrival();
         const bool arrows=qolclient::Enabled(QOL_ROADNAV),lineEnabled=qolclient::Enabled(QOL_GPS_LINE,true);
         viewBend_.strength=std::clamp(qolclient::Get(QOL_GPS_VIEW_BEND,100),0,100)/100.0f;
         if(!arrows){cues_={};gTurnRenderer.clear();}
@@ -956,7 +961,7 @@ protected:
         if(!ped.IsValid()){hide(true);return;}
         if(!Scripting::IsCharInAnyCar(ped)){
             roadnav::Vec3 position{};Scripting::GetCharCoordinates(ped,&position.x,&position.y,&position.z);
-            if(arrivalArmed_&&GetTickCount()-arrivalSeen_<=5000&&roadnav::distance2D(position,arrivalPoint_)<12&&std::fabs(position.z-arrivalPoint_.z)<8){arrivalArmed_=false;arrivalUntil_=GetTickCount()+4000;}
+            if(arrivalArmed_&&GetTickCount()-arrivalSeen_<=5000&&roadnav::distance2D(position,arrivalPoint_)<12&&std::fabs(position.z-arrivalPoint_.z)<8){arrivalArmed_=false;compass_.notifyArrival(GetTickCount(),arrivalTarget_);}
             u32 stars=0;StoreWantedLevel(ConvertIntToPlayerIndex(GetPlayerId()),&stars);
             if(!stars){if(escapeReplan_.observed)event("Police escape: dropped; wanted level cleared on foot");clearChase();}
             hide(true);return;
@@ -1034,7 +1039,7 @@ protected:
             // two-second cache expiry; target changes still invalidate it.
             bool routeAvailable=freshRoute;
             if(!freshRoute&&routeTarget==recentTarget_&&!recentRoute_.points.empty()&&
-               (escapeActive_||primaryWrongWay_.retaining(now)||forwardRouteHelper_.IsValid()||forwardRestoreAt_||roadnav::keepRoadLineRoute(recentRoute_.points,player,now-recentRouteAt_))){
+               (escapeActive_||primaryWrongWay_.retaining(now)||forwardRouteHelper_.IsValid()||forwardRestoreAt_||roadnav::keepRoadLineRoute(recentRoute_.points,player,chaseTarget_&&!escapeActive_?0:now-recentRouteAt_))){
                 route=recentRoute_;routeAvailable=true;
             }
             if(lineEnabled&&now-lastCueLog_>5000){char status[180];std::snprintf(status,sizeof(status),"Road line routes: primary=%u points=%u escape=%u planning=%u escape-points=%u",routeTarget,static_cast<unsigned>(route.points.size()),escapeActive_?1u:0u,escapePlanning_?1u:0u,static_cast<unsigned>(escapeShown_.points.size()));event(status);}
@@ -1051,18 +1056,22 @@ protected:
                 const bool nearPin=roadnav::distance2D(player,arrivalPoint_)<12&&std::fabs(player.z-arrivalPoint_.z)<8;
                 const auto& lastPath=routeAvailable?route.points:recentRoute_.points;
                 const bool nearRoadEnd=!lastPath.empty()&&roadnav::distance2D(lastPath.back(),arrivalPoint_)<50&&roadnav::distance2D(player,lastPath.back())<12&&std::fabs(player.z-lastPath.back().z)<5;
-                if(nearPin||nearRoadEnd){arrivalArmed_=false;arrivalUntil_=now+4000;event("Road line: destination reached");}
+                if(nearPin||nearRoadEnd){arrivalArmed_=false;compass_.notifyArrival(now,arrivalTarget_);event("Road line: destination reached");}
             }
             if(routeAvailable){
                 if(arrows&&(freshRoute||forwardRouteHelper_.IsValid()||forwardRestoreAt_))cues_=roadnav::routeCues(route.points,player,motionSpeed_,forkHints(route.points,player,motionSpeed_));else cues_={};
                 if(lineEnabled){
-                    auto nextLine=roadnav::roadLine(forwardRoute_.points.size()>1?forwardRoute_.points:route.points,player,motionSpeed_);
+                    const bool tracked=chaseTarget_&&chaseRoute_.IsValid()&&!escapeActive_&&!waypoint;
+                    auto nextLine=roadnav::roadLine(forwardRoute_.points.size()>1?forwardRoute_.points:route.points,player,motionSpeed_,tracked);
                     const auto probe=[](float x,float y,float z){float ground=-10000;
                         NativeInvoke::Invoke<Scripting::NATIVE_GET_GROUND_Z_FOR_3D_COORD,Scripting::ScriptVoid>(x,y,z,&ground);return ground;};
                     const auto stats=roadnav::fitRoadSurface(nextLine,player,line_,probe);
                     roadnav::stabilizeRoadSurface(nextLine,line_);
+                    roadnav::Vec3 exact{};
+                    if(primaryLocated)roadnav::pinDestination(nextLine,primaryPoint);
+                    else if(tracked&&compass_.navigationTargetPosition(chaseTarget_,exact))roadnav::pinDestination(nextLine,exact);
                     if(now-lastCueLog_>5000){char status[160];std::snprintf(status,sizeof(status),"Road surface: sampled=%u reused=%u missing=%u points=%u",stats.sampled,stats.reused,stats.missing,static_cast<unsigned>(nextLine.points.size()));event(status);}
-                    if(nextLine.visible()||(!primaryWrongWay_.retaining(now)&&!forwardRouteHelper_.IsValid()&&!forwardRestoreAt_))line_=std::move(nextLine);
+                    if(nextLine.visible()||(!tracked&&!primaryWrongWay_.retaining(now)&&!forwardRouteHelper_.IsValid()&&!forwardRestoreAt_))line_=std::move(nextLine);
                 }
                 if(!route.points.empty())routeKind_=awareness::activeRoute(compass_.routeKind(route.points.back()),chaseRoute_.IsValid()&&guidanceEnemy_,waypoint);
                 if(waypoint && !route.points.empty()){
@@ -1113,7 +1122,12 @@ protected:
                     else for(auto& marker:cue.markers)snapGround(marker.position);
                 }
             }
-            if(cues_.destination.visible)snapGround(cues_.destination.position);
+            if(cues_.destination.visible){
+                roadnav::Vec3 exact{};
+                if(primaryLocated)roadnav::pinDestination(cues_,primaryPoint);
+                else if(chaseTarget_&&!escapeActive_&&compass_.navigationTargetPosition(chaseTarget_,exact))roadnav::pinDestination(cues_,exact);
+                else snapGround(cues_.destination.position);
+            }
             if((!wasVisible_&&cues_.visible()) || cues_.count!=lastCueCount_ || cues_.destination.visible!=lastDestination_ || now-lastCueLog_>5000){
                 char line[192];std::snprintf(line,sizeof(line),"Navigation cues: turns=%u destination=%s speed=%.1fm/s preview=%.1fm",cues_.count,cues_.destination.visible?"shown":"hidden",motionSpeed_,cues_.lookAhead);event(line);
                 for(unsigned i=0;i<cues_.count;++i){
@@ -1143,10 +1157,19 @@ protected:
             NativeInvoke::Invoke<Scripting::NATIVE_GET_CAM_FAR_CLIP,Scripting::ScriptVoid>(camera,&farClip);
             if(!std::isfinite(nearClip)||nearClip<.01f||nearClip>5)nearClip=.15f;
             if(!std::isfinite(farClip)||farClip<=nearClip||farClip>20000)farClip=1500;
-            gRoadLineRenderer.submit({line_,frame,now,player,routeKind_,colours,nearClip,farClip,1,viewBend_});
+            const awareness::LineTypes types{qolclient::Enabled(QOL_LINE_ESCAPE,true),qolclient::Enabled(QOL_LINE_MISSION,true),
+                qolclient::Enabled(QOL_LINE_FRIEND,true),qolclient::Enabled(QOL_LINE_ENEMY,true),qolclient::Enabled(QOL_LINE_CUSTOM,true)};
+            const bool primaryShown=types.visible(lineEnabled,routeKind_);
+            auto displayedLine=line_;
+            if(chaseTarget_&&!escapeActive_){roadnav::Vec3 live{};
+                if(compass_.navigationTargetPosition(chaseTarget_,live)){
+                    roadnav::trackLineEndpoint(displayedLine,live);roadnav::pinDestination(displayedLine,live);
+                }
+            }
+            if(primaryShown)gRoadLineRenderer.submit({displayedLine,frame,now,player,routeKind_,colours,nearClip,farClip,1,viewBend_});else gRoadLineRenderer.clear();
             // A narrower red/blue escape ribbon leaves the primary route visible
             // on shared roads, then separates naturally at the escape turn.
-            gEscapeLineRenderer.submit({escapeLine_,frame,now,player,awareness::RouteKind::Escape,true,nearClip,farClip,line_.points.empty()?1.0f:.48f,viewBend_});
+            if(types.visible(lineEnabled,awareness::RouteKind::Escape))gEscapeLineRenderer.submit({escapeLine_,frame,now,player,awareness::RouteKind::Escape,true,nearClip,farClip,!primaryShown||line_.points.empty()?1.0f:.48f,viewBend_});else gEscapeLineRenderer.clear();
         }
     }
 };
