@@ -51,9 +51,9 @@ TaxiRearFOV = 70
 [RoadGPSLine]
 ; Independent experimental route ribbon, following native GPS rather than turn cues.
 Enabled = 1
-; Managed by Pause -> QoL -> Road Line (0/1/2): 0 Off, 1 Flat, 2 Twisted.
-; New installations default to Twisted. Updates preserve menu choices.
-ViewBendMenuVersion = 1
+; Managed by Pause -> QoL -> Road Line: On (twisted) or Off.
+; Legacy Flat/Twisted migrate to On; existing Off remains Off.
+ViewBendMenuVersion = 2
 ViewBendStrengthPercent = 100
 ; Maximum cross-section roll (0-85 degrees), strongest at side-on turns.
 ViewBendMaxDegrees = 75

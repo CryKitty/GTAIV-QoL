@@ -68,7 +68,7 @@ class NexusReleaseTests(unittest.TestCase):
                     (updater.ROOT/'qol-updater.py').write_text("BOOTSTRAP_REVISION=4\n# legacy updater\n")
                 dep=types.SimpleNamespace(SetupError=RuntimeError,GUIDE_PROTOCOL=2,install_dependency_bytes=lambda *a:None,run_in_prefix=lambda *a:None,REQUIREMENTS={},URLS={},EXTRA_CHECKS={},EXTRA_DOWNLOADERS={},EXTRA_IMPORTERS={},inspect_setup=lambda *a:{'all':(True,'fixture dependencies ready')})
                 def main():dep.install_mod(game,b'');return 0
-                dep.main=main;dep.prefix_candidates=lambda *a:[]
+                dep.main=main;dep.prefix_candidates=lambda *a:[];dep.existing_prefix=lambda *a:None
                 fcntl=types.SimpleNamespace(LOCK_EX=1,LOCK_NB=2,flock=lambda *a:None)
                 with patch.dict(sys.modules,fcntl=fcntl),patch('pathlib.Path.home',return_value=root),patch.object(guided,'load_source',side_effect=[dep,updater]),patch.object(guided,'install_fusionfix'),patch.object(guided,'check_fusionfix',return_value=(True,'fixture host')),patch.object(updater,'bundle_files_intact',return_value=True),patch.object(updater,'make_progress',return_value=None),patch.object(updater,'shortcut'),patch.object(updater,'beta_candidate',return_value=None),patch.object(updater,'request',side_effect=AssertionError('must not access private repository')):
                     self.assertEqual(guided.run('','',(path,candidate)),0)

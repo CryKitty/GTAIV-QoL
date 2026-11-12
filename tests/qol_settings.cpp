@@ -18,16 +18,20 @@ int main(){
     assert(qolsettings::uiApi.Set(QOL_GAMEPLAY_VOICE,1));
     assert(qolsettings::api.Get(QOL_GPS_LINE)==1&&qolsettings::uiApi.Get(QOL_GAMEPLAY_VOICE)==1);
     assert(GetPrivateProfileIntA("RoadGPSLine","Enabled",0,file)==1);
-    assert(qolsettings::api.Get(QOL_GPS_VIEW_BEND)==0); // 1 = Flat, not Off.
-    assert(qolsettings::uiApi.Set(QOL_GAMEPLAY_VOICE,2));
-    assert(qolsettings::api.Get(QOL_GPS_LINE)==1&&qolsettings::api.Get(QOL_GPS_VIEW_BEND)==100);
-    assert(qolsettings::uiApi.Get(QOL_GAMEPLAY_VOICE)==2);
-    assert(GetPrivateProfileIntA("RoadGPSLine","ViewBendMenuVersion",0,file)==1);
+    assert(qolsettings::api.Get(QOL_GPS_VIEW_BEND)==100); // On always twists.
+    assert(!qolsettings::uiApi.Set(QOL_GAMEPLAY_VOICE,2));
+    assert(GetPrivateProfileIntA("RoadGPSLine","ViewBendMenuVersion",0,file)==2);
     assert(qolsettings::uiApi.Set(QOL_GAMEPLAY_VOICE,0));
-    assert(qolsettings::uiApi.Get(QOL_GAMEPLAY_VOICE)==0&&qolsettings::api.Get(QOL_GPS_VIEW_BEND)==100);
-    assert(!qolsettings::uiApi.Set(QOL_GAMEPLAY_VOICE,3));
+    assert(qolsettings::uiApi.Get(QOL_GAMEPLAY_VOICE)==0);
     assert(qolsettings::uiApi.Set(QOL_GAMEPLAY_VOICE,1));
-    assert(qolsettings::uiApi.Get(QOL_GAMEPLAY_VOICE)==1&&qolsettings::api.Get(QOL_GPS_VIEW_BEND)==0);
+    assert(qolsettings::uiApi.Get(QOL_GAMEPLAY_VOICE)==1&&qolsettings::api.Get(QOL_GPS_VIEW_BEND)==100);
+    for(int legacyStrength=0;legacyStrength<=100;legacyStrength+=100){
+        assert(WritePrivateProfileStringA("RoadGPSLine","Enabled","1",file));
+        assert(WritePrivateProfileStringA("RoadGPSLine","ViewBendStrengthPercent",legacyStrength?"100":"0",file));
+        qolsettings::Load();assert(qolsettings::uiApi.Get(QOL_GAMEPLAY_VOICE)==1&&qolsettings::api.Get(QOL_GPS_VIEW_BEND)==100);
+    }
+    assert(qolsettings::uiApi.Set(QOL_GAMEPLAY_VOICE,0));qolsettings::Load();assert(qolsettings::uiApi.Get(QOL_GAMEPLAY_VOICE)==0);
+    assert(qolsettings::uiApi.Set(QOL_GAMEPLAY_VOICE,1));
     assert(qolsettings::api.Get(QOL_ROADNAV)==1); // Independent comparison toggles.
     assert(!qolsettings::api.Set(QOL_GPS_LINE,2));
     assert(qolsettings::uiApi.Set(QOL_VOCAL_SLIDERS,85));assert(qolsettings::api.Get(QOL_TAXI_FOV)==85&&qolsettings::api.Get(QOL_VOCAL_SLIDERS)==1);

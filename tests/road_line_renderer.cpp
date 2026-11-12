@@ -53,7 +53,7 @@ int main(){
     assert(GetFullPathNameA("GTAIV-QoL.ini.example",MAX_PATH,source,nullptr));
     assert(GetTempPathA(MAX_PATH,temp)&&GetTempFileNameA(temp,"gps",0,file));assert(CopyFileA(source,file,FALSE));
     strcpy_s(qolsettings::path,file);qolsettings::Load();
-    assert(qolsettings::api.Get(QOL_GPS_LINE)==1&&qolsettings::uiApi.Get(QOL_GAMEPLAY_VOICE)==2);
+    assert(qolsettings::api.Get(QOL_GPS_LINE)==1&&qolsettings::uiApi.Get(QOL_GAMEPLAY_VOICE)==1);
     HWND window=CreateWindowW(L"STATIC",L"Road line renderer test",WS_OVERLAPPEDWINDOW,0,0,800,450,nullptr,nullptr,GetModuleHandleA(nullptr),nullptr);assert(window);
     auto api=Direct3DCreate9(D3D_SDK_VERSION);assert(api);D3DPRESENT_PARAMETERS params{};
     params.Windowed=TRUE;params.SwapEffect=D3DSWAPEFFECT_DISCARD;params.hDeviceWindow=window;params.BackBufferWidth=800;params.BackBufferHeight=450;params.BackBufferFormat=D3DFMT_X8R8G8B8;
@@ -76,8 +76,13 @@ int main(){
     const auto ground=[](float,float,float){return 0.0f;};
     roadnav::fitRoadSurface(primary,player,{},ground);roadnav::fitRoadSurface(police,player,{},ground,&primary);
     assert(primary.visible()&&police.visible());
-    for(int mode:{2,1}){
-        assert(qolsettings::uiApi.Set(QOL_GAMEPLAY_VOICE,mode));qolsettings::Load();assert(qolsettings::uiApi.Get(QOL_GAMEPLAY_VOICE)==mode);
+    for(int legacyMode:{2,1}){
+        assert(WritePrivateProfileStringA("RoadGPSLine","Enabled","1",file));
+        assert(WritePrivateProfileStringA("RoadGPSLine","ViewBendStrengthPercent",legacyMode==2?"100":"0",file));
+        qolsettings::Load();assert(qolsettings::uiApi.Get(QOL_GAMEPLAY_VOICE)==1);
+        assert(qolsettings::api.Get(QOL_GPS_VIEW_BEND)==100);
+        assert(qolsettings::uiApi.Set(QOL_GAMEPLAY_VOICE,1));
+        assert(GetPrivateProfileIntA("RoadGPSLine","ViewBendStrengthPercent",0,file)==100);
         for(auto routeKind:{awareness::RouteKind::Blue,awareness::RouteKind::Escape}){
             roadnav::LineFrame frame;frame.line=routeKind==awareness::RouteKind::Escape?police:primary;
             frame.at=GetTickCount();frame.player=player;frame.kind=routeKind;frame.camera.position={0,-6,6};frame.camera.rotation={-12,0,0};frame.camera.fov=70;
@@ -101,7 +106,7 @@ int main(){
             assert(qolsettings::uiApi.Set(QOL_GAMEPLAY_VOICE,0));draw(delayed,device,frame);
             assert(delayed.renderedFrames()==2);
             if(kind!=D3DDEVTYPE_NULLREF)assert(colouredPixels(device)==0);
-            assert(qolsettings::uiApi.Set(QOL_GAMEPLAY_VOICE,mode));draw(delayed,device,frame);
+            assert(qolsettings::uiApi.Set(QOL_GAMEPLAY_VOICE,1));draw(delayed,device,frame);
             assert(delayed.renderedFrames()==3);
             if(kind!=D3DDEVTYPE_NULLREF)assert(colouredPixels(device)>20);
             delayed.OnDestroyDevice(device);
@@ -109,6 +114,6 @@ int main(){
     }
     SceneDiscoveryRetry retry;assert(retry.due(0xfffffff0u));assert(!retry.due(0x100u));assert(retry.due(0x800u));retry.reset();assert(retry.due(0x801u));
     depthTexture->Release();device->Release();api->Release();DestroyWindow(window);DeleteFileA(file);
-    std::puts("Manual and police escape: shipped defaults, Flat/Twisted, pixel draw, scene retry and Off/On recovery passed");
+    std::puts("Manual and police escape: shipped defaults, legacy Flat/Twisted to On, pixel draw, scene retry and Off/On recovery passed");
 }
 IService::~IService(){}

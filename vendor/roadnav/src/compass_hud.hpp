@@ -517,6 +517,9 @@ public:
             bool covered=false;for(const auto& item:placed)if(std::fabs(x-(mid+half*item.x))<.0483f/(2*aspect)+.006f){covered=true;break;}
             if(tick%6==0&&!covered){const char* labels[]={"N","E","S","W"};text(x,Layout::labelY,labels[tick/6],.23f,235,.78f);}
         }
+        const float hold=waypointHold_.progress(now);
+        const auto message=messages_.snapshot();
+        compass::NoticeFrame noticeFrame{message.alpha(now),now,minimap_.frontendAddress()};
         for(const auto& item:placed){
             const auto& marker=item.marker;const float x=mid+half*item.x,iconY=Layout::iconY;
             if(!tried_[marker.sprite]&&dictionary_.IsValid()){
@@ -529,12 +532,16 @@ public:
                 const auto rgb=compass::markerColour(marker.colour);
                 NativeInvoke::Invoke<NATIVE_DRAW_SPRITE,ScriptVoid>(textures_[marker.sprite],x,iconY,height/aspect,height,0.0f,rgb[0],rgb[1],rgb[2],std::min(marker.alpha,210u));
             }else {++fallbackIcons;const auto rgb=compass::markerColour(marker.colour);textStyle(.672f*scale,marker.alpha);SetTextColour(static_cast<u8>(rgb[0]),static_cast<u8>(rgb[1]),static_cast<u8>(rgb[2]),static_cast<u8>(marker.alpha));DisplayTextWithLiteralString(x,iconY-.011f,"STRING",marker.sprite==BLIP_WAYPOINT?"X":(marker.sprite<=BLIP_OBJECTIVE_5?"*":"."));}
-            if(centered){
+            const bool holding=hold>0&&marker.handle==waypointHold_.target;
+            if(holding){noticeFrame.holdX=x;noticeFrame.holdY=iconY;noticeFrame.holdRadius=height*.62f;noticeFrame.holdProgress=hold;}
+            if(centered||holding){
                 float distanceY=Layout::distanceY;
                 auto objectiveText=marker.enemy?std::string{}:awareness_.briefFor(marker.handle);
                 if(objectiveText.empty()&&marker.missionDestination&&missionTarget.IsValid())objectiveText=awareness_.briefFor(missionTarget.Get());
                 if(objectiveText.empty()&&marker.missionDestination)objectiveText=missionBrief;
-                if(!objectiveText.empty()){
+                if(holding){
+                    text(x,Layout::focusLabelY,"Setting waypoint",.22f,235,.85f,1.10f);
+                }else if(!objectiveText.empty()){
                     const auto lines=awareness::briefLines(objectiveText);
                     for(unsigned row=0;row<lines.size();++row)text(mid,Layout::focusLabelY+.024f*row,lines[row].c_str(),.22f,235,.85f,1.10f);
                     distanceY=Layout::focusLabelY+.024f*static_cast<float>(lines.size());
@@ -564,15 +571,8 @@ public:
             rect((span.left+span.right)/2,barY,span.right-span.left,Layout::barHeight,235,42,38,alpha);
         };
         flashMeter(healthDamage_,true);flashMeter(armourDamage_,false);
-        const auto message=messages_.snapshot();
-        if(noticeRenderer_)noticeRenderer_->submit({message.alpha(now),now,minimap_.frontendAddress()});
-        const float hold=waypointHold_.progress(now);
-        if(hold>0){
-            constexpr float x=Layout::right+.052f,w=.060f;
-            rect(x,Layout::iconY,w,.003f,0,0,0,180);
-            rect(x-w*.5f+w*hold*.5f,Layout::iconY,w*hold,.003f,235,237,225,235);
-            text(x,Layout::iconY+.009f,"Waypoint",.18f,235);
-        }else if(waypointFeedbackAt_&&now-waypointFeedbackAt_<1800)text(Layout::right+.065f,Layout::iconY,waypointFeedback_,.19f,235);
+        if(noticeRenderer_)noticeRenderer_->submit(noticeFrame);
+        if(hold<=0&&waypointFeedbackAt_&&now-waypointFeedbackAt_<1800)text(Layout::right+.065f,Layout::iconY,waypointFeedback_,.19f,235);
         // Reset native text state touched by our HUD calls for other script HUDs.
         SetTextCentre(false);SetTextEdge(false,0,0,0,0);SetTextScale(.3f,.3f);SetTextColour(255,255,255,255);
         startupComplete_=true;

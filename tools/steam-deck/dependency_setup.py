@@ -301,7 +301,6 @@ RUNTIME = {
 EXTRA_CHECKS = {}
 EXTRA_DOWNLOADERS = {}
 EXTRA_IMPORTERS = {}
-SELECTED_PROTON = None
 
 
 def validate_dependency_bytes(data, key):
@@ -501,37 +500,115 @@ def proton_tools():
     tools=[]
     for root in steam_roots():
         libraries=[root]
-        try:libraries += [Path(p) for p in vdf_values((root/'steamapps/libraryfolders.vdf').read_text(), 'path')]
-        except (OSError,UnicodeError):pass
+        for config in (root/'steamapps/libraryfolders.vdf',root/'config/libraryfolders.vdf'):
+            try:libraries += [Path(p) for p in vdf_values(config.read_text(encoding='utf-8'), 'path')]
+            except (OSError,UnicodeError):pass
         tools.extend(root.glob('compatibilitytools.d/*/proton'))
         for library in libraries:tools.extend(library.glob('steamapps/common/Proton*/proton'))
     return list(dict.fromkeys(p.resolve() for p in tools if p.is_file() and os.access(p,os.X_OK)))
 
 
-def proton_command(prefix,ui):
-    global SELECTED_PROTON
-    if not prefix or not (Path(prefix)/'drive_c/windows').is_dir():raise SetupError('Choose GTA IV\'s existing Proton prefix, or launch GTA IV once from Steam and Retry.')
-    data_path=Path(prefix).parent.resolve()
-    if (data_path/'pfx').resolve()!=Path(prefix).resolve():raise SetupError('Choose GTA IV\'s Proton pfx folder; another Wine prefix will not be modified.')
-    choices=proton_tools()
-    if not choices:raise SetupError('No Steam Proton tool was found. Install/select Proton for GTA IV in Steam, launch once, then Retry.')
-    if SELECTED_PROTON not in choices:
-        if len(choices)==1:SELECTED_PROTON=choices[0]
-        else:
-            if not ui:raise SetupError('Choose the Proton version used by GTA IV.')
-            answer=ui.choice('GTA IV Proton version','Choose the version selected in GTA IV Steam Properties → Compatibility. The installer uses only the selected GTA IV prefix.',[(str(n),p.parent.name) for n,p in enumerate(choices)])
-            SELECTED_PROTON=choices[int(answer)]
+def read_vdf(path):
+    if path.stat().st_size>4*1024*1024:raise SetupError('Steam configuration is too large.')
+    tokens=re.findall(r'"(?:\\.|[^"\\])*"|[{}]|//[^\n]*',path.read_text(encoding='utf-8-sig'))
+    tokens=iter(t for t in tokens if not t.startswith('//'))
+    def decode(t):return re.sub(r'\\(["\\])',r'\1',t[1:-1])
+    def block(depth=0):
+        if depth>64:raise SetupError('Steam configuration is too deeply nested.')
+        result={}
+        for token in tokens:
+            if token=='}':return result
+            if not token.startswith('"'):raise SetupError('Steam configuration is incomplete.')
+            value=next(tokens,None)
+            if value=='{':value=block(depth+1)
+            elif value and value.startswith('"'):value=decode(value)
+            else:raise SetupError('Steam configuration is incomplete.')
+            result[decode(token).lower()]=value
+        if depth:raise SetupError('Steam configuration is incomplete.')
+        return result
+    return block()
+
+
+def vdf_sections(tree,name):
+    for key,value in tree.items():
+        if isinstance(value,dict):
+            if key==name:yield value
+            yield from vdf_sections(value,name)
+
+
+def steam_roots_for_prefix(prefix):
     roots=steam_roots()
+    library=Path(prefix).parent.parent.parent.parent.resolve()
+    associated=[]
+    for root in roots:
+        libraries=[root.resolve()]
+        for config in (root/'steamapps/libraryfolders.vdf',root/'config/libraryfolders.vdf'):
+            try:libraries += [Path(p).resolve() for p in vdf_values(config.read_text(encoding='utf-8'),'path')]
+            except (OSError,UnicodeError):pass
+        if library in libraries:associated.append(root)
+    return associated or roots
+
+
+def configured_proton(prefix):
+    tools=proton_tools();roots=steam_roots_for_prefix(prefix)
+    names=[]
+    for root in roots:
+        try:
+            for mapping in vdf_sections(read_vdf(root/'config/config.vdf'),'compattoolmapping'):
+                entry=mapping.get('12210',mapping.get('0',{}))
+                if not isinstance(entry,dict):raise SetupError('Steam game configuration is incomplete. Launch GTA IV once from Steam, close it, then Retry.')
+                if entry.get('name'):names.append(entry['name'])
+        except FileNotFoundError:pass
+        except (OSError,UnicodeError):raise SetupError('Steam game configuration could not be read. Launch GTA IV once from Steam, close it, then Retry.') from None
+    names=set(names)
+    if len(names)>1:raise SetupError('Steam game configuration is ambiguous. Launch GTA IV once from Steam, close it, then Retry.')
+    if names:
+        name=next(iter(names));matches=[]
+        for tool in tools:
+            try:
+                tree=read_vdf(tool.parent/'compatibilitytool.vdf')
+                if any(name.lower() in section for section in vdf_sections(tree,'compat_tools')):matches.append(tool)
+            except (OSError,UnicodeError):pass
+        if len(matches)==1:return matches[0]
+        raise SetupError('The game compatibility tool configured in Steam is unavailable. Launch GTA IV once from Steam, close it, then Retry.')
+    # With no explicit/default Steam mapping, use only the exact last-run tool
+    # recorded by Steam/Proton for this app, never another installed version.
+    try:
+        path=Path(prefix).parent/'config_info'
+        if path.stat().st_size>4*1024*1024:raise SetupError('Steam game configuration is too large.')
+        info=path.read_text(encoding='utf-8')
+        recorded=[Path(line).resolve() for line in info.splitlines() if Path(line).is_absolute()]
+        matches=[tool for tool in tools if any(path==tool.parent or tool.parent in path.parents for path in recorded)]
+        if len(matches)==1:return matches[0]
+    except (OSError,UnicodeError):pass
+    raise SetupError('Setup could not read Steam game compatibility settings. Launch GTA IV once from Steam, close it, then Retry.')
+
+
+def existing_prefix(game):
+    candidates=prefix_candidates(game)
+    for parent in Path(game).resolve().parents:
+        if parent.name.lower()=='steamapps':
+            preferred=(parent/'compatdata/12210/pfx').resolve()
+            if preferred in candidates:return preferred
+    return candidates[0] if len(candidates)==1 else None
+
+
+def proton_command(prefix,ui):
+    if not prefix or not (Path(prefix)/'drive_c/windows').is_dir():raise SetupError('Launch GTA IV once from Steam, close it, then Retry.')
+    data_path=Path(prefix).parent.resolve()
+    if (data_path/'pfx').resolve()!=Path(prefix).resolve():raise SetupError('GTA IV game folder could not be matched to its existing Steam prefix; no other prefix will be modified.')
+    tool=configured_proton(prefix)
+    roots=steam_roots_for_prefix(prefix)
     if not roots:raise SetupError('Steam installation was not found.')
     environment=dict(os.environ,STEAM_COMPAT_DATA_PATH=str(data_path),STEAM_COMPAT_CLIENT_INSTALL_PATH=str(roots[0]),STEAM_COMPAT_APP_ID='12210',SteamAppId='12210',SteamGameId='12210')
-    return [str(SELECTED_PROTON),'run'],environment
+    return [str(tool),'run'],environment
 
 
 def run_in_prefix(prefix,ui,args):
     if sys.platform=='win32':command,environment=[],dict(os.environ)
     else:command,environment=proton_command(prefix,ui)
     result=subprocess.run(command+list(args),env=environment,capture_output=True,timeout=240)
-    if result.returncode not in (0,1638,3010):raise SetupError('Dependency installer returned status '+str(result.returncode)+'. Choose the correct GTA IV prefix/Proton tool and Retry.')
+    if result.returncode not in (0,1638,3010):raise SetupError('Dependency installer returned status '+str(result.returncode)+'. Launch GTA IV once from Steam, close it, then Retry.')
     return result
 
 
@@ -797,7 +874,9 @@ class DeckUI:
 
     def choice(self, heading, message, choices):
         single = len(choices) == 1
-        if single:
+        if choices==[('done','Finish')]:
+            cmd=([self.program,'--title',TITLE+' - '+heading,'--msgbox',status_markup(message,kde=True),'--ok-label','Finish'] if self.kde else [self.program,'--info','--title',TITLE+' - '+heading,'--text',status_markup(message),'--ok-label','Finish'])
+        elif single:
             if self.kde:
                 cmd = [self.program, '--title', TITLE + ' - ' + heading,
                        '--yes-label', choices[0][1], '--no-label', 'Cancel setup',
@@ -869,7 +948,7 @@ class TkUI:
             win.destroy()
         for key, label in choices:
             self.ttk.Button(frame, text=label, command=lambda k=key: choose(k)).pack(fill='x', pady=4)
-        self.ttk.Button(frame, text='Cancel setup', command=win.destroy).pack(fill='x', pady=(14, 0))
+        if choices!=[('done','Finish')]:self.ttk.Button(frame, text='Cancel setup', command=win.destroy).pack(fill='x', pady=(14, 0))
         win.protocol('WM_DELETE_WINDOW', win.destroy)
         win.grab_set()
         win.wait_window()
@@ -899,7 +978,7 @@ class TkUI:
 REQUIREMENTS = {
     'game': 'Game update', 'loader': 'ASI loader', 'hook': 'Native ScriptHook',
     'ce': 'Complete Edition patch', 'runtime': 'Microsoft runtime',
-    'proton_loader': 'Proton ASI loader setup',
+    'proton_loader': 'Game loading',
 }
 
 
@@ -921,117 +1000,63 @@ def open_folder(folder):
 
 
 def wizard(ui):
-    ui.choice('Welcome to GTA IV QoL', (SETUP_NOTE+'\n\n' if SETUP_NOTE else '')+'This installs the GTA IV QoL bundle and its reusable updater.\n\nClick Next and setup will look for GTA IV in your Steam libraries, including SD cards. If it cannot find the game, it will explain how to choose GTAIV.exe.\n\nSetup checks the game and dependencies automatically. Close GTA IV before installing.', [('next', 'Next')])
-    search = True
-    game = None
-    prefix = None
-    notice = None
+    ui.choice('Welcome to GTA IV QoL',(SETUP_NOTE+'\n\n' if SETUP_NOTE else '')+'Setup will find GTA IV, guide you through one required step at a time, then show a final review. Close GTA IV before installing.',[('next','Next')])
     while True:
-        if game is None:
-            try:
-                game = select_game(ui, search=search)
-            except (OSError, SetupError) as exc:
-                ui.choice('Choose GTA IV', str(exc), [('retry', 'Choose GTAIV.exe again')])
-                continue
-            prefix = None
-            if sys.platform != 'win32':
-                candidates = prefix_candidates(game)
-                # Never silently select between multiple plausible active prefixes.
-                if len(candidates) == 1:
-                    prefix = candidates[0]
-        checks = inspect_setup(game, prefix)
-        ready = all(ok for ok, _ in checks.values())
-        lines = ['Setup checks your installation automatically.', '']
-        if notice:
-            lines += [notice, '']
-            notice = None
-        lines += [('✓ ' if ok else '✗ ') + message for ok, message in checks.values()]
-        if not checks['ce'][0]:
-            lines += ['', 'Download missing dependency archives/installers to Downloads, then click Retry. Setup validates and places the needed files; originals are kept.']
-        if sys.platform != 'win32' and prefix and not checks['runtime'][0]:
-            lines += ['', 'Setup can run the verified Microsoft X86 installer in this Proton prefix. Choose the Proton version used by GTA IV when asked.']
-        if sys.platform != 'win32' and prefix and not checks['runtime'][0]:
-            lines += ['', 'Steam runtime folder: ' + str(prefix)]
-        lines += ['', 'Game folder: ' + str(game), '',
-                  ('Close GTA IV, then choose Install GTA IV QoL.' if ready else
-                   'Use automatic setup or the download-page buttons, then Retry to import completed downloads. No manual placement is required. Launch GTA IV once from Steam if its Proton prefix is not created yet.')]
-        choices = ([('install', 'Install GTA IV QoL')] if ready else [])
-        if checks['game'][0] and (any(not checks[key][0] for key in AUTO_DEPENDENCIES) or
-                (prefix or sys.platform=='win32') and not checks['runtime'][0] or
-                prefix and not checks.get('proton_loader',(True,''))[0] or
-                any(not checks[key][0] for key in EXTRA_DOWNLOADERS)):
-            choices.append(('auto', 'Download and install missing dependencies'))
-        choices += [('retry', 'Retry checks / import downloaded files')]
-        for key, (ok, _) in checks.items():
-            if not ok:
-                if key == 'runtime' and sys.platform != 'win32' and prefix is None:
-                    choices.append(('prefix', 'Locate Steam runtime folder'))
-                elif key!='proton_loader':
-                    choices.append(('help:' + key, 'Get ' + REQUIREMENTS[key]))
-                    if key=='runtime':choices.append(('runtime-download','Download supported Microsoft X86 installer'))
-                    if key == 'hook':
-                        choices.append(('fallback', 'Alternate ScriptHook download'))
-        if sys.platform != 'win32' and prefix and not checks['runtime'][0]:
-            choices.append(('prefix', 'Choose a different Steam runtime folder'))
-        choices += [('folder', 'Open game folder'), ('game', 'Choose a different GTAIV.exe')]
-        action = ui.choice('Ready to install' if ready else 'Check requirements', '\n'.join(lines), choices)
-        if action == 'auto':
-            try:
-                messages = install_missing_downloads(game, getattr(ui, 'progress', None))
-                if not check_runtime(game,prefix)[0]:messages.append(install_runtime(game,prefix,ui,download_author_archive(RUNTIME)))
-                if sys.platform!='win32' and not check_loader_override(game,prefix)[0]:messages.append(install_loader_override(game,prefix,ui))
-                for key,install in EXTRA_DOWNLOADERS.items():
-                    if not checks[key][0]:messages.append(install(game,prefix,ui))
-                notice = ' '.join(messages) or 'Existing dependencies were kept.'
-            except Exception as exc:
-                notice = str(exc) if isinstance(exc, SetupError) else 'Download could not finish. Check your connection and Retry automatic download.'
-        elif action == 'retry':
-            if checks['game'][0]:
-                try:
-                    messages=[]
-                    for key in AUTO_DEPENDENCIES:
-                        message=import_dependency_download(game,key)
-                        if message:messages.append(message)
-                    message=import_ce_download(game)
-                    if message:messages.append(message)
-                    message=import_runtime_download(game,prefix,ui)
-                    if message:messages.append(message)
-                    if sys.platform!='win32' and check_dependency(game,'loader')[0] and prefix:
-                        messages.append(install_loader_override(game,prefix,ui))
-                    for install in EXTRA_IMPORTERS.values():
-                        message=install(game,prefix,ui)
-                        if message:messages.append(message)
-                    notice=' '.join(messages) or 'No supported completed dependency downloads found yet. Partial downloads were ignored.'
-                except (OSError, SetupError) as exc:
-                    notice = str(exc)
-            # Re-scan prefix locations as well: Steam may have just created it.
-            if sys.platform != 'win32' and prefix is None:
-                candidates = prefix_candidates(game)
-                if len(candidates) == 1:
-                    prefix = candidates[0]
-        elif action == 'game':
-            game = None
-            search = False
-        elif action == 'folder':
-            open_folder(game)
-        elif action == 'prefix':
-            ui.choice('Find Steam runtime folder', 'Setup could not uniquely locate GTA IV\'s Steam runtime folder. Choose its pfx folder containing drive_c. GTA IV\'s Steam app number is 12210. This is only needed for custom or ambiguous installations.', [('pick', 'Choose folder')])
-            prefix = ui.pick('Select GTA IV pfx folder containing drive_c', folder=True)
-        elif action.startswith('help:'):
-            key = action.split(':', 1)[1]
-            open_url(URLS[key], ui)
-        elif action == 'fallback':
-            open_url(URLS['hook_fallback'], ui)
-        elif action == 'runtime-download':
-            open_url(RUNTIME['url'],ui)
-        elif action == 'install' and ready:
-            try:
-                result = install_mod(game, b'', prefix)
-            except (OSError, SetupError) as exc:
-                ui.choice('Installation paused', str(exc), [('retry', 'Back to checks')])
-                continue
-            if not QUIET_COMPLETION:ui.choice('GTA IV QoL installed','Ready to play. Use Update GTA IV QoL for future updates.', [('done','Finish')])
+        try:game=select_game(ui,search=True);break
+        except (OSError,SetupError) as exc:ui.choice('Find GTA IV',str(exc),[('retry','Choose GTA IV again')])
+    prefix=existing_prefix(game) if sys.platform!='win32' else None
+    notice=None
+    while True:
+        checks=inspect_setup(game,prefix)
+        missing=next((key for key,(ok,_) in checks.items() if not ok),None)
+        if missing is None:
+            summary='\n'.join('✓ '+REQUIREMENTS[key]+' ready' for key in checks)
+            ui.choice('Ready to install',summary+'\n\nEverything is ready. Install the bundle and its updater.',[('install','Install GTA IV QoL')])
+            try:install_mod(game,b'',prefix)
+            except (OSError,SetupError) as exc:
+                ui.choice('Installation paused',str(exc),[('retry','Try again')]);continue
+            if not QUIET_COMPLETION:ui.choice('GTA IV QoL installed','Done — ready to play. Use Update GTA IV QoL for future updates.',[('done','Finish')])
             return
+        key=missing
+        # Loader configuration is automatic and uses Steam's app configuration.
+        if key=='proton_loader' and prefix and notice is None:
+            try:install_loader_override(game,prefix,ui);continue
+            except (OSError,SetupError,subprocess.SubprocessError) as exc:notice=str(exc)
+        message=(notice+'\n\n' if notice else '')+checks[key][1]
+        notice=None
+        prefix_missing=sys.platform!='win32' and prefix is None and key in ('runtime','proton_loader')
+        if prefix_missing:
+            message='Launch GTA IV once from Steam, close it, then Retry. Setup will find the game environment automatically.'
+            choices=[('retry','Retry')]
+        else:
+            automatic=key in AUTO_DEPENDENCIES or key in ('runtime','proton_loader') or key in EXTRA_DOWNLOADERS
+            choices=([('auto','Set up '+REQUIREMENTS[key])] if automatic else [])
+            if key=='game':choices.append(('game','Choose another GTA IV installation'))
+            if key!='proton_loader':choices.append(('help:'+key,'Open download page'))
+            if key=='runtime':choices.append(('runtime-download','Download supported installer'))
+            choices.append(('retry','Retry / check downloaded file'))
+            message+='\n\nSave the supported download in Downloads, then Retry. Setup places the files for you.'
+        action=ui.choice('Set up '+REQUIREMENTS[key],message,choices)
+        try:
+            if action=='game':
+                game=select_game(ui,search=True);prefix=existing_prefix(game) if sys.platform!='win32' else None
+            elif action.startswith('help:'):open_url(URLS[key],ui)
+            elif action=='runtime-download':open_url(RUNTIME['url'],ui)
+            elif action=='auto':
+                if key in AUTO_DEPENDENCIES:
+                    spec=AUTO_DEPENDENCIES[key]
+                    install_dependency_bytes(game,key,zip_dependency(download_author_archive(spec),spec['name']))
+                elif key=='runtime':install_runtime(game,prefix,ui,download_author_archive(RUNTIME))
+                elif key=='proton_loader':install_loader_override(game,prefix,ui)
+                else:EXTRA_DOWNLOADERS[key](game,prefix,ui)
+            elif action=='retry':
+                if key in AUTO_DEPENDENCIES:notice=import_dependency_download(game,key)
+                elif key=='ce':notice=import_ce_download(game)
+                elif key=='runtime' and not prefix_missing:notice=import_runtime_download(game,prefix,ui)
+                elif key=='proton_loader' and prefix:notice=install_loader_override(game,prefix,ui)
+                elif key in EXTRA_IMPORTERS:notice=EXTRA_IMPORTERS[key](game,prefix,ui)
+                if prefix_missing:prefix=existing_prefix(game)
+        except (OSError,SetupError,subprocess.SubprocessError) as exc:notice=str(exc)
 
 
 def gui_smoke_test():

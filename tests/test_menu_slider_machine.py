@@ -31,13 +31,13 @@ class SliderMachineTests(unittest.TestCase):
   for row,screen in [(3,88),(4,88),(5,7)]:
    u=self.machine(row);u.mem_write(0x808000-0x18,struct.pack('<II',88,0x12345678));u.emu_start(0x10d715d,0x10d7162,count=100)
    self.assertEqual(u.reg_read(UC_X86_REG_ESP),0x803ffc);self.assertEqual(struct.unpack('<I',u.mem_read(0x803ffc,4))[0],screen);self.assertEqual(u.reg_read(UC_X86_REG_ECX),0x12345678)
- def test_taxi_road_and_audio_rows_are_sliders(self):
+ def test_road_uses_boolean_path_and_only_taxi_audio_are_sliders(self):
   for row in range(7):
    u=self.machine(row);reached=[]
    def stop(machine,address,size,unused):
     if address in [0x10d70fc,0x10d71d3]:reached.append(address);machine.emu_stop()
    u.hook_add(unicorn.UC_HOOK_CODE,stop);u.emu_start(0x10d70ea,0x10d71d4,count=20)
-   self.assertEqual(reached,[0x10d70fc if row in [3,4,5] else 0x10d71d3])
+   self.assertEqual(reached,[0x10d70fc if row in [3,5] else 0x10d71d3])
 
  def test_numeric_taxi_display_keeps_audio_as_a_bar(self):
   for maximum,display in [(120,108),(2,108),(1600,101)]:

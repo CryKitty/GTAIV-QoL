@@ -62,7 +62,7 @@ class InstallerFlowTests(unittest.TestCase):
                 self.assertTrue(all(ok for ok,_ in dep.inspect_setup(folder,pfx).values()))
                 installed.append(folder)
             dep.install_mod=install
-            ui=UI(['next','help:loader','help:hook','help:fusionfix','retry','install','done'])
+            ui=UI(['next','help:loader','retry','help:hook','retry','retry','help:fusionfix','retry','install','done'])
             dep.wizard(ui)
             self.assertEqual(installed,[game]);self.assertEqual(opened.call_count,3)
             self.assertIn(guide.FUSIONFIX['url'].split('/download/')[0]+'/tag/v5.1.2',[c.args[0] for c in opened.call_args_list])
@@ -70,6 +70,8 @@ class InstallerFlowTests(unittest.TestCase):
             self.assertTrue((game/assets[1]).is_file());self.assertFalse((game/'d3d9.dll').exists());self.assertFalse((game/'do-not-install.exe').exists())
             self.assertTrue((downloads/'GTAIV.EFLC.FusionFix.zip').exists())
             self.assertTrue(any(title=='Ready to install' for title,_,_ in ui.screens))
+            self.assertEqual(next(choices for title,_,choices in ui.screens if title=='Ready to install'),[('install','Install GTA IV QoL')])
+            self.assertTrue(all('help:hook' not in dict(choices) for title,_,choices in ui.screens if title=='Set up ASI loader'))
 
     def test_existing_fusionfix_host_does_not_skip_missing_assets(self):
         dep=load('ff_dep','dependency_setup.py');guide=load('ff_guide','guided-setup.py')
@@ -105,6 +107,8 @@ class InstallerFlowTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp,patch('sys.platform','linux'):
             root=Path(tmp);game=root/'game';game.mkdir();prefix=root/'Steam/steamapps/compatdata/12210/pfx';(prefix/'drive_c/windows').mkdir(parents=True)
             steam=root/'Steam';tool=steam/'steamapps/common/Proton test/proton';tool.parent.mkdir(parents=True);tool.write_text('# fixture');tool.chmod(0o755)
+            (tool.parent/'compatibilitytool.vdf').write_text('"compatibilitytools" { "compat_tools" { "proton_test" { "install_path" "." } } }')
+            (steam/'config').mkdir();(steam/'config/config.vdf').write_text('"InstallConfigStore" { "Software" { "Valve" { "Steam" { "CompatToolMapping" { "12210" { "name" "proton_test" } } } } } }')
             ui=UI([])
             with patch.dict('os.environ',XDG_CACHE_HOME=str(root/'cache')),patch.object(dep,'steam_roots',return_value=[steam]),patch.object(dep,'check_runtime',side_effect=[(False,'missing'),(True,'ready')]),patch.object(dep.subprocess,'run',return_value=types.SimpleNamespace(returncode=0,stdout=b'')) as run:
                 self.assertIn('re-checked',dep.install_runtime(game,prefix,ui,raw))
@@ -122,7 +126,7 @@ class InstallerFlowTests(unittest.TestCase):
         dep=load('wrong_prefix','dependency_setup.py')
         with tempfile.TemporaryDirectory() as tmp:
             wrong=Path(tmp)/'other-wine-prefix';(wrong/'drive_c/windows').mkdir(parents=True)
-            with self.assertRaisesRegex(dep.SetupError,'another Wine prefix'):dep.proton_command(wrong,None)
+            with self.assertRaisesRegex(dep.SetupError,'other prefix'):dep.proton_command(wrong,None)
             self.assertFalse((Path(tmp)/'pfx').exists())
 
     def test_loader_override_is_prefix_scoped_and_read_back(self):
@@ -139,7 +143,7 @@ class InstallerFlowTests(unittest.TestCase):
 
     def test_repeat_installer_launch_hands_off_to_integrated_updater(self):
         guide=load('handoff_guide','guided-setup.py');updater=load('handoff_updater','qol-updater.py')
-        dep=types.SimpleNamespace(SetupError=RuntimeError,main=Mock(),prefix_candidates=lambda *a:[],inspect_setup=lambda *a:{'all':(True,'fixture ready')})
+        dep=types.SimpleNamespace(SetupError=RuntimeError,main=Mock(),prefix_candidates=lambda *a:[],existing_prefix=lambda *a:None,inspect_setup=lambda *a:{'all':(True,'fixture ready')})
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp);updater.ROOT=root/'installed';updater.ROOT.mkdir();updater.CONFIG=root/'config.json'
             updater.CONFIG.write_text(json.dumps({'game':str(root/'game'),'channel':'beta'}))

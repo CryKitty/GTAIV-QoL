@@ -43,7 +43,7 @@ class MenuRecoveryTests(unittest.TestCase):
    changed=m.navigation_menu(raw)
    self.assertEqual(len(changed),len(raw))
    self.assertIn(b'QoLSettings_UiApi\0',changed)
-   self.assertIn('Road Line (0/1/2)'.encode('utf-16le'),changed)
+   self.assertIn('Road Line'.encode('utf-16le'),changed)
    self.assertEqual(changed[0xd70ea:0xd70ed],bytes.fromhex('83ff03'))
    self.assertIn('Taxi FOV (degrees)'.encode('utf-16le'),changed)
    allowed=set(range(0xd7094,0xd709a))|set(range(0xd70ea,0xd70ed))

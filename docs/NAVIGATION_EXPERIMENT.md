@@ -20,18 +20,10 @@ hold; it does not suppress genuine trigger presses or write game weapon state.
 
 ## A/B the road line
 
-Run the updater with GTA IV closed, then use **Pause -> QoL -> Road Line
-(0/1/2)**. Select **0 Off**, **1 Flat**, or **2 Twisted**. Changes apply live;
-no file edits or restart are needed for this setting. Both the manual/mission
-ribbon and the police escape ribbon use the same mode. RoadNav turn chevrons
-remain independent. New installations default to Twisted (100% strength, 75-degree
-maximum, 100% response). Updates migrate the old inaccessible experiment to
-these defaults once, then preserve the menu's Off/Flat/Twisted choice. An existing
-explicit visibility Off remains Off; choose 1 or 2 in the pause menu to show it.
-
-Test an L-shaped route in Flat and Twisted modes. The whole perpendicular leg
-past the turn should stay rolled in Twisted mode, then flatten again as the
-camera aligns with it. Update again and verify the selected mode survives.
+Run the updater with GTA IV closed, then use **Pause → QoL → Road Line**.
+On shows the twisted manual/mission and police escape ribbons; Off hides them.
+Changes apply live. Flat was removed: legacy Flat and Twisted both migrate to On;
+Off stays Off. RoadNav turn cues remain an independent toggle. No file edits.
 
 ### Both lines invisible despite the menu being On
 
@@ -59,7 +51,7 @@ unconfirmed. Do not report a verified PR #3 root cause from code inspection alon
 
 The new D3D9 regression exercises the production renderer and production depth
 cache/texture validation, with controlled discovery and clock inputs. It checks
-manual and police routes with shipped settings, live Flat/Twisted modes, disabled
+manual and police routes with shipped settings, live On/Off modes, disabled
 logging, unavailable depth, timed discovery recovery, and Off/On recovery. Pixel
 assertions run on HAL/reference devices; NULLREF still requires successful draw
 submission but explicitly skips pixel checks. Surface/route tests remain in place.

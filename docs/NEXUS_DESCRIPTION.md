@@ -16,15 +16,15 @@ A guided-install bundle of seven quality-of-life components for GTA IV Complete 
 
 ## Requirements
 
-GTA IV Complete Edition **1.2.0.59**, compatible ASI loader and ScriptHook, Microsoft X86 runtime, and supported **FusionFix 5.1.2 assets/menu host**. The guided installer checks dependencies and supplies the verified modified FusionFix menu host. Unsupported/custom hosts are not blindly replaced. Steam Deck/Linux Desktop Mode needs Python 3 and KDE or Zenity dialogs; missing dependencies require author-hosted downloads. Setup can run the verified Microsoft X86 installer inside GTA IV’s existing Proton prefix; choose the game’s Proton version if prompted and launch the game once from Steam first if its prefix is missing.
+GTA IV Complete Edition **1.2.0.59**, compatible ASI loader and ScriptHook, Microsoft X86 runtime, and supported **FusionFix 5.1.2 assets/menu host**. The guided installer checks dependencies and supplies the verified modified FusionFix menu host. Unsupported/custom hosts are not blindly replaced. Steam Deck/Linux Desktop Mode needs Python 3 and KDE or Zenity dialogs; missing dependencies require author-hosted downloads. Setup can run the verified Microsoft X86 installer inside GTA IV’s existing Proton prefix; setup detects Steam’s configured compatibility tool automatically and launch the game once from Steam first if its prefix is missing.
 
 ## Install and update
 
 1. Close GTA IV. Extract the entire beta Deck ZIP into one folder, then run **Install-GTAIV-QoL.desktop** in Desktop Mode (Execute/Trust if prompted). Keep the supplied update ZIP beside it.
-2. The GUI checks for a newer published public beta, or uses the verified bundled copy if unavailable, then finds GTA IV and shows dependency checks.
-3. Use automatic setup, or open the dependency download pages and save the supported ZIP/EXE files to Downloads. Click **Retry checks / import downloaded files**. Setup places the checked files and runs the verified Microsoft X86 installer in the selected GTA IV Proton prefix. You do not place mod/dependency files or edit settings files by hand.
+2. The GUI checks for a newer published public beta, or uses the verified bundled copy if unavailable, then finds GTA IV and guides one missing requirement at a time, with the checklist only at final review.
+3. Use automatic setup, or open the dependency download pages and save the supported ZIP/EXE files to Downloads. Click **Retry / check downloaded file**. Setup places the checked files and runs the verified Microsoft X86 installer in the selected GTA IV Proton prefix. You do not place mod/dependency files or edit settings files by hand.
 4. Once all checks pass, click **Install GTA IV QoL**. It installs all seven components and the integrated **Update GTA IV QoL** shortcut, with backups and retained pause-menu settings. No private-repository or log-upload credentials are needed.
-5. Use that installed shortcut for future published beta checks; no separate updater download is needed. Pause → QoL and Audio control the components; Road Line **0 Off / 1 Flat / 2 Twisted** applies live.
+5. Use that installed shortcut for future published beta checks; no separate updater download is needed. Pause → QoL and Audio control the components; Road Line **On (twisted) / Off** applies live.
 
 Maintainer note before publication: this is a page draft, not a published beta. Clean public source and CI live on CryKitty/GTAIV-QoL main; the old archive stays private. Beta updates require a separately approved public GitHub beta release with GTAIV-QoL-update.zip attached. Until then the verified bundled archive installs and beta checks report no published update.
 
