@@ -51,6 +51,11 @@ int main(){
     assert(!gaps.update(3200,2,true));
     for(unsigned t=3400;t<6200;t+=200)assert(!gaps.update(t,2,true));
     assert(gaps.update(6200,2,true));
+    PrimaryWrongWay moved;
+    for(unsigned t=0;t<3000;t+=200)assert(!moved.update(t,1,true,{0,100,0}));
+    assert(!moved.update(3000,1,true,{100,100,0})); // Same handle, different destination.
+    for(unsigned t=3200;t<6000;t+=200)assert(!moved.update(t,1,true,{100,100,0}));
+    assert(moved.update(6000,1,true,{100,100,0}));
     PrimaryWrongWay wrap;const unsigned start=0xfffffc00u;
     for(unsigned dt=0;dt<3000;dt+=200)assert(!wrap.update(start+dt,1,true));
     assert(wrap.update(start+3000,1,true));

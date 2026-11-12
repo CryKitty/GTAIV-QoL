@@ -682,7 +682,7 @@ class RoadNavScript final : public ScriptThread {
             return;
         }
         if(!primaryWrongWay_.update(now,primaryRouteBlip_.Get(),
-            roadnav::movingAgainstRoute(recentRoute_.points,player,heading,velocity)))return;
+            roadnav::movingAgainstRoute(recentRoute_.points,player,heading,velocity),goal))return;
         const auto snap=[](roadnav::Vec3 probe,unsigned n,roadnav::Vec3& node){float angle=0;
             return Scripting::GetNthClosestCarNodeWithHeading(probe.x,probe.y,probe.z,n,&node.x,&node.y,&node.z,&angle)!=0;};
         if(!roadnav::forwardRoadTarget(player,heading,motionSpeed_,snap,forwardTarget_)){
