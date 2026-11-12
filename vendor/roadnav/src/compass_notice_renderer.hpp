@@ -2,7 +2,7 @@
 #include "d3d_hook_service.hpp"
 #include "../../../src/compass_overlay.hpp"
 namespace compass {
-struct NoticeFrame {unsigned alpha=0;DWORD at=0;std::uintptr_t frontend=0;};
+struct NoticeFrame {unsigned alpha=0;DWORD at=0;std::uintptr_t frontend=0;float holdX=0,holdY=0,holdRadius=0,holdProgress=0;};
 class NoticeRenderer final:public ID3DDeviceHook {
     SRWLOCK lock_=SRWLOCK_INIT;NoticeFrame frame_{};
     struct Vertex {float x,y,z,rhw;DWORD colour;};
@@ -15,15 +15,21 @@ public:
     void OnDestroyDevice(ID3DDevice*)override{clear();}
     void OnRender(ID3DDevice* device)override{
         AcquireSRWLockShared(&lock_);const auto frame=frame_;ReleaseSRWLockShared(&lock_);
-        if(!frame.alpha||GetTickCount()-frame.at>250||!frame.frontend)return;
+        if((!frame.alpha&&frame.holdProgress<=0)||GetTickCount()-frame.at>250||!frame.frontend)return;
         unsigned char frontend=1;SIZE_T bytes=0;
         if(!ReadProcessMemory(GetCurrentProcess(),reinterpret_cast<void*>(frame.frontend),&frontend,1,&bytes)||bytes!=1||frontend)return;
         D3DVIEWPORT9 viewport{};if(FAILED(device->GetViewport(&viewport))||!viewport.Width||!viewport.Height)return;
         const auto box=messageEnvelope(static_cast<float>(viewport.Width)/viewport.Height);
-        std::vector<Vertex> vertices;vertices.reserve(216);
-        for(unsigned layer=0;layer<2;++layer){
+        std::vector<Vertex> vertices;vertices.reserve(frame.holdProgress>0?3672:216);
+        for(unsigned layer=0;frame.alpha&&layer<2;++layer){
             const auto mesh=envelopeMesh(box.x*viewport.Width+viewport.X,box.y*viewport.Height+viewport.Y,box.width*viewport.Width,box.height*viewport.Height,layer?frame.alpha:frame.alpha*3/4,box.height*viewport.Height*(layer?.065f:.20f));
             for(const auto& point:mesh)vertices.push_back({point.x-.5f,point.y-.5f,0,1,layer?D3DCOLOR_ARGB(point.alpha,235,237,225):D3DCOLOR_ARGB(point.alpha,0,0,0)});
+        }
+        if(frame.holdProgress>0){
+            for(unsigned layer=0;layer<2;++layer){
+                const auto mesh=holdRingMesh(frame.holdX*viewport.Width+viewport.X,frame.holdY*viewport.Height+viewport.Y,frame.holdRadius*viewport.Height,layer?frame.holdProgress:1.0f,layer?235:160,1.8f);
+                for(const auto& point:mesh)vertices.push_back({point.x-.5f,point.y-.5f,0,1,layer?D3DCOLOR_ARGB(point.alpha,235,237,225):D3DCOLOR_ARGB(point.alpha,0,0,0)});
+            }
         }
         IDirect3DStateBlock9* state=nullptr;if(FAILED(device->CreateStateBlock(D3DSBT_ALL,&state)))return;
         if(FAILED(state->Capture())){state->Release();return;}

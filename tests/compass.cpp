@@ -252,6 +252,13 @@ int main(){
     assert(mesh.size()==108);bool transparent=false,opaque=false;
     for(const auto& v:mesh){assert(std::isfinite(v.x)&&std::isfinite(v.y)&&v.alpha<=240);transparent=transparent||v.alpha==0;opaque=opaque||v.alpha==240;}
     assert(transparent&&opaque); // Each continuous stroke has AA fringe coverage.
+    assert(compass::holdRingMesh(100,100,20,0,235,2).empty());
+    const auto quarter=compass::holdRingMesh(100,100,20,.25f,235,2);
+    const auto halfRing=compass::holdRingMesh(100,100,20,.5f,235,2);
+    const auto fullRing=compass::holdRingMesh(100,100,20,1,235,2);
+    assert(quarter.size()==24*18&&halfRing.size()==48*18&&fullRing.size()==96*18);
+    for(const auto& vertex:quarter){assert(vertex.x>=99.99f&&vertex.y<=100.01f);assert(vertex.alpha<=235);}
+    for(const auto& vertex:fullRing){const float radius=std::hypot(vertex.x-100,vertex.y-100);assert(radius>=18.1f&&radius<=21.9f);}
     assert(compass::sameWaypointDestination({10,20,1},{11,20,1})); // Contact vs pin.
     assert(!compass::sameWaypointDestination({10,20,1},{11,20,12})); // Separate floor.
     assert(compass::waypointReached({10,20,1},{20,20,1})); // Arrive on foot or in car.
