@@ -43,7 +43,9 @@ unsigned colouredPixels(IDirect3DDevice9* device){
 }
 void draw(Renderer& renderer,IDirect3DDevice9* device,roadnav::LineFrame frame){
     drawn=false;assert(SUCCEEDED(device->Clear(0,nullptr,D3DCLEAR_TARGET,0xff000000,1,0)));
-    if(qolsettings::api.Get(QOL_GPS_LINE))renderer.submit(frame);else renderer.clear();
+    const awareness::LineTypes types{qolsettings::api.Get(QOL_LINE_ESCAPE)!=0,qolsettings::api.Get(QOL_LINE_MISSION)!=0,
+        qolsettings::api.Get(QOL_LINE_FRIEND)!=0,qolsettings::api.Get(QOL_LINE_ENEMY)!=0,qolsettings::api.Get(QOL_LINE_CUSTOM)!=0};
+    if(types.visible(qolsettings::api.Get(QOL_GPS_LINE)!=0,frame.kind))renderer.submit(frame);else renderer.clear();
     assert(SUCCEEDED(device->BeginScene()));renderer.OnRender(device);assert(SUCCEEDED(device->EndScene()));
 }
 }
@@ -89,6 +91,15 @@ int main(){
             frame.viewBend={qolsettings::api.Get(QOL_GPS_VIEW_BEND)/100.0f,75,1};
             Renderer renderer(Log);draw(renderer,device,frame);assert(drawn&&renderer.renderedFrames()==1);
             if(kind!=D3DDEVTYPE_NULLREF)assert(colouredPixels(device)>20);
+            const awareness::RouteKind types[]={awareness::RouteKind::Escape,awareness::RouteKind::Mission,awareness::RouteKind::Friend,awareness::RouteKind::Enemy,awareness::RouteKind::Custom};
+            for(unsigned off=0;off<5;++off){
+                assert(qolsettings::api.Set(QOL_LINE_ESCAPE+off,0));
+                for(unsigned type=0;type<5;++type){auto typed=frame;typed.kind=types[type];
+                    draw(renderer,device,typed);
+                    if(kind!=D3DDEVTYPE_NULLREF)assert((colouredPixels(device)>20)==(type!=off));
+                }
+                assert(qolsettings::api.Set(QOL_LINE_ESCAPE+off,1));
+            }
             renderer.OnDestroyDevice(device);
             Renderer quiet(nullptr);draw(quiet,device,frame);assert(quiet.renderedFrames()==1);quiet.OnDestroyDevice(device);
             // Failed first lookup must recover when resources become available,

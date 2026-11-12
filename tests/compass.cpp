@@ -2,6 +2,7 @@
 #include "../src/compass_notifications.hpp"
 #include "../src/compass_overlay.hpp"
 #include "../src/compass_waypoint.hpp"
+#include "../src/compass_feedback.hpp"
 #include "../src/navigation_awareness.hpp"
 #include "../src/police_escape.hpp"
 #include "../src/escape_gps_request.hpp"
@@ -57,6 +58,31 @@ struct FakeGps {
     void configure(unsigned){}
 };
 int main(){
+    {
+        // All hold/status/arrival messages use the same objective-label slot.
+        compass::WaypointFeedback feedback;
+        const char* messages[]={"Setting waypoint","Waypoint set","Waypoint cleared","Waypoint unavailable","Destination reached"};
+        for(const auto message:messages){
+            feedback.show(message,100,42,.53f,1800);feedback.track(42,.54f);
+            const auto label=feedback.draw(101);
+            assert(label.visible()&&label.x==.54f&&label.y==compass::StripLayout::focusLabelY);
+            assert(label.y>compass::StripLayout::iconY&&label.x<=compass::StripLayout::right);
+            assert(label.size==.22f&&label.width==.85f&&label.height==1.10f&&label.alpha==235);
+            feedback.track(99,.3f);assert(feedback.draw(1899).x==.54f);
+            assert(!feedback.draw(1900).visible());
+        }
+        feedback.show("Waypoint set",0xfffffff0u,42,.5f);assert(feedback.draw(32).visible());
+        const auto held=compass::caption("Setting waypoint",.51f),done=compass::caption("Waypoint set",.51f);
+        assert(held.x==done.x&&held.y==done.y&&held.size==done.size);
+        using Kind=awareness::RouteKind;
+        const Kind kinds[]={Kind::Escape,Kind::Mission,Kind::Friend,Kind::Enemy,Kind::Custom};
+        awareness::LineTypes defaults;
+        for(const auto kind:kinds){assert(defaults.visible(true,kind));assert(!defaults.visible(false,kind));}
+        for(unsigned off=0;off<5;++off){awareness::LineTypes types{off!=0,off!=1,off!=2,off!=3,off!=4};
+            for(unsigned i=0;i<5;++i){assert(types.visible(true,kinds[i])==(i!=off));assert(!types.visible(false,kinds[i]));}}
+        assert(!awareness::LineTypes({true,true,false,true,true}).visible(true,Kind::Blue));
+    }
+
     using roadnav::Vec3;
     // Vehicle status no longer gates this shared policy. Preserve the existing
     // phone/combat gates and one action per fresh hold.

@@ -12,6 +12,7 @@
 #include "compass_notice_renderer.hpp"
 #include "compass_controller.hpp"
 #include "../../../src/compass_waypoint.hpp"
+#include "../../../src/compass_feedback.hpp"
 
 // Change only the minimap layout position. Keep all native preferences and
 // visibility answers intact, including those used by wanted stars and messages.
@@ -26,7 +27,7 @@ class CompassHud {
     Scripting::Blip compassWaypoint_{};
     DWORD socialAt_=0;bool social_=false;
     unsigned compassWaypointSource_=0;roadnav::Vec3 compassWaypointPoint_{};
-    DWORD waypointFeedbackAt_=0;
+    compass::WaypointFeedback feedback_{};float feedbackAnchor_=compass::StripLayout::center;
     const char* waypointFeedback_="";
     unsigned routeHelper_=0,forwardRouteHelper_=0;
     inline static compass::Hostility hostility_{};
@@ -268,7 +269,7 @@ class CompassHud {
             clearCompassWaypoint();waypointFeedback_="Waypoint cleared";
         }else{
             Blip next{};AddBlipForCoord(point.x,point.y,point.z,&next);
-            if(!next.IsValid()||!DoesBlipExist(next)){waypointFeedback_="Waypoint unavailable";waypointFeedbackAt_=now;return;}
+            if(!next.IsValid()||!DoesBlipExist(next)){waypointFeedback_="Waypoint unavailable";feedback_.show(waypointFeedback_,now,handle,feedbackAnchor_);return;}
             // Use supported scripting natives for this CE prototype. No legacy
             // CFrontEnd address or unverified native waypoint-global writes.
             NativeInvoke::Invoke<NATIVE_SWITCH_OFF_WAYPOINT,ScriptVoid>();
@@ -277,7 +278,7 @@ class CompassHud {
             ChangeBlipNameFromAscii(next,"Compass waypoint");SetBlipAsShortRange(next,false);SetRoute(next,true);
             waypointFeedback_="Waypoint set";
         }
-        waypointFeedbackAt_=now;scanAt_=0;
+        feedback_.show(waypointFeedback_,now,handle,feedbackAnchor_);scanAt_=0;
         if(log_){char line[170];std::snprintf(line,sizeof(line),"Compass waypoint: %s focus=%u pin=%u at=%.1f,%.1f,%.1f",waypointFeedback_,handle,compassWaypoint_.Get(),point.x,point.y,point.z);log_(line);}
     }
 
@@ -311,6 +312,7 @@ public:
     void setForwardRouteHelper(unsigned handle){forwardRouteHelper_=handle;}
     unsigned missionRouteAge(unsigned target){return awareness_.routeRequestAge(target);}
     bool navigationTargetEnemy(Scripting::Blip target){Scripting::ColourIndex colour=0;Scripting::GetBlipColour(target,&colour);return enemyMarker(target,colour,static_cast<unsigned>(Scripting::GetBlipSprite(target)));}
+    bool navigationTargetPosition(unsigned target,roadnav::Vec3& point){return navigationTargetPosition(asBlip(target),point);}
     bool navigationTargetPosition(Scripting::Blip target,roadnav::Vec3& point){return Scripting::DoesBlipExist(target)&&position(target,point);}
     void refreshNavigationBlips(){const DWORD now=GetTickCount();if(!scanAt_||now-scanAt_>=500){scan();scanAt_=now;}reconcileCompassWaypoint();}
     Scripting::Blip navigationWaypoint(){
@@ -343,11 +345,12 @@ public:
         auto result=GetMissionFlag()?awareness::RouteKind::Mission:awareness::RouteKind::Blue;float best=65;
         for(auto blip:blips_){
             if(blip.Get()==forwardRouteHelper_||!DoesBlipExist(blip)||policeMarker(blip))continue;const auto sprite=static_cast<unsigned>(GetBlipSprite(blip));
-            if(sprite!=BLIP_WAYPOINT&&sprite>BLIP_OBJECTIVE_5)continue;
             if(!compass::radarDisplay(NativeInvoke::Invoke<NATIVE_GET_BLIP_INFO_ID_DISPLAY,u32>(blip)))continue;
             roadnav::Vec3 point{};if(!position(blip,point))continue;const float distance=roadnav::distance2D(endpoint,point);if(distance>best)continue;
             ColourIndex colour=0;GetBlipColour(blip,&colour);
-            result=enemyMarker(blip,colour,sprite)?awareness::RouteKind::Enemy:sprite==BLIP_WAYPOINT?awareness::RouteKind::Custom:awareness::RouteKind::Mission;best=distance;
+            const bool enemy=enemyMarker(blip,colour,sprite),friendly=friendMarker(blip);
+            if(sprite!=BLIP_WAYPOINT&&sprite>BLIP_OBJECTIVE_5&&!enemy&&!friendly)continue;
+            result=enemy?awareness::RouteKind::Enemy:sprite==BLIP_WAYPOINT?awareness::RouteKind::Custom:friendly?awareness::RouteKind::Friend:awareness::RouteKind::Mission;best=distance;
         }
         return result;
     }
@@ -398,9 +401,9 @@ public:
         // GetTxd borrows the game-owned dictionary; never unload it.
         textures_={};tried_={};dictionary_={};blips_.clear();enemies_.clear();healthDamage_={};armourDamage_={};blipTable_=0;initialized_=false;scanAt_=0;frameGate_={};scanLogged_=startupComplete_=false;
     }
-    void drawArrival(){
-        if(!qolclient::Enabled(QOL_COMPASS,compassDefault_)||Scripting::IsPauseMenuActive()||!Scripting::IsScreenFadedIn())return;
-        text(.5f,.84f,"Destination reached",.3f,240,.85f,1.1f);
+    void notifyArrival(DWORD now,unsigned target=0){
+        const float anchor=target&&target==feedback_.target?feedback_.x:compass::StripLayout::center;
+        feedback_.show("Destination reached",now,target,anchor,4000);
     }
     void configureTaxi(float fov){awareness_.configureTaxi(fov);}
     void tick(){
@@ -442,7 +445,7 @@ public:
         const DWORD now=GetTickCount();if(!scanAt_||now-scanAt_>=500){scan();scanAt_=now;}reconcileCompassWaypoint();
         roadnav::Vec3 playerPoint{},rotation{};GetCharCoordinates(ped,&playerPoint.x,&playerPoint.y,&playerPoint.z);GetCamRot(camera,&rotation.x,&rotation.y,&rotation.z);
         if(compassWaypoint_.IsValid()&&compass::waypointReached(playerPoint,compassWaypointPoint_)){
-            clearCompassWaypoint();waypointFeedback_="Destination reached";waypointFeedbackAt_=now;
+            const auto source=compassWaypointSource_;clearCompassWaypoint();notifyArrival(now,source);
             if(log_)log_("Compass waypoint: cleared on arrival");
         }
         u32 policeStars=0;StoreWantedLevel(player,&policeStars);awareness_.policeSample(player,policeStars,playerPoint);
@@ -502,6 +505,8 @@ public:
         // of the normal focus window; another focused marker still cancels.
         if(!holdFocus&&waypointHold_.target)for(const auto& item:placed)if(item.marker.handle==waypointHold_.target&&std::fabs(item.marker.bearing)<=8)holdFocus=waypointHold_.target;
         if(waypointStart&&log_){char line[220];std::snprintf(line,sizeof(line),"Compass waypoint: press raw=%u native=%u focus=%u on-foot=%u phone=%u combat=%u",rawController?1u:0u,nativeWaypointDown?1u:0u,holdFocus,onFoot?1u:0u,phone?1u:0u,combat?1u:0u);log_(line);}
+        for(const auto& item:placed){const float x=compass::StripLayout::center+compass::StripLayout::half*item.x;
+            feedback_.track(item.marker.handle,x);if(item.marker.handle==holdFocus)feedbackAnchor_=x;}
         const bool blockedBefore=waypointHold_.blocked;
         if(const auto target=waypointHold_.update(waypointDown,waypointEligible,holdFocus,now))setFocusedWaypoint(target,now);
         if(!blockedBefore&&waypointHold_.blocked&&log_)log_("Compass waypoint: hold cancelled; release and hold again (focus/gate/tick gap)");
@@ -519,6 +524,7 @@ public:
             if(tick%6==0&&!covered){const char* labels[]={"N","E","S","W"};text(x,Layout::labelY,labels[tick/6],.23f,235,.78f);}
         }
         const float hold=waypointHold_.progress(now);
+        auto caption=feedback_.draw(now);
         const auto message=messages_.snapshot();
         compass::NoticeFrame noticeFrame{message.alpha(now),now,minimap_.frontendAddress()};
         for(const auto& item:placed){
@@ -534,14 +540,14 @@ public:
                 NativeInvoke::Invoke<NATIVE_DRAW_SPRITE,ScriptVoid>(textures_[marker.sprite],x,iconY,height/aspect,height,0.0f,rgb[0],rgb[1],rgb[2],std::min(marker.alpha,210u));
             }else {++fallbackIcons;const auto rgb=compass::markerColour(marker.colour);textStyle(.672f*scale,marker.alpha);SetTextColour(static_cast<u8>(rgb[0]),static_cast<u8>(rgb[1]),static_cast<u8>(rgb[2]),static_cast<u8>(marker.alpha));DisplayTextWithLiteralString(x,iconY-.011f,"STRING",marker.sprite==BLIP_WAYPOINT?"X":(marker.sprite<=BLIP_OBJECTIVE_5?"*":"."));}
             const bool holding=hold>0&&marker.handle==waypointHold_.target;
-            if(holding){noticeFrame.holdX=x;noticeFrame.holdY=iconY;noticeFrame.holdRadius=height*.62f;noticeFrame.holdProgress=hold;}
+            if(holding){caption=compass::caption("Setting waypoint",x);noticeFrame.holdX=x;noticeFrame.holdY=iconY;noticeFrame.holdRadius=height*.62f;noticeFrame.holdProgress=hold;}
             if(centered||holding){
                 float distanceY=Layout::distanceY;
                 auto objectiveText=marker.enemy?std::string{}:awareness_.briefFor(marker.handle);
                 if(objectiveText.empty()&&marker.missionDestination&&missionTarget.IsValid())objectiveText=awareness_.briefFor(missionTarget.Get());
                 if(objectiveText.empty()&&marker.missionDestination)objectiveText=missionBrief;
-                if(holding){
-                    text(x,Layout::focusLabelY,"Setting waypoint",.22f,235,.85f,1.10f);
+                if(holding||caption.visible()){
+                    // The shared caption replaces objective text, avoiding overlap.
                 }else if(!objectiveText.empty()){
                     const auto lines=awareness::briefLines(objectiveText);
                     for(unsigned row=0;row<lines.size();++row)text(mid,Layout::focusLabelY+.024f*row,lines[row].c_str(),.22f,235,.85f,1.10f);
@@ -573,7 +579,7 @@ public:
         };
         flashMeter(healthDamage_,true);flashMeter(armourDamage_,false);
         if(noticeRenderer_)noticeRenderer_->submit(noticeFrame);
-        if(hold<=0&&waypointFeedbackAt_&&now-waypointFeedbackAt_<1800)text(Layout::right+.065f,Layout::iconY,waypointFeedback_,.19f,235);
+        if(caption.visible())text(caption.x,caption.y,caption.text,caption.size,caption.alpha,caption.width,caption.height);
         // Reset native text state touched by our HUD calls for other script HUDs.
         SetTextCentre(false);SetTextEdge(false,0,0,0,0);SetTextScale(.3f,.3f);SetTextColour(255,255,255,255);
         startupComplete_=true;

@@ -1,6 +1,6 @@
 #pragma once
 #include "d3d_hook_service.hpp"
-#include "road_line.hpp"
+#include "tracked_destination.hpp"
 #include "scene_depth.hpp"
 #include "scene_camera.hpp"
 #include <cstdio>
@@ -100,7 +100,7 @@ public:
             if(f.line.endsAtDestination&&!f.line.points.empty()){
                 constexpr float shape[6][2]={{-.60f,.65f},{-.05f,.65f},{.60f,0},{-.05f,-.65f},{-.60f,-.65f},{.05f,0}};
                 constexpr unsigned triangles[12]={0,1,5,1,2,5,5,2,3,5,3,4};
-                const auto end=f.line.points.back();
+                const auto end=roadLineDestination(f.line);
                 const Vec3 right{std::cos(yaw),std::sin(yaw),0};const float scale=layer?.72f:.88f;
                 const float fade=std::clamp((distance2D(f.player,end)-2)/3,0.0f,1.0f);
                 const DWORD alpha=static_cast<DWORD>((layer?210:145)*fade);
