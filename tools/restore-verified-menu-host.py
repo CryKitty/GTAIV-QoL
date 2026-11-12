@@ -16,9 +16,9 @@ def navigation_menu(raw):
     """Extend only the reserved menu row in the exact verified build91 PE.
 
     d7094: remove the reserved id4 skip (six-byte JE -> NOPs).
-    d70ea: select row3/4/5 sliders and retain the other existing row slots.
+    d70ea: select only row3/5 sliders; road row4 uses the existing boolean path.
     All startup code, sections, relocation entries, pointers and exports stay put.
-    The UI-only API maps row4 to the live road-line mode, keeping the public ABI intact.
+    The UI-only API maps row4 to the live road-line toggle, keeping the public ABI intact.
     """
     if hashlib.sha256(raw).hexdigest()!=VERIFIED_SHA:raise RuntimeError('Menu adaptation requires the exact working host')
     data=bytearray(raw)
@@ -37,7 +37,7 @@ def navigation_menu(raw):
         '65 56 50 c3'
     )
     call=lambda site,target:b'\xe8'+struct.pack('<i',target-site-5)
-    branches=bytes.fromhex('83ff03 0f82e0000000 83ff05 0f87d7000000')
+    branches=bytes.fromhex('83ff03 0f8409000000 83ff05 0f85d7000000')
     patches=[(0xd7094,bytes.fromhex('0f848f010000'),b'\x90'*6),
              (0xd70ea,bytes.fromhex('83ff040f82e000000083ff060f84d7000000'),branches),
              (0xd712e,bytes.fromhex('c74424100000a040'),call(0xd712e,cave)+b'\x90'*3),
@@ -50,7 +50,7 @@ def navigation_menu(raw):
              (0x230,struct.pack('<I',0x1e66ca),struct.pack('<I',cave+len(helpers)-0x400))]
     for old,new,encoding in [('QoLSettings_GetApi','QoLSettings_UiApi','ascii'),
                              ('QOL_GAMEVOICE','QOL_GPSLINE','ascii'),
-                             ('Gameplay Voices (%)','Road Line (0/1/2)','utf-16le'),
+                             ('Gameplay Voices (%)','Road Line','utf-16le'),
                              ('Cutscene Voice Volume','Taxi FOV (degrees)','utf-16le'),
                              ('QOL_VOICES','QOL_TAXI','ascii'),
                              ('Cutscene Voices (%)','Cutscene Audio (%)','utf-16le')]:

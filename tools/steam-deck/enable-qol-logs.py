@@ -274,10 +274,10 @@ def merge_preferences(previous, fresh):
         bend_menu = 0
     for (section, key), (low, high) in limits.items():
         try:
-            # Older shipped strength=0 was an inaccessible experiment, not a
-            # pause-menu Flat choice. Adopt working twist defaults once. Keep
+            # Both legacy Flat and Twisted now map to On with working twist
+            # defaults. Adopt them once; preserve the menu choice afterward. Keep
             # the existing visibility toggle, including a user's explicit Off.
-            if section == 'RoadGPSLine' and key.startswith('ViewBend') and bend_menu < 1:
+            if section == 'RoadGPSLine' and key.startswith('ViewBend') and bend_menu<2:
                 continue
             value = old.getint(section, key)
             if (section, key) == ('VoiceVolume', 'CutscenePercent') and output_mix < 1 and value > 100:

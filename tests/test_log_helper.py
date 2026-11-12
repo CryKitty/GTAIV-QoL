@@ -136,9 +136,9 @@ class HelperTests(unittest.TestCase):
         self.assertIn(b'ChaseGuidance=0',merged)
 
     def test_view_bend_preferences_survive_update(self):
-        fresh = b'[RoadGPSLine]\nEnabled=0\nViewBendMenuVersion=1\nViewBendStrengthPercent=0\nViewBendMaxDegrees=75\nViewBendResponsePercent=100\n'
+        fresh = b'[RoadGPSLine]\nEnabled=0\nViewBendMenuVersion=2\nViewBendStrengthPercent=0\nViewBendMaxDegrees=75\nViewBendResponsePercent=100\n'
         for strength in (0, 35, 100):
-            old = ('[RoadGPSLine]\nEnabled=1\nViewBendMenuVersion=1\nViewBendStrengthPercent=%d\nViewBendMaxDegrees=60\nViewBendResponsePercent=250\n' % strength).encode()
+            old = ('[RoadGPSLine]\nEnabled=1\nViewBendMenuVersion=2\nViewBendStrengthPercent=%d\nViewBendMaxDegrees=60\nViewBendResponsePercent=250\n' % strength).encode()
             merged = helper.merge_preferences(old, fresh)
             self.assertEqual(merged, old)
             self.assertEqual(helper.merge_preferences(merged, fresh), merged)
@@ -162,12 +162,12 @@ class HelperTests(unittest.TestCase):
         updated=helper.merge_preferences(legacy,fresh)
         self.assertEqual((settings(updated).getint('Enabled'),settings(updated).getint('ViewBendStrengthPercent'),settings(updated).getint('ViewBendMaxDegrees')),(1,100,75))
         # An explicit visibility Off still survives; the player can recover from
-        # the pause menu alone. New Off/Flat/Twisted choices persist on repeats.
+        # the pause menu alone. Legacy Flat/Twisted both become On on repeats.
         for enabled,strength in ((0,100),(1,0),(1,100)):
             old=('[RoadGPSLine]\nViewBendMenuVersion=1\nEnabled=%d\nViewBendStrengthPercent=%d\n' % (enabled,strength)).encode()
             merged=helper.merge_preferences(old,fresh)
             for _ in range(2):merged=helper.merge_preferences(merged,fresh)
-            self.assertEqual((settings(merged).getint('Enabled'),settings(merged).getint('ViewBendStrengthPercent')),(enabled,strength))
+            self.assertEqual((settings(merged).getint('Enabled'),settings(merged).getint('ViewBendStrengthPercent')),(enabled,100))
         self.assertEqual(settings(helper.merge_preferences(b'[RoadGPSLine]\nEnabled=0\n',fresh)).getint('Enabled'),0)
 
     def test_unknown_version_is_rejected(self):

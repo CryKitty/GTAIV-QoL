@@ -20,6 +20,8 @@ void Load(){
         const int read=static_cast<int>(GetPrivateProfileIntA(d.section,d.key,d.initial,path));
         values[i].store(read>=0&&read<=d.maximum?read:d.initial);
     }
+    // Legacy Flat and Twisted both become On; Off remains Off.
+    if(values[QOL_GPS_LINE].load())values[QOL_GPS_VIEW_BEND].store(100);
 }
 BOOL CALLBACK Initialize(PINIT_ONCE,void*,void**) {
     const DWORD size=GetModuleFileNameA(nullptr,path,MAX_PATH);
@@ -45,18 +47,18 @@ void __cdecl MenuReady(uint32_t rows){menuRows.store(rows);}
 const QolSettingsApi api{sizeof(QolSettingsApi),1,Get,Set,MenuReady};
 
 // The verified menu host has one reserved, never-shown gameplay-voice row.
-// Its UI-only adapter maps that row to Off/Flat/Twisted; the normal settings
+// Its UI-only adapter maps that row to Road Line On/Off; the normal settings
 // ABI and reserved gameplay-voice value stay unchanged for existing clients.
 int32_t __cdecl UiGet(uint32_t id){
-    if(id==QOL_GAMEPLAY_VOICE)return Get(QOL_GPS_LINE)?(Get(QOL_GPS_VIEW_BEND)>0?2:1):0;
+    if(id==QOL_GAMEPLAY_VOICE)return Get(QOL_GPS_LINE)?1:0;
     return Get(id==QOL_VOCAL_SLIDERS?QOL_TAXI_FOV:id);
 }
 int32_t __cdecl UiSet(uint32_t id,int32_t value){
     if(id==QOL_GAMEPLAY_VOICE){
-        if(value<0||value>2)return 0;
-        if(value&&!Set(QOL_GPS_VIEW_BEND,value==2?100:0))return 0;
+        if(value<0||value>1)return 0;
+        if(value&&!Set(QOL_GPS_VIEW_BEND,100))return 0;
         if(!Set(QOL_GPS_LINE,value?1:0))return 0;
-        return WritePrivateProfileStringA("RoadGPSLine","ViewBendMenuVersion","1",path)?1:0;
+        return WritePrivateProfileStringA("RoadGPSLine","ViewBendMenuVersion","2",path)?1:0;
     }
     if(id==QOL_VOCAL_SLIDERS&&value>=0&&value<40)value=40;
     const auto result=Set(id==QOL_VOCAL_SLIDERS?QOL_TAXI_FOV:id,value);
