@@ -1011,6 +1011,7 @@ protected:
             Route route;
             const bool readPrimary=readRoute(delta,route,primaryLocated?&primaryPoint:chaseTarget_&&!escapeActive_?&chasePoint_:nullptr,primaryReplanned_&&!escapeActive_?&player:nullptr);
             bool freshRoute=readPrimary&&!(primaryChanged&&!primaryLocated)&&(!escapeActive_||primaryLocated)&&
+                (!chaseTarget_||escapeActive_||primaryLocated||roadnav::routeDestinationMatches(route.points,chasePoint_))&&
                 (!primaryLocated||(!route.points.empty()&&roadnav::distance2D(route.points.back(),primaryPoint)<=65));
             // An ahead-leg job borrows the buffer, never the primary snapshot
             // used by turn cues or restoration, even for nearby endpoints.

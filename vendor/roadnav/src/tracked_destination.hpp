@@ -1,6 +1,9 @@
 #pragma once
 #include "road_line.hpp"
 namespace roadnav {
+inline bool routeDestinationMatches(const std::vector<Vec3>& points,Vec3 target){
+    return !points.empty()&&distance2D(points.back(),target)<=65&&std::fabs(points.back().z-target.z)<=8;
+}
 inline bool finiteDestination(Vec3 p){return std::isfinite(p.x)&&std::isfinite(p.y)&&std::isfinite(p.z);}
 // Pin the symbol independently of the road-fitted ribbon. Mission coordinates
 // must not be replaced by the native GPS's nearest road node or ground sample.
