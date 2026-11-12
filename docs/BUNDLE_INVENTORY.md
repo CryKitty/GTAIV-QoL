@@ -5,7 +5,7 @@ Checked against current initialization paths, settings, native build and updater
 | Component | Active implementation / wiring | Installed payload |
 | --- | --- | --- |
 | Road Navigation Line | `vendor/roadnav/src/roadnav.cpp`, `road_line.hpp`, `road_line_renderer.hpp`, `road_surface.hpp`; `QOL_GPS_LINE`, `QOL_GPS_VIEW_BEND` | GTAIV-QoL-Pause.asi |
-| RoadNav turn guidance | `vendor/roadnav/src/turn_cue.hpp`, `turn_renderer.hpp`, `roadnav.cpp`; `QOL_ROADNAV` | GTAIV-QoL-Pause.asi |
+| Turn Arrows | `vendor/roadnav/src/turn_cue.hpp`, `turn_renderer.hpp`, `roadnav.cpp`; `QOL_ROADNAV` | GTAIV-QoL-Pause.asi |
 | Map Autozoom | `src/main.cpp` AutoZoom/Initialize; `QOL_MAP_AUTOZOOM` | GTAIV-QoL.asi |
 | Pause Cutscenes | `src/cutscene_pause.cpp`, pause session/timeline/audio capture and overlay code; `QOL_CUTSCENE_PAUSE` | GTAIV-QoL-Pause.asi |
 | Cutscene Audio | `src/cutscene_output.hpp`, `cutscene_mix.hpp`, game mastering-output capture from `cutscene_pause.cpp`; `QOL_CUTSCENE_VOICE` | GTAIV-QoL-Pause.asi |
