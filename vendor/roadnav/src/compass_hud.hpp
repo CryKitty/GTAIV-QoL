@@ -457,6 +457,7 @@ public:
     void configureTaxi(float fov){awareness_.configureTaxi(fov);}
     void tick(){
         using namespace Scripting;
+        qolclient::RefreshMenu(IsPauseMenuActive()!=0);
         const auto inputNow=GetTickCount();
         const bool nativeWaypointDown=IsButtonPressed(0,static_cast<ePadButton>(10))!=0;
         bool rawController=false;const bool waypointDown=controller_.left(nativeWaypointDown,rawController);

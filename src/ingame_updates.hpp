@@ -1,4 +1,5 @@
 #pragma once
+#include "update_menu.hpp"
 namespace ingameupdates {
 // The Windows process only queues a request on shared disk. The Deck user
 // service owns Linux networking/staging and waits for every GTA process to exit.
@@ -20,7 +21,7 @@ inline bool Request(){
 }
 inline void Tick(bool enabled){
     static bool previous=false;
-    if(enabled&&!previous)Request();
+    if(enabled&&!previous)qolupdatemenu::requestFailed.store(!Request());
     previous=enabled;
 }
 }

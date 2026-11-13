@@ -94,6 +94,22 @@ class LineTypeMenuTests(unittest.TestCase):
     u.emu_start(base+0xd7e29,base+(0xd7c80 if len(order)<14 else 0xd7e33),count=100)
     row=u.reg_read(UC_X86_REG_EDI);order.append(row)
    self.assertEqual(order,[0,1,2,3,13,4,7,8,9,10,11,5,6,12,14])
+ def test_optional_live_refresh_registration_and_thunk_are_game_thread_safe(self):
+  for base in [0x10000000,0x30000000]:
+   u=self.machine(base,12);u.reg_write(UC_X86_REG_ESI,0x80c000)
+   u.mem_write(0x80c000,struct.pack('<7I',28,1,0,0,0,0,0x80d000));u.mem_write(0x80d000,b'\xc3')
+   callbacks=[]
+   def capture(machine,address,size,unused):
+    if address==0x80d000:callbacks.append(struct.unpack('<I',machine.mem_read(machine.reg_read(UC_X86_REG_ESP)+4,4))[0])
+   u.hook_add(unicorn.UC_HOOK_CODE,capture);u.emu_start(base+0xd7bc8,base+0xd7bcd,count=100)
+   self.assertEqual(len(callbacks),1);self.assertEqual(u.reg_read(UC_X86_REG_EAX),0x809000)
+   self.assertEqual(u.reg_read(UC_X86_REG_ESP),0x804000)
+   calls=[];u.mem_write(base+0xd90d0,b'\xc3')
+   def refresh(machine,address,size,unused):
+    if address==base+0xd90d0:calls.append(struct.unpack('<I',machine.mem_read(machine.reg_read(UC_X86_REG_ESP)+4,4))[0])
+   u.hook_add(unicorn.UC_HOOK_CODE,refresh);u.mem_write(0x804000,struct.pack('<I',0x80e000))
+   u.emu_start(callbacks[0],0x80e000,count=100)
+   self.assertEqual(calls,[0]);self.assertEqual(u.reg_read(UC_X86_REG_ESP),0x804004)
  def test_optional_label_bridge_and_old_core_fallback_preserve_x86_contract(self):
   for base in [0x10000000,0x30000000]:
    for api_size,handled in [(20,False),(24,False),(24,True)]:

@@ -87,3 +87,61 @@ class InGameUpdates(unittest.TestCase):
    with patch.object(Path,'home',return_value=Path(folder)),patch.object(sys,'argv',['worker','--watch-game',str(game)]),patch.object(u.subprocess,'run',return_value=Mock(returncode=0)) as run:
     self.assertTrue(u.install_game_updater(game,b'next worker'))
     self.assertEqual(run.call_args.args[0][-2:],['start','gtaiv-qol-updates.service'])
+
+ def test_states_distinguish_check_download_stage_and_failure_preserving_install(self):
+  with tempfile.TemporaryDirectory() as folder:
+   game,state,config=self.fixture(folder)
+   saved={'sha':'a'*40,'build':'41','updated_at':'2026-11-13T20:00:00+00:00','updated_local':'2026-11-13 14:00'}
+   (state/'installed.json').write_text(json.dumps(saved));request=game/'GTAIV-QoL-update-request.txt';request.write_text('check')
+   def code():return json.loads((game/'GTAIV-QoL-update-status.json').read_text())['code']
+   def select(token):self.assertEqual(code(),'checking');return {'channel':'beta','route':'/fixture'}
+   def download(*args,**kwargs):self.assertEqual(code(),'downloading');return b'ZIP'
+   with patch.dict(sys.modules,{'fcntl':Mock(LOCK_EX=2,LOCK_NB=4)}),patch.object(u,'ROOT',state),patch.object(u,'CONFIG',config),patch.object(u,'beta_candidate',side_effect=select),patch.object(u,'request',side_effect=download),patch.object(u,'validate_archive',return_value=({'sha':'b'*40},{'fixture':b'new'})),patch.object(u,'game_running',return_value=True):
+    self.assertFalse(u.game_update_tick(game));self.assertEqual(code(),'staged')
+    self.assertEqual(json.loads((state/'installed.json').read_text()),saved)
+    request.write_text('again');self.assertFalse(u.game_update_tick(game));self.assertEqual(code(),'staged')
+   # A separate check failure must stay visible without copying exception data.
+   import shutil
+   with patch.object(u,'ROOT',state):shutil.rmtree(u.pending_directory(game))
+   request.write_text('retry')
+   with patch.dict(sys.modules,{'fcntl':Mock(LOCK_EX=2,LOCK_NB=4)}),patch.object(u,'ROOT',state),patch.object(u,'CONFIG',config),patch.object(u,'beta_candidate',side_effect=RuntimeError('fixture-secret response /private/path')):
+    with self.assertRaises(RuntimeError):u.game_update_tick(game)
+    self.assertEqual(code(),'failed')
+    data=(game/'GTAIV-QoL-update-status.json').read_text();self.assertNotIn('fixture-secret',data);self.assertNotIn('/private',data)
+    self.assertEqual(json.loads(data)['updated_local'],saved['updated_local']);self.assertEqual(json.loads(data)['sha'],saved['sha'])
+
+ def test_success_records_build_time_and_survives_relaunch_and_up_to_date(self):
+  from test_qol_updater import payload
+  files,manifest=payload();manifest['version']='47';files['install-helper.py']=b'def main(): pass\n'
+  with tempfile.TemporaryDirectory() as folder:
+   game,state,config=self.fixture(folder)
+   with patch.object(u,'ROOT',state),patch.object(u,'CONFIG',config),patch.object(u,'uploader_files_intact',return_value=True),patch.object(u,'shortcut'):
+    u.apply_update(manifest,files,'beta')
+    saved=json.loads((state/'installed.json').read_text());self.assertEqual(saved['build'],'47');self.assertTrue(saved['updated_at']);self.assertTrue(saved['updated_local'])
+    self.assertEqual(json.loads((game/'GTAIV-QoL-update-status.json').read_text())['code'],'updated')
+    fresh_spec=importlib.util.spec_from_file_location('fresh_update_worker',ROOT/'tools/steam-deck/qol-updater.py');fresh=importlib.util.module_from_spec(fresh_spec);fresh_spec.loader.exec_module(fresh)
+    with patch.object(fresh,'ROOT',state):fresh.update_status(game,'up_to_date')
+    record=json.loads((game/'GTAIV-QoL-update-status.json').read_text());self.assertEqual(record['updated_at'],saved['updated_at']);self.assertEqual(record['updated_local'],saved['updated_local'])
+    self.assertEqual(record['code'],'up_to_date')
+
+ @unittest.skipIf(sys.platform=='win32','Deck systemd migration is Linux-only')
+ def test_old_updater_can_seed_first_install_receipt_without_new_json_fields(self):
+  with tempfile.TemporaryDirectory() as folder:
+   game,state,config=self.fixture(folder)
+   with patch.object(Path,'home',return_value=Path(folder)),patch.object(u,'ROOT',state),patch.object(u,'BUILD_SHA','b'*40),patch.object(u,'BUILD_NUMBER','48'),patch.object(u.subprocess,'run',return_value=Mock(returncode=0)):
+    u.install_game_updater(game,b'new verified worker')
+    record=json.loads((game/'GTAIV-QoL-update-status.json').read_text());self.assertEqual(record['sha'],'b'*40);self.assertEqual(record['build'],'48')
+    # Old worker subsequently overwrites both JSON records in its old schema.
+    (state/'installed.json').write_text(json.dumps({'sha':'b'*40}))
+    (game/'GTAIV-QoL-update-status.json').write_text(json.dumps({'schema':1,'state':'Update installed; ready for next launch'}))
+    u.update_status(game,'checking');after=json.loads((game/'GTAIV-QoL-update-status.json').read_text())
+    self.assertEqual(after['updated_local'],record['updated_local']);self.assertEqual(after['build'],'48')
+
+ def test_failed_apply_is_not_an_updated_receipt_and_keeps_valid_stage(self):
+  with tempfile.TemporaryDirectory() as folder:
+   game,state,config=self.fixture(folder);saved={'sha':'a'*40,'updated_local':'2026-11-13 14:00'}
+   (state/'installed.json').write_text(json.dumps(saved))
+   with patch.object(u,'ROOT',state),patch.object(u,'CONFIG',config),patch.dict(sys.modules,{'fcntl':Mock(LOCK_EX=2,LOCK_NB=4)}),patch.object(u,'game_running',return_value=False),patch.object(u,'validate_archive',return_value=({'sha':'b'*40},{})),patch.object(u,'apply_update',side_effect=RuntimeError('fixture apply failure')):
+    stage=u.pending_directory(game);u.atomic(stage/'candidate.json',json.dumps({'channel':'beta','installed_sha':'a'*40}).encode());u.atomic(stage/'payload.zip',b'ZIP')
+    with self.assertRaises(RuntimeError):u.game_update_tick(game)
+    record=json.loads((game/'GTAIV-QoL-update-status.json').read_text());self.assertEqual(record['code'],'failed');self.assertEqual(record['updated_local'],saved['updated_local']);self.assertEqual(record['sha'],saved['sha']);self.assertTrue((stage/'candidate.json').exists())

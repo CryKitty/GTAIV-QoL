@@ -65,3 +65,50 @@ Automated tests cover native default/On-edge/startup requests, menu registration
 opt-in persistence, game-folder placement and spaced paths, request consumption,
 staging versus live apply, revalidation/tamper rejection, Off cancellation and
 manual-update invalidation. Live Deck systemd/Game Mode/exit acceptance remains.
+
+## Build identity and visible status
+
+`VERSION` is the named-release version, currently `0.1.0-beta.1`; it is not
+bumped per PR. `write-qol-version.py` embeds the Actions run number (`b47`, for
+example) and source SHA in the running ASI. Non-CI builds use a short commit if
+provided, otherwise `local`. Each main Actions build gets a different number.
+The displayed identity comes from the running binary, never a staged candidate.
+
+The existing update toggle's label becomes a compact row such as
+`QoL 0.1.0-beta.1 b47 | Checking...`; On/Off remains the normal value control.
+The 60-character native label buffer includes its terminator. Longer combinations
+omit the release version before shortening any status. States are:
+
+- Checking... → Downloading/staging → Staged - exit to apply.
+- Applying update after exit → Updated YYYY-MM-DD HH:MM on next launch.
+- Up to date; Updated MM/DD HH:MM after a later successful check.
+- Update failed - retry for check/download/apply/request failures; Off → On retries.
+- No published update when the selected beta channel has no release; Update
+  cancelled for cancelled staging. Off shows the retained Updated timestamp when
+  available, otherwise Updates off.
+
+Dates use the Deck's configured local time. The successful-install record survives
+relaunch, errors and same-build checks; staging never changes it. Enabled startup
+checks can briefly replace Updated with Checking, then Up to date plus Updated.
+Only a successful install records a new time. The first upgrade also seeds this
+receipt through the verified helper when an older updater performs installation.
+The pre-existing five-file payload, hashes, backup and settings preservation stay.
+
+The worker automatically writes `GTAIV-QoL-update-info.ini` beside the existing
+status JSON. It contains fixed state codes and validated public build/date fields,
+never authorization, private paths, API responses or exception text. The native
+menu reads at most 4 KiB without the Windows profile cache and refreshes changed
+labels on the game thread every 250 ms while paused, even with Compass HUD Off.
+An unclaimed request older than 120 seconds or active progress older than five
+minutes displays failure. Staged state does not expire. The existing worker poll
+interval still applies. The install timestamp is displayed only when its source
+SHA matches the running binary. No manual state-file edits are supported/needed.
+
+For acceptance, first install this feature with the existing updater and relaunch;
+the previous build cannot display the new states. Use the updater-only steps in
+the top changelog entry. A genuine downloading/staged/applied sequence requires a
+newer successful main build on the development channel (or a future published
+beta on that channel); toggling while already current cannot manufacture an
+update. This PR publishes no release. Offline testing may fail immediately or
+wait for the network timeout. After reconnecting, Off → On explicitly retries.
+No Deck acceptance result is claimed by the automated tests.

@@ -19,5 +19,6 @@ struct QolSettingsApi {
     void (__cdecl* MenuReady)(uint32_t registeredRows);
     // Optional additive tail; old version-1 hosts still use the first 20 bytes.
     int32_t (__cdecl* MenuLabel)(const char* key,wchar_t* text,uint32_t capacity);
+    void (__cdecl* SetMenuRefresh)(void (__cdecl* callback)());
 };
 typedef const QolSettingsApi* (__cdecl* QolGetSettingsApi)(uint32_t version);

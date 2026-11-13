@@ -302,3 +302,5 @@ BOOL WINAPI DllMain(HINSTANCE instance, DWORD reason, LPVOID) {
     return TRUE;
 }
 
+
+extern "C" __declspec(dllexport) void QoLSettings_RefreshMenu(unsigned paused){qolsettings::RefreshMenu(paused!=0);}
