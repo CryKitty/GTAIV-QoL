@@ -241,4 +241,104 @@ class RepairLockTests(unittest.TestCase):
                         with self.assertRaises(BlockingIOError):fcntl.flock(service_lock,fcntl.LOCK_EX | fcntl.LOCK_NB)
                 self.assertEqual(path.stat().st_ino,inode)
 
+class DeliveryTests(unittest.TestCase):
+    setUp=RecoveryTests.setUp
+    enqueue=RecoveryTests.enqueue
+    # Original supported uploader shape, with no QoL extension or network access
+    # during import/installation. Its API is replaced only in the drain test.
+    legacy = """import json, hashlib, sys
+from pathlib import Path
+ROOT = Path(__file__).parent
+NAMES = ('RoadNav.log', 'RoadNav-arrow.log')
+API = 'https://api.github.com/repos/CryKitty/GTAIV-Road-Nav'
+def snapshot(game): return {}
+def enqueue(game, before, code): pass
+def atomic(path, item): path.write_text(json.dumps(item))
+def drain(config): raise RuntimeError('old single-issue drain must never run')
+def body(item): return '<!-- roadnav-session:'+item['id']+' -->'
+def api(token, path, payload=None): raise ConnectionError('fixture offline')
+if __name__ == '__main__': pass
+"""
+
+    def installed(self, home):
+        game=home/'game';game.mkdir();(game/'GTAIV.exe').write_bytes(b'fixture')
+        uploader=home/'.local/share/roadnav-uploader/roadnav-upload.py'
+        uploader.parent.mkdir(parents=True);uploader.write_text(self.legacy,encoding='utf-8')
+        config=home/'.config/roadnav-uploader/config.json';config.parent.mkdir(parents=True)
+        config.write_text(json.dumps({'game':str(game),'token':'fixture auth','issue':10,'issue_date':'2000-01-01','other':True}))
+        (uploader.parent/'pending').mkdir();queued=self.enqueue(uploader.parent,123)
+        (uploader.parent/'delivered').mkdir();(uploader.parent/'delivered'/'kept.json').write_bytes(b'original receipt')
+        standalone=home/'.config/gtaiv-qol-updater/config.json';standalone.parent.mkdir(parents=True)
+        standalone.write_text(json.dumps({'channel':'dev','game':str(game)}))
+        return game,uploader,config,standalone,queued
+
+    def bundle(self):
+        import base64,hashlib
+        return {name:{'data':base64.b64encode(raw).decode(),'sha256':hashlib.sha256(raw).hexdigest()} for name,raw in {
+            'GTAIV-QoL.asi':b'updated main','GTAIV-QoL-Pause.asi':b'updated pause','GTAIV-QoL.ini':b'[RoadGPSLine]\nShowEnemy=1\n'}.items()}
+
+    def test_bundle_delivers_offline_despite_missing_or_different_standalone_game(self):
+        for selected in ('missing','different','trailing-slash'):
+            with self.subTest(selected=selected),tempfile.TemporaryDirectory() as tmp:
+                home=Path(tmp);game,uploader,config,standalone,queued=self.installed(home)
+                config_bytes=config.read_bytes();backup=uploader.with_name('roadnav-upload.before-qol.py');backup.write_bytes(b'pre-QoL original')
+                if selected=='missing':standalone.write_text('{}')
+                elif selected=='different':
+                    other=home/'other game';other.mkdir();(other/'GTAIV.exe').write_bytes(b'fixture')
+                    standalone.write_text(json.dumps({'game':str(other)}));game=other
+                else:standalone.write_text(json.dumps({'game':str(game)+'/'}))
+                with patch.object(Path,'home',return_value=home),patch.object(helper,'BUNDLE',self.bundle()),patch.object(helper,'dialog'),patch.object(helper.subprocess,'run'):
+                    helper.main();helper.main() # Installation is idempotent, without API access.
+                source=uploader.read_text(encoding='utf-8')
+                self.assertIn(helper.EXTENSION,source);self.assertEqual(helper.extend(source),source)
+                self.assertEqual((game/'GTAIV-QoL.asi').read_bytes(),b'updated main')
+                self.assertEqual(backup.read_bytes(),b'pre-QoL original');self.assertEqual(config.read_bytes(),config_bytes)
+                self.assertEqual(queued[0].read_bytes(),queued[1]);self.assertEqual((uploader.parent/'delivered'/'kept.json').read_bytes(),b'original receipt')
+                self.assertEqual(len(list(uploader.parent.glob('roadnav-upload.before-qol-upgrade-*.py'))),1)
+
+    def test_bundle_rolls_back_uploader_when_bundle_installation_fails(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home=Path(tmp);game,uploader,config,standalone,queued=self.installed(home);raw=uploader.read_bytes();auth=config.read_bytes()
+            with patch.object(Path,'home',return_value=home),patch.object(helper,'BUNDLE',self.bundle()),patch.object(helper,'install_bundle',side_effect=RuntimeError('fixture bundle failure')):
+                with self.assertRaisesRegex(RuntimeError,'fixture bundle failure'):helper.main()
+            self.assertEqual(uploader.read_bytes(),raw);self.assertEqual(config.read_bytes(),auth);self.assertEqual(queued[0].read_bytes(),queued[1])
+            self.assertEqual(uploader.with_name('roadnav-upload.before-qol.py').read_bytes(),raw)
+
+    def test_installed_upgrade_drains_into_today_not_old_single_issue(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home=Path(tmp);game,uploader,config,standalone,queued=self.installed(home);auth=config.read_bytes()
+            with patch.object(Path,'home',return_value=home),patch.object(helper,'BUNDLE',self.bundle()),patch.object(helper,'dialog'),patch.object(helper.subprocess,'run'):helper.main()
+            ns={'__name__':'fixture','__file__':str(uploader)};exec(uploader.read_text(encoding='utf-8'),ns)
+            posts=[]
+            def api(token,route,payload=None):
+                self.assertEqual(token,'fixture auth')
+                if payload:
+                    if route=='/issues':
+                        self.assertEqual(payload['title'],'QoL diagnostics — '+helper.diagnostics_issue_day())
+                        return {'number':42,'state':'open','locked':False,'comments':0}
+                    self.assertEqual(route,'/issues/42/comments');posts.append(route);return {'id':1,'body':payload['body']}
+                if route=='':return {'private':True}
+                return []
+            ns['api']=api
+            with patch('time.sleep'):ns['drain'](json.loads(config.read_text()))
+            self.assertEqual(posts,['/issues/42/comments']);self.assertFalse(queued[0].exists())
+            self.assertEqual((uploader.parent/'delivered'/queued[0].name).read_bytes(),queued[1]);self.assertEqual(config.read_bytes(),auth)
+
+    def test_unrecognized_uploader_aborts_before_any_bundle_change(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home=Path(tmp);game,uploader,config,standalone,queued=self.installed(home)
+            uploader.write_text('def unknown_uploader(): pass\n');raw=uploader.read_bytes();auth=config.read_bytes()
+            (game/'GTAIV-QoL.asi').write_bytes(b'prior mod')
+            with patch.object(Path,'home',return_value=home),patch.object(helper,'BUNDLE',self.bundle()),patch.object(helper,'install_bundle') as install:
+                with self.assertRaisesRegex(RuntimeError,'unfamiliar'):helper.main()
+                install.assert_not_called()
+            self.assertEqual((game/'GTAIV-QoL.asi').read_bytes(),b'prior mod')
+            self.assertEqual(uploader.read_bytes(),raw);self.assertEqual(config.read_bytes(),auth);self.assertEqual(queued[0].read_bytes(),queued[1])
+
+    def test_current_marker_without_daily_logic_is_repaired(self):
+        source=helper.extend(self.legacy)
+        damaged=source.replace('def resolve_daily_issue(config):','def outdated_issue(config):')
+        fixed=helper.extend(damaged)
+        self.assertIn(helper.EXTENSION,fixed);self.assertEqual(helper.extend(fixed),fixed)
+
 if __name__=='__main__':unittest.main()

@@ -53,3 +53,92 @@ Public CI uses the checksum-verified vendored FusionFix menu seed and licence, n
 ## Current UI acceptance
 
 Run the rebuilt installer from the complete archive. Confirm each missing dependency has its own screen with only applicable actions; completed dependencies disappear. Steam compatibility configuration is automatic, including when multiple versions are installed. Final review shows all checks green and only Install; completion offers only Finish/Close. In game, use QoL → Road Line On/Off; legacy Flat/Twisted both become On and Off stays Off. Hold D-pad Left over a compass icon on foot/in a vehicle: its ring fills for the existing 900 ms hold and Setting waypoint sits below it. Release/phone/combat/control/focus gates still cancel. No file edits or save/cloud changes are required.
+
+
+## Diagnostics uploader delivery and ownership
+
+The RoadNav uploader remains the installed program run by its existing systemd
+user timer/service. The **QoL helper owns an idempotent extension patch** to that
+program; it does not replace RoadNav's API/authentication/base queue machinery
+or redirect its systemd unit. The updater delivers that helper in the existing
+checksum-verified `install-helper.py` payload entry. No sixth archive entry is
+needed: the updater FILES set/schema, packaging allowlist and size checks remain
+compatible with the installed updater.
+
+Every bundle install now runs the patch, independently of the selected game's
+relationship to the RoadNav game setting. It uses the selected updater game,
+or falls back to the saved RoadNav game when the standalone value is absent.
+The installed uploader is recognized and syntax-checked offline, the existing
+session/upload locks are respected, and replacement is atomic and verified.
+A bundle failure rolls back the uploader while the bundle installer restores
+its own prior files. A configured-but-missing or unfamiliar uploader fails the
+update instead of reporting completion. A fresh QoL-only installation with no
+RoadNav setup is still supported.
+
+The existing pre-QoL backup is never overwritten. Later source revisions are
+also saved as `roadnav-upload.before-qol-upgrade-<source-sha256-prefix>.py`,
+separately from that original. Source/backup/rollback use UTF-8 bytes without
+newline conversion. The bundle repair does not write the RoadNav configuration:
+token, game, issue/issue_date and other keys remain byte-for-byte unchanged;
+pending and delivered originals stay in place. The daily resolver chooses the
+current UTC day's private issue at upload time, independently of the old saved
+single-issue destination. Old issues are read only for receipt reconciliation;
+new comments go to the usable daily issue. Confirmed originals move to delivered;
+failed/ambiguous requests remain pending. The existing 20-item batch cap remains.
+
+Manual updater same-build checks compare the installed uploader with the full
+canonical extension in the downloaded verified helper before returning “Already
+up to date.” Successful installation caches that verified helper beside the
+persistent updater, with its existing manifest hash. The in-game worker verifies
+that cache before its same-SHA shortcut and, when necessary, downloads/stages a
+same-build repair; installation waits until GTA IV exits. A newer installed beta
+is never downgraded to repair diagnostics from an older payload; a failing health
+check reports an incomplete repair instead of claiming it is up to date.
+
+### 2026-11-13 investigation and acceptance
+
+The user's Deck check at approximately 12:55 CST established that installed.json
+records PR #9 merge `8f26fba05f4f13a4005bd396b254989a44fba22e`, but the separate
+running uploader still lacks daily-issue code. Pending captures grew from 1,958
+to 2,671. There is still **no “QoL diagnostics — 2026-11-13” issue** in the private
+repo; only #2, #9 and #10 exist, each full at 2,500 comments. Today's captures are
+not there. No uploaded reproduction evidence is claimed.
+
+The successful skip path in PR #9 is `apply_update → verified helper.main →
+BUNDLE + selected game + missing/linked uploader, missing RoadNav configuration,
+or Path(game) mismatch → install_bundle → return → record installed.json`.
+No extension or API validation runs on that branch. `Path` comparison normalizes
+trailing separators but does not resolve symlink aliases; different saved game
+folders or unresolved aliases can take the bypass. A missing standalone game
+value does not take that old branch: it falls through to the RoadNav game.
+The supplied Deck evidence does not include the saved path values or the exact
+installed uploader source, so the specific trigger cannot be asserted as a
+recorded fact. Deterministic tests reproduce the bypass conditions and repair.
+
+On the old non-bypass path, daily-issue/API failure and unsupported-source
+recognition both abort **before** bundle installation and before installed.json
+is recorded. Neither by itself explains a successful new-ASIs/new-state update
+with an untouched old uploader. Supported pre-QoL NAMES/API/queue/entrypoint
+fixtures extend successfully; the exact Deck file was not available to inspect.
+Package-updater embeds this helper; package-log-helper makes a separate manual
+launcher, which the normal update never launched. Guided setup invokes the same
+apply_update, and same-SHA shortcuts previously checked only mod/updater files.
+The former tests separately covered extension/drain and bundle installation;
+they did not cover the path mismatch or same-SHA stale-uploader combination.
+
+**Deck acceptance remains outstanding.** After Muse merges, main CI succeeds,
+and one installed updater run completes (no file copying/editing):
+
+1. Read-only verification: the installed `roadnav-upload.py` must contain
+   `QOL_FULL_CAPTURE_V13`, `QOL_UPLOAD_RECOVERY_V2` and `def resolve_daily_issue`.
+2. Let the existing service retry. A private `QoL diagnostics — YYYY-MM-DD` issue
+   for the current UTC date must appear. No diagnostics belong in the public repo.
+3. Confirm pending decreases from the reported 2,671 over repeated timer batches,
+   with confirmed originals retained in delivered. A backlog larger than the
+   per-issue limit may require another issue with the same daily title.
+4. Run the updater again; it should report up to date only after the code check.
+   Test Pause → QoL → Check for QoL Updates separately, exit GTA IV for apply,
+   and confirm all previous menu choices and upload authorization still work.
+
+No release or merge is performed as part of this change. These are verification
+steps, not a claim that the remote Deck/service has been exercised here.
