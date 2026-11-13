@@ -357,7 +357,7 @@ public:
             if(sprite<=BLIP_OBJECTIVE_5){only=blip;++count;}
         }
         if(yellowCount==1)return yellow;
-        if(yellowCount>1)return {};
+        if(yellowCount>1)return yellow;
         return count==1?only:Blip{};
     }
 
@@ -579,7 +579,12 @@ public:
             const auto distance=compass::waypointMiles(roadnav::distance2D(playerPoint,pinnedPoint));
             text(mid,y,distance.c_str(),.22f,215,1.0f,1.10f);hoverLabelY=y+.032f;
         }
-        const auto message=messages_.snapshot();
+        else if(haveMissionPoint&&!missionBrief.empty()){
+        pinnedObjective=true;float y=compass::waypointLabelY(caption.visible());
+        const auto lines=awareness::briefLines(missionBrief);for(const auto& line:lines){text(mid,y,line.c_str(),.22f,235,.85f,1.10f);y+=.024f;}
+        const auto distance=compass::waypointMiles(roadnav::distance2D(playerPoint,missionPoint));text(mid,y,distance.c_str(),.22f,215,1.0f,1.10f);hoverLabelY=y+.032f;
+    }
+    const auto message=messages_.snapshot();
         compass::NoticeFrame noticeFrame{message.alpha(now),now,minimap_.frontendAddress()};
         if(!dictionary_.IsValid()&&(!dictionaryRetry_||now-dictionaryRetry_>=1000)){dictionary_=GetTxd("blips");dictionaryRetry_=now;}
         for(const auto& item:placed){

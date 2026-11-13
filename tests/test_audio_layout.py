@@ -42,7 +42,7 @@ if __name__ == '__main__': pass
 """)
             config = home/'.config/roadnav-uploader/config.json'
             config.parent.mkdir(parents=True)
-            config.write_text(json.dumps({'game': str(game), 'issue': 2, 'token': 'fixture-secret'}))
+            config.write_text(json.dumps({'game': str(game), 'issue': 10, 'issue_date': helper.diagnostics_issue_day(), 'token': 'fixture-secret'}))
             # The installer targets Linux; CI also exercises it on Windows.
             # Stub only the OS lock boundary, retaining capture and real queue writes.
             lock_api = mock.Mock(LOCK_EX=2, LOCK_NB=4)

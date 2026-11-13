@@ -61,6 +61,17 @@ int main(){
     }
 
     {
+        // A borrowed GPS slot is retried after 30s instead of waiting forever.
+        PrimaryGpsRecovery recovery;
+        const Vec3 objective{300,100,0};
+        assert(recovery.due(0,42,objective,false,false));
+        assert(!recovery.due(1000,42,objective,false,true));
+        assert(!recovery.due(30999,42,objective,false,true)); // still borrowed inside the window
+        assert(recovery.due(31000,42,objective,false,true)); // window expires: retry anyway
+        assert(!recovery.due(32000,42,objective,false,true)); // new request still gets its window
+    }
+
+    {
         // A wanted pursuit renews at the endpoint without clearing committed geometry.
         const std::vector<Vec3> old{{0,0,0},{300,0,0}};
         auto displayed=roadLine(old,{200,0,0},20);

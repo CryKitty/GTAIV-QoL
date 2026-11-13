@@ -14,6 +14,55 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+from datetime import datetime, timezone
+
+DIAGNOSTICS_ISSUE_MAX_COMMENTS = 2500
+DIAGNOSTICS_ISSUE_TITLE_PREFIX = 'QoL diagnostics'
+
+
+def diagnostics_issue_day():
+    return datetime.now(timezone.utc).date().isoformat()
+
+
+def diagnostics_issue_title(day=None):
+    return '%s — %s' % (DIAGNOSTICS_ISSUE_TITLE_PREFIX, day or diagnostics_issue_day())
+
+
+def diagnostics_issue_usable(issue):
+    return (isinstance(issue, dict) and issue.get('state') == 'open'
+            and not issue.get('locked')
+            and int(issue.get('comments') or 0) < DIAGNOSTICS_ISSUE_MAX_COMMENTS)
+
+
+def resolve_diagnostics_issue(api, token, config):
+    day = diagnostics_issue_day()
+    current = config.get('issue')
+    if isinstance(current, int) and config.get('issue_date') == day:
+        try:
+            current_issue = api(token, '/issues/%d' % current)
+        except Exception:
+            current_issue = None
+        if diagnostics_issue_usable(current_issue):
+            return current
+    try:
+        open_issues = api(token, '/issues?state=open&per_page=100') or []
+    except Exception:
+        open_issues = []
+    for candidate in open_issues:
+        if (candidate.get('title') == diagnostics_issue_title(day)
+                and diagnostics_issue_usable(candidate)):
+            config['issue'] = candidate['number']
+            config['issue_date'] = day
+            return candidate['number']
+    created = api(token, '/issues', {
+        'title': diagnostics_issue_title(day),
+        'body': ('Daily automatic diagnostics uploads for the GTA IV QoL mod. '
+                 'New captures for this date go here.'),
+    })
+    config['issue'] = created['number']
+    config['issue_date'] = day
+    return created['number']
+
 
 TITLE = 'GTA IV QoL bundle'
 BUNDLE = {}
@@ -212,7 +261,7 @@ def audio_layout_report(game):
     return text
 
 
-EXTENSION = "# QOL_FULL_CAPTURE_V12\n# Added by the QoL helper. Keep the established API/auth/retry implementation.\n_qol_original_snapshot = snapshot\n\ndef snapshot(game):\n    result = _qol_original_snapshot(game)\n    for name in NAMES:\n        if name not in NAMES:\n            continue\n        path = game / name\n        if path.is_file() and not path.is_symlink():\n            st = path.stat()\n            # ASI capture is capped at 1 MiB; allow its final record too.\n            with path.open('rb') as stream:\n                # RoadNav and third-party logs append across sessions. Keep the newest fault.\n                tail = max(0, st.st_size - (1048576 + 8192)) if name in ('RoadNav.log', 'RoadNav-arrow.log', 'ScriptHook.log', 'LibertyLoadout.log', 'FusionFix.log') else 0\n                stream.seek(tail)\n                data = stream.read(1048576 + 8192)\n                if tail:\n                    data = ('[Tail capture: %d earlier bytes omitted]\\n' % tail).encode() + data\n            result[name] = {'stamp': [st.st_ino, st.st_mtime_ns, st.st_size],\n                            'text': data.decode('utf-8', 'replace')}\n    return result\n\n\ndef enqueue(game, before, code):\n    import datetime\n    import uuid\n    current = snapshot(game)\n    changed = [(name, value['text']) for name, value in current.items()\n               if name not in before or value['stamp'] != before[name]['stamp']]\n    if not changed:\n        return\n    asi = game / 'GTAIV-QoL.asi'\n    digest = hashlib.sha256(asi.read_bytes()).hexdigest() if asi.is_file() else 'missing'\n    session = uuid.uuid4().hex\n    parts = []\n    # Put the current session's navigation evidence ahead of full historical logs.\n    # Full captures below are retained; this does not narrow diagnostic coverage.\n    arrow = current.get('RoadNav-arrow.log', {}).get('text', '')\n    if arrow and any(name == 'RoadNav-arrow.log' for name, _ in changed):\n        start = arrow.rfind('RoadNav v')\n        recent = arrow[start:] if start >= 0 else arrow\n        keys = [line for line in recent.splitlines() if any(tag in line for tag in\n                ('RoadNav v', 'native observers', 'mission brief:', 'Compass objective:',\n                 'Compass bound objective:', 'Transition cover:', 'Fork scan:', 'Automatic guidance:', 'attacker pool:', 'passive fault', 'GPS request:', 'Mission guidance:', 'Road line route:', 'Road line routes:', 'Road surface:', 'Police escape surface:', 'Police search probe:', 'Road GPS Line:', 'Compass minimap:', 'Police escape:', 'Compass: geometry masked', 'radar layout guard'))]\n        escape = [line for line in recent.splitlines() if 'Police escape:' in line]\n        summary = '\\n'.join(keys[-60:]) + '\\n\\nRecent navigation tail:\\n' + recent[-4000:] + '\\n\\nEscape planning for this session:\\n' + '\\n'.join(escape[-60:])\n        radar = [line for line in recent.splitlines() if 'Compass radar ' in line or 'Compass minimap: typed radar queue' in line]\n        summary = summary[-16000:] + '\\n\\nRadar initialization for this session:\\n' + '\\n'.join(radar[-100:])[-12000:]\n        parts.append(('QoL-session-summary.txt', summary))\n    for name, text in changed:\n        # Bound rendered comment length even for newline-heavy logs.\n        part, rendered = '', 0\n        for char in text:\n            cost = 5 if char == '\\n' else 1\n            if rendered + cost > 40000:\n                parts.append((name, part))\n                part, rendered = '', 0\n            part += char\n            rendered += cost\n        parts.append((name, part))\n    for number, (name, text) in enumerate(parts, 1):\n        item = {'id': uuid.uuid4().hex,\n                'utc': datetime.datetime.now(datetime.timezone.utc).isoformat(),\n                'exit': str(code) + '; QoL capture ' + session + ' part ' + str(number) + '/' + str(len(parts)) + '; GTAIV-QoL.asi SHA256=' + digest,\n                # Existing renderer labels this RoadNav hash; do not mislabel QoL.\n                'asi_sha256': 'not collected; QoL hash is above',\n                'logs': {name: text}}\n        priority = '0000-police-' if name == 'GTAIV-QoL-police.log' else '0000-nav-' if name == 'QoL-session-summary.txt' else ''\n        atomic(ROOT / 'pending' / (priority + item['id'] + '.json'), item)\n\n# QOL_UPLOAD_RECOVERY_V1\n# Explicit destination migration from the full issue #2. Pending items keep\n# their original identifiers and content, and delivered originals are archived.\ndef drain(config):\n    import fcntl\n    import re\n    import time\n    with (ROOT / 'upload.lock').open('a') as lock:\n        try:\n            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)\n        except BlockingIOError:\n            return\n        pending = ROOT / 'pending'\n        paths = list(pending.glob('*.json'))\n        if not paths:\n            return\n        try:\n            if int(config['issue']) not in (2, 9, 10):\n                raise RuntimeError('Unrecognized upload destination')\n            if not api(config['token'], '')['private']:\n                raise RuntimeError('Log repository must remain private')\n            destination = api(config['token'], '/issues/10')\n            if destination.get('state') != 'open' or destination.get('locked'):\n                raise RuntimeError('Replacement log issue is unavailable')\n            # Fetch each issue once per batch, rather than all history for every\n            # single queued part. Include the old issue to reconcile lost replies.\n            known = set()\n            for issue in (2, 9, 10):\n                page = 1\n                while True:\n                    comments = api(config['token'], '/issues/%d/comments?per_page=100&page=%d' % (issue, page))\n                    for comment in comments:\n                        known.update(re.findall(r'<!-- roadnav-session:([0-9a-f]{32}) -->', comment.get('body') or ''))\n                    if len(comments) < 100:\n                        break\n                    page += 1\n            delivered = ROOT / 'delivered'\n            if delivered.is_symlink():\n                raise RuntimeError('Linked receipt archive')\n            delivered.mkdir(exist_ok=True, mode=0o700)\n            # Bring the newest navigation summary forward without dropping older\n            # sessions or full diagnostics. The timer continues bounded batches.\n            def priority(path):\n                if path.name.startswith('0000-police-'):return 0\n                if path.name.startswith('0000-nav-'):return 1\n                # Existing queue entries retain their original names and bytes.\n                # Bring route evidence ahead of very large third-party logs.\n                try:\n                    if 'RoadNav-arrow.log' in json.loads(path.read_text()).get('logs', {}):return 2\n                except (OSError, ValueError):pass\n                return 3\n            paths.sort(key=lambda p: (priority(p), -p.stat().st_mtime_ns, p.name))\n            for path in paths[:20]:\n                if path.is_symlink():\n                    raise RuntimeError('Linked queue entry')\n                item = json.loads(path.read_text())\n                if not re.fullmatch(r'[0-9a-f]{32}', item['id']):\n                    raise RuntimeError('Invalid queued session ID')\n                archive = delivered / path.name\n                if archive.exists() or archive.is_symlink():\n                    raise RuntimeError('Receipt archive collision; queue retained')\n                marker = '<!-- roadnav-session:' + item['id'] + ' -->'\n                if item['id'] not in known:\n                    receipt = api(config['token'], '/issues/10/comments', {'body': body(item)})\n                    if not receipt.get('id') or marker not in (receipt.get('body') or ''):\n                        raise RuntimeError('Upload receipt not confirmed')\n                    known.add(item['id'])\n                    time.sleep(1.1)\n                # Never unlink queued diagnostics. Move the exact original only\n                # after a confirmed receipt, preserving it locally in delivered/.\n                path.replace(archive)\n                print('RoadNav: confirmed session ' + item['id'] + '; original archived locally')\n        except Exception as exc:\n            # Do not expose tokens, request bodies or headers in service logs.\n            print('RoadNav: upload deferred (' + type(exc).__name__ + '); pending diagnostics preserved.', file=sys.stderr)\n"
+EXTENSION = "# QOL_FULL_CAPTURE_V12\n# Added by the QoL helper. Keep the established API/auth/retry implementation.\n_qol_original_snapshot = snapshot\n\ndef snapshot(game):\n    result = _qol_original_snapshot(game)\n    for name in NAMES:\n        if name not in NAMES:\n            continue\n        path = game / name\n        if path.is_file() and not path.is_symlink():\n            st = path.stat()\n            # ASI capture is capped at 1 MiB; allow its final record too.\n            with path.open('rb') as stream:\n                # RoadNav and third-party logs append across sessions. Keep the newest fault.\n                tail = max(0, st.st_size - (1048576 + 8192)) if name in ('RoadNav.log', 'RoadNav-arrow.log', 'ScriptHook.log', 'LibertyLoadout.log', 'FusionFix.log') else 0\n                stream.seek(tail)\n                data = stream.read(1048576 + 8192)\n                if tail:\n                    data = ('[Tail capture: %d earlier bytes omitted]\\n' % tail).encode() + data\n            result[name] = {'stamp': [st.st_ino, st.st_mtime_ns, st.st_size],\n                            'text': data.decode('utf-8', 'replace')}\n    return result\n\n\ndef enqueue(game, before, code):\n    import datetime\n    import uuid\n    current = snapshot(game)\n    changed = [(name, value['text']) for name, value in current.items()\n               if name not in before or value['stamp'] != before[name]['stamp']]\n    if not changed:\n        return\n    asi = game / 'GTAIV-QoL.asi'\n    digest = hashlib.sha256(asi.read_bytes()).hexdigest() if asi.is_file() else 'missing'\n    session = uuid.uuid4().hex\n    parts = []\n    # Put the current session's navigation evidence ahead of full historical logs.\n    # Full captures below are retained; this does not narrow diagnostic coverage.\n    arrow = current.get('RoadNav-arrow.log', {}).get('text', '')\n    if arrow and any(name == 'RoadNav-arrow.log' for name, _ in changed):\n        start = arrow.rfind('RoadNav v')\n        recent = arrow[start:] if start >= 0 else arrow\n        keys = [line for line in recent.splitlines() if any(tag in line for tag in\n                ('RoadNav v', 'native observers', 'mission brief:', 'Compass objective:',\n                 'Compass bound objective:', 'Transition cover:', 'Fork scan:', 'Automatic guidance:', 'attacker pool:', 'passive fault', 'GPS request:', 'Mission guidance:', 'Road line route:', 'Road line routes:', 'Road surface:', 'Police escape surface:', 'Police search probe:', 'Road GPS Line:', 'Compass minimap:', 'Police escape:', 'Compass: geometry masked', 'radar layout guard'))]\n        escape = [line for line in recent.splitlines() if 'Police escape:' in line]\n        summary = '\\n'.join(keys[-60:]) + '\\n\\nRecent navigation tail:\\n' + recent[-4000:] + '\\n\\nEscape planning for this session:\\n' + '\\n'.join(escape[-60:])\n        radar = [line for line in recent.splitlines() if 'Compass radar ' in line or 'Compass minimap: typed radar queue' in line]\n        summary = summary[-16000:] + '\\n\\nRadar initialization for this session:\\n' + '\\n'.join(radar[-100:])[-12000:]\n        parts.append(('QoL-session-summary.txt', summary))\n    for name, text in changed:\n        # Bound rendered comment length even for newline-heavy logs.\n        part, rendered = '', 0\n        for char in text:\n            cost = 5 if char == '\\n' else 1\n            if rendered + cost > 40000:\n                parts.append((name, part))\n                part, rendered = '', 0\n            part += char\n            rendered += cost\n        parts.append((name, part))\n    for number, (name, text) in enumerate(parts, 1):\n        item = {'id': uuid.uuid4().hex,\n                'utc': datetime.datetime.now(datetime.timezone.utc).isoformat(),\n                'exit': str(code) + '; QoL capture ' + session + ' part ' + str(number) + '/' + str(len(parts)) + '; GTAIV-QoL.asi SHA256=' + digest,\n                # Existing renderer labels this RoadNav hash; do not mislabel QoL.\n                'asi_sha256': 'not collected; QoL hash is above',\n                'logs': {name: text}}\n        priority = '0000-police-' if name == 'GTAIV-QoL-police.log' else '0000-nav-' if name == 'QoL-session-summary.txt' else ''\n        atomic(ROOT / 'pending' / (priority + item['id'] + '.json'), item)\n\n# QOL_UPLOAD_RECOVERY_V2\n# Daily destination rotation: a fresh issue per UTC day. Pending items keep\n# their original identifiers and content, and delivered originals are archived.\ndef resolve_daily_issue(config):\n    import time\n    day = time.strftime('%Y-%m-%d', time.gmtime())\n    title = 'QoL diagnostics — %s' % day\n    def usable(issue):\n        return isinstance(issue, dict) and issue.get('state') == 'open' and not issue.get('locked') and int(issue.get('comments') or 0) < 2500\n    current = config.get('issue')\n    if isinstance(current, int) and config.get('issue_date') == day:\n        try:\n            issue = api(config['token'], '/issues/%d' % current)\n        except Exception:\n            issue = None\n        if usable(issue):\n            return issue\n    try:\n        open_issues = api(config['token'], '/issues?state=open&per_page=100') or []\n    except Exception:\n        open_issues = []\n    for candidate in open_issues:\n        if candidate.get('title') == title and usable(candidate):\n            config['issue'] = candidate['number']\n            config['issue_date'] = day\n            return candidate\n    created = api(config['token'], '/issues', {'title': title, 'body': 'Daily automatic diagnostics uploads for the GTA IV QoL mod. New captures for this date go here.'})\n    config['issue'] = created['number']\n    config['issue_date'] = day\n    return created\n\n\ndef drain(config):\n    import fcntl\n    import re\n    import time\n    with (ROOT / 'upload.lock').open('a') as lock:\n        try:\n            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)\n        except BlockingIOError:\n            return\n        pending = ROOT / 'pending'\n        paths = list(pending.glob('*.json'))\n        if not paths:\n            return\n        try:\n            # The destination rotates daily; see resolve_daily_issue.\n            if not api(config['token'], '')['private']:\n                raise RuntimeError('Log repository must remain private')\n            destination = resolve_daily_issue(config)\n            # resolve_daily_issue already picked a usable issue.\n            # Fetch each issue once per batch, rather than all history for every\n            # single queued part. Include the old issue to reconcile lost replies.\n            known = set()\n            for issue in (2, 9, 10, destination['number']):\n                page = 1\n                while True:\n                    comments = api(config['token'], '/issues/%d/comments?per_page=100&page=%d' % (issue, page))\n                    for comment in comments:\n                        known.update(re.findall(r'<!-- roadnav-session:([0-9a-f]{32}) -->', comment.get('body') or ''))\n                    if len(comments) < 100:\n                        break\n                    page += 1\n            delivered = ROOT / 'delivered'\n            if delivered.is_symlink():\n                raise RuntimeError('Linked receipt archive')\n            delivered.mkdir(exist_ok=True, mode=0o700)\n            # Bring the newest navigation summary forward without dropping older\n            # sessions or full diagnostics. The timer continues bounded batches.\n            def priority(path):\n                if path.name.startswith('0000-police-'):return 0\n                if path.name.startswith('0000-nav-'):return 1\n                # Existing queue entries retain their original names and bytes.\n                # Bring route evidence ahead of very large third-party logs.\n                try:\n                    if 'RoadNav-arrow.log' in json.loads(path.read_text()).get('logs', {}):return 2\n                except (OSError, ValueError):pass\n                return 3\n            paths.sort(key=lambda p: (priority(p), -p.stat().st_mtime_ns, p.name))\n            for path in paths[:20]:\n                if path.is_symlink():\n                    raise RuntimeError('Linked queue entry')\n                item = json.loads(path.read_text())\n                if not re.fullmatch(r'[0-9a-f]{32}', item['id']):\n                    raise RuntimeError('Invalid queued session ID')\n                archive = delivered / path.name\n                if archive.exists() or archive.is_symlink():\n                    raise RuntimeError('Receipt archive collision; queue retained')\n                marker = '<!-- roadnav-session:' + item['id'] + ' -->'\n                if item['id'] not in known:\n                    receipt = api(config['token'], '/issues/%d/comments' % destination['number'], {'body': body(item)})\n                    if not receipt.get('id') or marker not in (receipt.get('body') or ''):\n                        raise RuntimeError('Upload receipt not confirmed')\n                    known.add(item['id'])\n                    time.sleep(1.1)\n                # Never unlink queued diagnostics. Move the exact original only\n                # after a confirmed receipt, preserving it locally in delivered/.\n                path.replace(archive)\n                print('RoadNav: confirmed session ' + item['id'] + '; original archived locally')\n        except Exception as exc:\n            # Do not expose tokens, request bodies or headers in service logs.\n            print('RoadNav: upload deferred (' + type(exc).__name__ + '); pending diagnostics preserved.', file=sys.stderr)\n"
 
 
 def extend(source):
@@ -439,15 +488,27 @@ def upload_repair_lock(root):
             except (OSError,subprocess.TimeoutExpired):pass # Persistent queue remains for the timer/manual retry.
 
 
+def save_upload_config(config_path, config):
+    tmp = config_path.with_suffix('.qol-log-config-tmp')
+    if tmp.is_symlink():
+        raise RuntimeError('Linked upload configuration temporary file.')
+    tmp.write_text(json.dumps(config))
+    tmp.chmod(0o600)
+    tmp.replace(config_path)
+
+
 def migrate_upload_destination(config_path,config):
-    if int(config['issue']) not in (2,9,10):
+    if not isinstance(config.get('issue'), int):
         raise RuntimeError('Unrecognized RoadNav log issue; configuration unchanged.')
-    if int(config['issue'])==10:return
-    backup=config_path.with_name('config.before-log-issue-10.json')
+    if config.get('issue_date') == diagnostics_issue_day():
+        return
+    backup = config_path.with_name('config.before-log-issue-%d.json' % config['issue'])
     if not backup.exists():
         with backup.open('x') as stream:stream.write(config_path.read_text())
         backup.chmod(0o600)
-    updated=dict(config,issue=10)
+    updated = dict(config)
+    updated['issue'] = None
+    updated['issue_date'] = None
     tmp=config_path.with_suffix('.qol-log-migration-tmp')
     if tmp.is_symlink():raise RuntimeError('Linked upload configuration temporary file.')
     tmp.write_text(json.dumps(updated));tmp.chmod(0o600);tmp.replace(config_path)
@@ -475,8 +536,8 @@ def main():
     if not config_path.is_file() or not uploader.is_file() or uploader.is_symlink():
         raise RuntimeError('The existing RoadNav automatic uploader was not found. No files were changed.')
     config = json.loads(config_path.read_text())
-    if int(config['issue']) not in (2,9,10):
-        raise RuntimeError('Expected the private RoadNav log issue #2, #9 or #10. No files were changed.')
+    if config.get('issue') is not None and not isinstance(config.get('issue'), int):
+        raise RuntimeError('The RoadNav log configuration has an invalid diagnostics issue. No files were changed.')
     game = Path(config['game'])
     if not (game/'GTAIV.exe').is_file():
         raise RuntimeError('The saved RoadNav game folder no longer contains GTAIV.exe. No files were changed.')
@@ -488,9 +549,11 @@ def main():
     updated = extend(source)
     if not module.api(config['token'], '')['private']:
         raise RuntimeError('The RoadNav repository is not private. Nothing was uploaded or changed.')
-    destination=module.api(config['token'], '/issues/10')
-    if destination.get('state')!='open' or destination.get('locked'):
-        raise RuntimeError('Replacement log issue #10 is unavailable; queued logs were preserved.')
+    try:
+        resolve_diagnostics_issue(module.api, config['token'], config)
+    except Exception:
+        raise RuntimeError('No diagnostics issue is available today; queued logs were preserved.') from None
+    save_upload_config(config_path, config)
     root = uploader.parent
     with (root/'session.lock').open('a') as lock:
         import fcntl
@@ -506,7 +569,7 @@ def main():
                 if not backup.exists():
                     backup.write_text(source); backup.chmod(0o700)
                 tmp = uploader.with_suffix('.qol-tmp')
-                tmp.write_text(updated); tmp.chmod(0o700); tmp.replace(uploader)
+                tmp.write_text(updated, encoding='utf-8'); tmp.chmod(0o700); tmp.replace(uploader)
             migrate_upload_destination(config_path,config)
             # Read metadata only; no game binary or audio samples are uploaded.
             # A failed optional inventory must not interrupt installation or existing logs.
@@ -545,7 +608,7 @@ def main():
     elif pending:
         message += 'The existing log was captured. Some uploads remain queued; RoadNav will retry in the background. Tell Codex you ran the helper.'
     else:
-        message += 'The existing QoL log has been delivered to the private RoadNav log issue #10. Tell Codex to check it. No game launch is needed.'
+        message += 'The existing QoL log has been delivered to the private RoadNav log issue for today. Tell Codex to check it. No game launch is needed.'
     if BUNDLE:
         message = ('Installed QoL bundle '+INSTALL_BUILD+' with verified ASI checksums.\nYour settings were preserved. Prior QoL, RoadNav and FusionFix files were backed up; standalone RoadNav copies were disabled.\n\nQoL tab: RoadNav, Map Autozoom, Pause During Cutscenes and Cutscene Audio Volume. Audio: Cutscene Audio controls the complete cutscene mix; gameplay volume is restored afterward. Esc/Start pauses and resumes cutscenes without a time limit.\n\n') + message
     dialog("GTA IV QoL is ready to play. Logs will upload in the background.")
