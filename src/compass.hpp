@@ -27,6 +27,10 @@ inline bool missionYellow(unsigned colour){
 }
 struct ChaseCandidate {std::uint32_t handle;float distance,speed;bool vehicle=false;};
 inline bool chaseEnabled(bool legacy,bool roadLine,bool enemyLine){return legacy||(roadLine&&enemyLine);}
+// Only the visible enemy-line request can preempt automatic police escape.
+inline bool enemyOwnsAutomaticGps(bool fixedPrimary,bool roadLine,bool enemyLine,bool liveEnemy){
+    return !fixedPrimary&&roadLine&&enemyLine&&liveEnemy;
+}
 inline bool allowChase(bool enabled,bool waypoint,bool ownsRoute,bool authoritativeRoute){
     return enabled&&!waypoint&&(ownsRoute||!authoritativeRoute);
 }

@@ -9,11 +9,17 @@
 #include "../src/primary_route_replan.hpp"
 #include "../src/escape_gps_request.hpp"
 #include "../src/navigation_awareness.hpp"
+#include "../src/compass.hpp"
 #include <cassert>
 #include <cstdio>
 using namespace roadnav;
 int main(){
     {
+        assert(compass::enemyOwnsAutomaticGps(false,true,true,true)); // wanted must not veto acquisition
+        assert(!compass::enemyOwnsAutomaticGps(true,true,true,true)); // fixed goal retains priority
+        assert(!compass::enemyOwnsAutomaticGps(false,true,false,true)); // Enemy Off returns escape ownership
+        assert(!compass::enemyOwnsAutomaticGps(false,false,true,true));
+        assert(!compass::enemyOwnsAutomaticGps(false,true,true,false));
         // A target moving every 200ms must not cancel a cold GPS request.
         unsigned requests=1;
         for(unsigned elapsed=200;elapsed<6000;elapsed+=200){

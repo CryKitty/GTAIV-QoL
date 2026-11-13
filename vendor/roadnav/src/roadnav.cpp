@@ -610,7 +610,7 @@ class RoadNavScript final : public ScriptThread {
     DWORD noRouteSince_=0;
     void clearChase(){
         if(chaseRoute_.IsValid()&&Scripting::DoesBlipExist(chaseRoute_)){compass_.requestNavigationRoute(chaseRoute_,false);Scripting::RemoveBlip(chaseRoute_);event("Chase guidance: temporary route removed");}
-        if(escapeActive_&&primaryRouteBlip_.IsValid()&&Scripting::DoesBlipExist(primaryRouteBlip_))compass_.requestNavigationRoute(primaryRouteBlip_,true);
+        if(chaseRoute_.IsValid()&&primaryRouteBlip_.IsValid()&&Scripting::DoesBlipExist(primaryRouteBlip_))compass_.requestNavigationRoute(primaryRouteBlip_,true);
         escapeLine_={};gEscapeLineRenderer.clear();
         escapeShown_={};escapeOptions_.clear();escapePlanning_=false;escapeReplan_={};
         chaseRoute_={};chaseTarget_=0;chasePending_=false;chasePreviousNative_={};escapeActive_=false;compass_.setRouteHelper(0);
@@ -802,11 +802,19 @@ class RoadNavScript final : public ScriptThread {
         const bool matched=existingRoute&&roadnav::routeDestinationMatches(native.points,chasePoint_)&&
             !roadnav::sameGpsRoad(native.points,chasePreviousNative_.points);
         if(owns&&target.Get()==chaseTarget_){
-            if(!roadnav::chaseRefreshDue(now-chaseRefreshAt_,chasePending_,matched)||roadnav::distance2D(targetPoint,chasePoint_)<1)return;
+            if(matched)chasePending_=false;
+            if(!roadnav::chaseRefreshDue(now-chaseRefreshAt_,chasePending_,matched)||(!chasePending_&&roadnav::distance2D(targetPoint,chasePoint_)<1))return;
         }
         // Release the primary and reuse the helper through the same ownership
         // adapter as escape/forward jobs. Do not retire a pending job each tick.
-        EscapeGps api{compass_};
+        struct ChaseGps:EscapeGps {
+            unsigned target;
+            ChaseGps(CompassHud& hud,unsigned handle):EscapeGps{hud},target(handle){}
+            Scripting::Blip add(roadnav::Vec3 point){
+                auto next=EscapeGps::add(point);
+                return next.Get()==target?Scripting::Blip{}:next;
+            }
+        } api{compass_,target.Get()};
         auto next=policeescape::requestGps(chaseRoute_,primaryRouteBlip_,targetPoint,api);
         if(!api.exists(next)){clearChase();return;}
         chaseRoute_=next;chaseTarget_=target.Get();chasePoint_=targetPoint;chaseRefreshAt_=now;chasePending_=true;chasePreviousNative_=native;
@@ -1035,8 +1043,8 @@ protected:
             const bool wasPlanning=escapePlanning_;
             // A live enemy owns the automatic guidance slot before police escape.
             // Fixed player/mission destinations still retain their priority.
-            const bool enemyRequested=!fixedPrimary&&compass::chaseEnabled(chaseEnabled_,lineEnabled,qolclient::Enabled(QOL_LINE_ENEMY,true))&&
-                compass_.chaseTarget(player,ped,chaseTarget_).IsValid();
+            const bool enemyRequested=compass::enemyOwnsAutomaticGps(fixedPrimary,lineEnabled,qolclient::Enabled(QOL_LINE_ENEMY,true),
+                !fixedPrimary&&lineEnabled&&qolclient::Enabled(QOL_LINE_ENEMY,true)&&compass_.chaseTarget(player,ped,chaseTarget_).IsValid());
             if(enemyRequested&&escapeActive_)clearChase();
             if((enemyRequested||!updateEscape(ped,player,existingEscape,escapeNative,haveReplanVehicle?(motionSpeed_>=2.5f?velocity:travelHeading):roadnav::Vec3{}))&&!forwardRouteHelper_.IsValid())
                 updateChase(ped,player,waypoint,readPrimary,route);
