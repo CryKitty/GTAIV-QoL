@@ -86,6 +86,41 @@ class UpdaterTests(unittest.TestCase):
             self.assertFalse((root/'installed.json').exists())
             self.assertEqual((root/'qol-updater.py').read_bytes(),b'previous')
 
+    def test_same_sha_repairs_stale_uploader_and_ingame_check_stages_repair(self):
+        import sys
+        from unittest.mock import Mock
+        from test_upload_recovery import DeliveryTests
+        fixture=DeliveryTests()
+        files,manifest=payload()
+        files['install-helper.py']=(ROOT/'tools/steam-deck/enable-qol-logs.py').read_bytes()
+        files['qol-updater.py']=(ROOT/'tools/steam-deck/qol-updater.py').read_bytes()
+        files['GTAIV-QoL.ini']=b'[Updates]\nCheckForUpdates=1\n'
+        manifest['files']={name:hashlib.sha256(raw).hexdigest() for name,raw in files.items()}
+        data,candidate=archive(files,manifest);candidate.update(route='/fixture',label='fixture',size=len(data))
+        with tempfile.TemporaryDirectory() as tmp:
+            home=Path(tmp);game,uploader,config,standalone,queued=fixture.installed(home)
+            auth=config.read_bytes();state=home/'.local/share/gtaiv-qol-updater';state.mkdir()
+            (state/'qol-updater.py').write_bytes(files['qol-updater.py'])
+            saved=dict(manifest,repository=u.REPO,branch=u.BRANCH,channel='dev')
+            (state/'installed.json').write_text(json.dumps(saved))
+            phases=[]
+            with patch.object(Path,'home',return_value=home),patch.dict(sys.modules,{'fcntl':Mock(LOCK_EX=2,LOCK_NB=4)}),patch.object(u,'ROOT',state),patch.object(u,'CONFIG',standalone),patch.object(u,'shortcut'),patch.object(u,'bundle_files_intact',return_value=True),patch.object(u,'dev_candidate',return_value=candidate),patch.object(u,'request',return_value=data),patch.object(u.subprocess,'run'),patch.object(u,'progress',side_effect=lambda n,phase,**kw:phases.append(phase)):
+                self.assertTrue(u.updater_files_intact(saved))
+                self.assertFalse(u.uploader_files_intact(files))
+                u.perform_update() # Actual manifest verification, installer and uploader replacement.
+                self.assertIn('Update complete — ready to play',phases);self.assertNotIn('Already up to date',phases)
+                self.assertTrue(u.uploader_files_intact(files));self.assertTrue(u.uploader_files_intact())
+                self.assertEqual(config.read_bytes(),auth);self.assertEqual(queued[0].read_bytes(),queued[1])
+                phases.clear();u.perform_update();self.assertIn('Already up to date',phases)
+                uploader.write_text(fixture.legacy,encoding='utf-8')
+                # Same SHA in the in-game worker must stage, not short-circuit.
+                self.assertTrue(u.stage_game_update(game))
+                with patch.object(u,'game_running',return_value=True):self.assertFalse(u.apply_game_update(game))
+                self.assertFalse(u.uploader_files_intact(files))
+                with patch.object(u,'game_running',return_value=False):self.assertTrue(u.apply_game_update(game))
+                self.assertTrue(u.uploader_files_intact(files));self.assertFalse(u.stage_game_update(game))
+                self.assertEqual(config.read_bytes(),auth);self.assertEqual(queued[0].read_bytes(),queued[1])
+
     def test_redirect_never_forwards_private_token(self):
         import urllib.error
         requests=[]

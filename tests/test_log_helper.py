@@ -51,10 +51,10 @@ class HelperTests(unittest.TestCase):
             result = helper.extend(source)
             self.assertIn("'GTAIV-QoL-diagnostics.log'", result)
             self.assertEqual(helper.extend(result), result)
-            upgraded=helper.extend(result.replace('QOL_FULL_CAPTURE_V12','QOL_FULL_CAPTURE_V8'))
-            self.assertEqual(upgraded.count('# QOL_FULL_CAPTURE_V12'),1)
+            upgraded=helper.extend(result.replace('QOL_FULL_CAPTURE_V13','QOL_FULL_CAPTURE_V8'))
+            self.assertEqual(upgraded.count('# QOL_FULL_CAPTURE_V13'),1)
             self.assertNotIn('# QOL_FULL_CAPTURE_V8',upgraded)
-            self.assertLess(result.index('# QOL_FULL_CAPTURE_V12'), result.index("if __name__ == '__main__':"))
+            self.assertLess(result.index('# QOL_FULL_CAPTURE_V13'), result.index("if __name__ == '__main__':"))
 
     def test_complete_multichunk_capture_and_unchanged_suppression(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -19,7 +19,7 @@ import zipfile
 UPDATE_SOURCE={'repository':'CryKitty/GTAIV-QoL','branch':'main'}
 # Canonical public source. The old GTAIV-QoL-dev repository remains private.
 REPO=UPDATE_SOURCE['repository']
-BOOTSTRAP_REVISION=5
+BOOTSTRAP_REVISION=6
 PROGRESS_UI = ''
 PROGRESS = None
 
@@ -204,7 +204,9 @@ def apply_update(manifest,files,channel):
     messages=[]
     module.dialog=lambda message,error=False:messages.append(message)
     module.main() # existing game-session lock, backups, duplicate removal, log upgrade
+    if not uploader_files_intact(files):raise RuntimeError('Diagnostics uploader verification failed; update not completed.')
     progress(95,'Finishing installation')
+    atomic(ROOT/'install-helper.py',files['install-helper.py'])
     atomic(ROOT/'qol-updater.py',files['qol-updater.py'])
     atomic(ROOT/'installed.json',json.dumps({'sha':manifest['sha'],'files':manifest['files'],'channel':channel,'version':manifest.get('release_version',''),'repository':REPO,'branch':BRANCH}).encode())
     shortcut()
@@ -232,6 +234,25 @@ def updater_files_intact(saved):
                 hashlib.sha256(path.read_bytes()).hexdigest()==saved['files']['qol-updater.py'])
     except (OSError,KeyError,TypeError):return False
 
+def uploader_files_intact(files=None):
+    uploader=Path.home()/'.local/share/roadnav-uploader/roadnav-upload.py'
+    config=Path.home()/'.config/roadnav-uploader/config.json'
+    if not uploader.exists() and not uploader.is_symlink():return not config.exists()
+    try:
+        if uploader.is_symlink() or not uploader.is_file():return False
+        if files is None:
+            saved=json.loads((ROOT/'installed.json').read_text())
+            raw=(ROOT/'install-helper.py').read_bytes()
+            if hashlib.sha256(raw).hexdigest()!=saved['files']['install-helper.py']:return False
+        else:raw=files['install-helper.py'] # Already checked against the downloaded manifest.
+        module=types.ModuleType('qol_verified_upload_check')
+        exec(compile(raw,'<verified diagnostics installer>','exec'),module.__dict__)
+        source=uploader.read_bytes().decode('utf-8')
+        if 'def resolve_daily_issue(config):' not in module.EXTENSION:return False
+        return source==module.extend(source)
+    except (OSError,ValueError,KeyError,TypeError,RuntimeError,AttributeError,SyntaxError):return False
+
+
 def perform_update():
     progress(3,"Checking for updates")
     os.umask(0o077)
@@ -258,6 +279,7 @@ def perform_update():
             saved=json.loads((ROOT/'installed.json').read_text())
             previous,next_version=version_key(saved.get('version')),version_key(candidate.get('version'))
             if previous and next_version and previous>next_version and bundle_files_intact(Path(config['game']),saved):
+                if not uploader_files_intact():raise RuntimeError('Installed beta is newer, but diagnostics need repair; no update was applied.')
                 progress(100,'Installed beta is newer than the published update; kept');return
         notes=candidate.get('notes','')
         installed=ROOT/'installed.json'
@@ -277,7 +299,7 @@ def perform_update():
         if state.exists() and json.loads(state.read_text()).get('sha')==manifest['sha']:
             roadnav=Path.home()/'.config/roadnav-uploader/config.json'
             game=Path(config['game']) if config.get('game') else Path(json.loads(roadnav.read_text())['game'])
-            if bundle_files_intact(game,manifest) and updater_files_intact(json.loads(state.read_text())):
+            if bundle_files_intact(game,manifest) and updater_files_intact(json.loads(state.read_text())) and uploader_files_intact(files):
                 atomic(CONFIG,json.dumps(config).encode());shortcut();progress(100,'Already up to date');return
         apply_update(manifest,files,channel)
         atomic(CONFIG,json.dumps(config).encode())
@@ -345,14 +367,15 @@ def stage_game_update(game):
     candidate=select(token)
     if candidate is None:update_status(game,'No published update available');return False
     saved=json.loads((ROOT/'installed.json').read_text()) if (ROOT/'installed.json').is_file() else {}
-    if candidate.get('sha') and candidate['sha']==saved.get('sha'):
+    if candidate.get('sha') and candidate['sha']==saved.get('sha') and uploader_files_intact():
         update_status(game,'Already up to date');return False
     current,next_version=version_key(saved.get('version')),version_key(candidate.get('version'))
-    if channel=='beta' and current and next_version and current>=next_version:
+    if channel=='beta' and current and next_version and current>next_version:
+        if not uploader_files_intact():raise RuntimeError('Installed beta is newer, but diagnostics need repair; no update was staged.')
         update_status(game,'Already up to date');return False
     data=request(token,candidate['route'],binary=True)
     manifest,files=validate_archive(data,candidate)
-    if manifest['sha']==saved.get('sha'):
+    if manifest['sha']==saved.get('sha') and uploader_files_intact(files):
         update_status(game,'Already up to date');return False
     if not update_opt_in(game):return False
     folder=pending_directory(game)
