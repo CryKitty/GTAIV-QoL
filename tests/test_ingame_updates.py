@@ -44,7 +44,8 @@ class InGameUpdates(unittest.TestCase):
     self.assertEqual((game/'GTAIV-QoL-Updater.py').read_bytes(),b'verified source')
     unit=(Path(folder)/'.config/systemd/user/gtaiv-qol-updates.service').read_text()
     self.assertIn('"'+str(game/'GTAIV-QoL-Updater.py')+'" --watch-game "'+str(game)+'"',unit)
-    self.assertEqual(run.call_count,2)
+    self.assertEqual(run.call_count,3)
+    self.assertEqual(run.call_args.args[0][-2:],['restart','gtaiv-qol-updates.service'])
  @unittest.skipIf(sys.platform=="win32","Deck user-service lock uses fcntl")
  def test_one_request_is_consumed_and_no_release_does_not_apply(self):
   with tempfile.TemporaryDirectory() as folder:
@@ -78,3 +79,11 @@ class InGameUpdates(unittest.TestCase):
    self.assertEqual((game/'GTAIV-QoL-Updater.py').read_bytes(),source)
    self.assertEqual((game/'worker-enabled').read_text(),'ready')
    self.assertIn(b'CheckForUpdates=0',(game/'GTAIV-QoL.ini').read_bytes())
+
+ @unittest.skipIf(sys.platform=="win32","Deck systemd worker is Linux-only")
+ def test_worker_does_not_restart_itself_mid_apply(self):
+  with tempfile.TemporaryDirectory() as folder:
+   game,state,config=self.fixture(folder)
+   with patch.object(Path,'home',return_value=Path(folder)),patch.object(sys,'argv',['worker','--watch-game',str(game)]),patch.object(u.subprocess,'run',return_value=Mock(returncode=0)) as run:
+    self.assertTrue(u.install_game_updater(game,b'next worker'))
+    self.assertEqual(run.call_args.args[0][-2:],['start','gtaiv-qol-updates.service'])

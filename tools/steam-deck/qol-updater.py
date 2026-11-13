@@ -320,7 +320,11 @@ def install_game_updater(game,source):
         return '"'+str(value).replace('\\','\\\\').replace('"','\\"').replace('%','%%').replace('$','$$')+'"'
     text='[Unit]\nDescription=GTA IV QoL opt-in update staging\n[Service]\nType=simple\nExecStart=/usr/bin/python3 '+quote(game/'GTAIV-QoL-Updater.py')+' --watch-game '+quote(game)+'\nRestart=always\nRestartSec=5\n[Install]\nWantedBy=default.target\n'
     atomic(unit,text.encode())
-    for args in (['daemon-reload'],['enable','--now','gtaiv-qol-updates.service']):
+    # A manual/first-time install reloads the worker (including a changed game
+    # path). During the worker's own apply, do not stop ourselves mid-transaction;
+    # watch_game returns after success and systemd reloads the new script.
+    action='start' if '--watch-game' in sys.argv else 'restart'
+    for args in (['daemon-reload'],['enable','gtaiv-qol-updates.service'],[action,'gtaiv-qol-updates.service']):
         result=subprocess.run(['systemctl','--user']+args,capture_output=True,timeout=15)
         if result.returncode:raise RuntimeError('In-game update worker could not be enabled. The manual updater remains available; rerun setup in Desktop Mode.')
     return True
