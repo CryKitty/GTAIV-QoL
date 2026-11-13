@@ -20,6 +20,8 @@
 // Change only the minimap layout position. Keep all native preferences and
 // visibility answers intact, including those used by wanted stars and messages.
 static_assert(Scripting::BLIP_DATE==54,"Compass date classification follows the supported SDK");
+static_assert(Scripting::BLIP_GARAGE==79&&Scripting::BLIP_LAWYER==80&&Scripting::BLIP_CAR_WASH==91&&
+    Scripting::BLIP_UNITED_LIBERTY_PAPER==92&&Scripting::BLIP_BOSS==93,"Compass people/POI IDs follow the bundled SDK");
 class CompassHud {
     using RadarNative=void (__cdecl*)(GameTypes::scrNativeCallContext*);
     MinimapLayout minimap_;qolcamera::DrivingHeight drivingHeight_{};
@@ -515,15 +517,14 @@ public:
         if(awareness_.due(now)){scan();scanAt_=now;} // Fresh ownership snapshot before creating any attacker blip.
         awareness_.tick(ped,playerPoint,blips_,blipTable_!=0);
         std::vector<compass::Marker> markers;
-        unsigned displayFiltered=0,invalidPosition=0,rangeFiltered=0,alphaFiltered=0,textureIcons=0,fallbackIcons=0,outingCandidates=0,outingPromoted=0;
+        unsigned displayFiltered=0,invalidPosition=0,rangeFiltered=0,alphaFiltered=0,textureIcons=0,fallbackIcons=0,outingCandidates=0;
         for(auto blip:blips_){
             if(blip.Get()==routeHelper_||blip.Get()==forwardRouteHelper_||blip.Get()==compassWaypoint_.Get()||!DoesBlipExist(blip))continue;
             const unsigned sprite=static_cast<unsigned>(GetBlipSprite(blip));
             const bool outingVenue=outing_.contains(sprite);
             const auto display=NativeInvoke::Invoke<NATIVE_GET_BLIP_INFO_ID_DISPLAY,u32>(blip);
             if(outingVenue)++outingCandidates;
-            if(!compass::outingDisplay(display,outingVenue)){++displayFiltered;continue;}
-            if(outingVenue&&!compass::radarDisplay(display))++outingPromoted;
+            if(!compass::radarDisplay(display)){++displayFiltered;continue;}
             const auto alpha=compass::readBlipAlpha<NativeCalls>(blip.Get());if(!alpha){++alphaFiltered;continue;}
             roadnav::Vec3 point{};if(!position(blip,point)){++invalidPosition;continue;}
             if(sprite>=128||sprite==BLIP_PLAYER||sprite==BLIP_NORTH)continue;
@@ -531,11 +532,10 @@ public:
             const bool selected=blip.Get()==compassWaypointSource_&&compassWaypoint_.IsValid();
             const auto type=GetBlipInfoIdType(blip);
             const bool person=compass::characterSprite(sprite)||type==BLIP_TYPE_CHAR;
-            if(!selected&&!compass::markerInRange(distance,range,IsBlipShortRange(blip)!=0&&!outingVenue&&!person,sprite)){++rangeFiltered;continue;}
+            if(!compass::nativeRadarMarkerVisible(display,alpha,IsBlipShortRange(blip)!=0,distance,range,sprite)){++rangeFiltered;continue;}
             ColourIndex col=0;GetBlipColour(blip,&col);
             const bool entity=type==BLIP_TYPE_CAR||type==BLIP_TYPE_CHAR||type==BLIP_TYPE_OBJECT||type==BLIP_TYPE_PICKUP;
             const bool enemy=enemyMarker(blip,col,sprite);
-            if(!selected&&compass::hideAmbientMissionMarker(mission,entity||person,enemy,outingVenue,sprite))continue;
             const int priority=selected||sprite==BLIP_WAYPOINT?3:(sprite<=BLIP_OBJECTIVE_5?2:0);
             const bool police=policeMarker(blip);
             const bool objective=!outingVenue&&!police&&awareness::objectiveLabel(mission,enemy,entity,sprite,blip.Get()==missionTarget.Get(),haveMissionPoint?roadnav::distance2D(point,missionPoint):100000.0f);
@@ -580,7 +580,7 @@ public:
         if(hold>0)caption=compass::caption("Setting waypoint",feedbackAnchor_);
         auto pinned=navigationWaypoint();roadnav::Vec3 pinnedPoint{};
         const bool havePinned=pinned.IsValid()&&navigationTargetPosition(pinned,pinnedPoint);
-        float hoverLabelY=Layout::focusLabelY;
+        compass::BelowCompassTextStack textStack(caption.visible());
         bool pinnedObjective=false;
         if(havePinned){
             const unsigned labelTarget=pinned.Get()==compassWaypoint_.Get()&&DoesBlipExist(asBlip(compassWaypointSource_))?compassWaypointSource_:pinned.Get();
@@ -589,18 +589,19 @@ public:
             pinnedObjective=objective;
             if(label.empty()&&objective)label=awareness_.briefFor(missionTarget.Get());
             if(label.empty()&&objective)label=missionBrief;
-            float y=compass::waypointLabelY(caption.visible());
+            float y=textStack.persistentNameY();
             if(!label.empty()){const auto lines=awareness::briefLines(label);
                 for(const auto& line:lines){text(mid,y,line.c_str(),.22f,235,.85f,1.10f);y+=.024f;}
             }else{textStyle(.22f,235,.85f,1.10f);NativeInvoke::Invoke<NATIVE_DISPLAY_TEXT_WITH_BLIP_NAME,ScriptVoid>(mid,y,"STRING",labelTarget);y+=.024f;}
             const auto distance=compass::waypointMiles(roadnav::distance2D(playerPoint,pinnedPoint));
-            text(mid,y,distance.c_str(),.22f,215,1.0f,1.10f);hoverLabelY=y+.032f;
+            text(mid,y,distance.c_str(),.22f,215,1.0f,1.10f);textStack.finishPersistent(y);
         }
         else if(haveMissionPoint&&!missionBrief.empty()){
-        pinnedObjective=true;float y=compass::waypointLabelY(caption.visible());
+        pinnedObjective=true;float y=textStack.persistentNameY();
         const auto lines=awareness::briefLines(missionBrief);for(const auto& line:lines){text(mid,y,line.c_str(),.22f,235,.85f,1.10f);y+=.024f;}
-        const auto distance=compass::waypointMiles(roadnav::distance2D(playerPoint,missionPoint));text(mid,y,distance.c_str(),.22f,215,1.0f,1.10f);hoverLabelY=y+.032f;
+        const auto distance=compass::waypointMiles(roadnav::distance2D(playerPoint,missionPoint));text(mid,y,distance.c_str(),.22f,215,1.0f,1.10f);textStack.finishPersistent(y);
     }
+    const float hoverLabelY=textStack.hoverNameY();
     const auto message=messages_.snapshot();
         compass::NoticeFrame noticeFrame{message.alpha(now),now,minimap_.frontendAddress()};
         if(!dictionary_.IsValid()&&(!dictionaryRetry_||now-dictionaryRetry_>=1000)){dictionary_=GetTxd("blips");dictionaryRetry_=now;}
@@ -620,7 +621,7 @@ public:
             if(holding){caption=compass::caption("Setting waypoint",x);noticeFrame.holdX=x;noticeFrame.holdY=iconY;noticeFrame.holdRadius=height*.62f;noticeFrame.holdProgress=hold;}
             if(compass::hoverReadout(marker.handle,havePinned?(pinned.Get()==compassWaypoint_.Get()?compassWaypointSource_:pinned.Get()):0,centered,holding,
                 pinnedObjective&&marker.handle==missionTarget.Get())){
-                float distanceY=havePinned?hoverLabelY+.024f:Layout::distanceY;
+                float distanceY=textStack.hoverDistanceY();
                 auto objectiveText=marker.enemy?std::string{}:awareness_.briefFor(marker.handle);
                 if(objectiveText.empty()&&marker.missionDestination&&missionTarget.IsValid())objectiveText=awareness_.briefFor(missionTarget.Get());
                 if(objectiveText.empty()&&marker.missionDestination)objectiveText=missionBrief;
@@ -629,7 +630,7 @@ public:
                 }else if(!objectiveText.empty()){
                     const auto lines=awareness::briefLines(objectiveText);
                     for(unsigned row=0;row<lines.size();++row)text(mid,hoverLabelY+.024f*row,lines[row].c_str(),.22f,235,.85f,1.10f);
-                    distanceY=hoverLabelY+.024f*static_cast<float>(lines.size());
+                    distanceY=textStack.hoverDistanceY(static_cast<unsigned>(lines.size()),false);
                 }else{
                     textStyle(.22f,235,.85f,1.10f);
                     NativeInvoke::Invoke<NATIVE_DISPLAY_TEXT_WITH_BLIP_NAME,ScriptVoid>(mid,hoverLabelY,"STRING",marker.handle);
@@ -667,7 +668,7 @@ public:
             unsigned focusedSprite=999,focusedObjective=0;for(const auto& item:placed)if(item.marker.handle==focused_){focusedSprite=item.marker.sprite;focusedObjective=item.marker.missionDestination?1u:0u;}
             std::snprintf(line,sizeof(line),"Compass objective: mission=%u social=%u target=%u focused-sprite=%u focused-objective=%u brief-chars=%u",mission?1u:0u,social_?1u:0u,missionTarget.Get(),focusedSprite,focusedObjective,static_cast<unsigned>(missionBrief.size()));log_(line);
             std::snprintf(line,sizeof(line),"Compass bound objective: focus-chars=%u target-chars=%u",static_cast<unsigned>(awareness_.briefFor(focused_).size()),static_cast<unsigned>(awareness_.briefFor(missionTarget.Get()).size()));log_(line);
-            std::snprintf(line,sizeof(line),"Compass outing venues: date=%u friend-activity=%u candidates=%u promoted=%u",dating_?1u:0u,outing_.friendActivity?1u:0u,outingCandidates,outingPromoted);log_(line);
+            std::snprintf(line,sizeof(line),"Compass outing venues: date=%u friend-activity=%u candidates=%u visibility=native-metadata",dating_?1u:0u,outing_.friendActivity?1u:0u,outingCandidates);log_(line);
             std::snprintf(line,sizeof(line),"Compass filters: display=%u alpha=%u position=%u range=%u icons=%u fallback-icons=%u",displayFiltered,alphaFiltered,invalidPosition,rangeFiltered,textureIcons,fallbackIcons);log_(line);}logAt_=now;}
     }
 };

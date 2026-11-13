@@ -65,6 +65,50 @@ struct FakeGps {
 };
 int main(){
     {
+        // Audit each POI class, including garage/car wash and station glyphs.
+        const unsigned pois[]={21,22,24,29,30,46,47,48,49,50,51,52,56,57,58,59,60,61,62,65,66,67,68,70,71,73,75,79,81,82,83,84,85,86,87,88,89,90,91,94};
+        for(unsigned sprite:pois){
+            assert(!compass::characterSprite(sprite));
+            assert(compass::nativeRadarMarkerVisible(2,255,true,99,100,sprite));
+            assert(!compass::nativeRadarMarkerVisible(2,255,true,101,100,sprite));
+            assert(!compass::nativeRadarMarkerVisible(4,0,false,20,100,sprite));
+            for(unsigned display:{0u,1u,3u,5u})assert(!compass::nativeRadarMarkerVisible(display,255,false,20,100,sprite));
+            assert(compass::nativeRadarMarkerVisible(4,128,false,8000,100,sprite)); // native long-range choice, not invented POI cap
+        }
+        for(unsigned sprite:{23u,27u,34u,42u,54u,80u,92u,93u}){
+            assert(compass::characterSprite(sprite));
+            assert(compass::nativeRadarMarkerVisible(2,255,false,8000,100,sprite));
+            assert(!compass::nativeRadarMarkerVisible(2,0,false,8000,100,sprite));
+        }
+        assert(compass::nativeRadarMarkerVisible(2,255,true,8000,100,54)); // deliberate heart exception
+        assert(!compass::nativeRadarMarkerVisible(0,255,true,8000,100,54));
+        assert(!compass::nativeRadarMarkerVisible(2,0,true,8000,100,54));
+        assert(!compass::nativeRadarMarkerVisible(2,255,true,8000,100,34)); // priority is separate from visibility
+        const auto priority=compass::layout({{1,91,0,10,0,255,0},{2,34,0,3000,0,255,0}});
+        assert(priority.size()==1&&priority.front().marker.handle==2);
+    }
+    {
+        for(bool feedback:{false,true})for(unsigned rows=1;rows<=4;++rows){
+            compass::BelowCompassTextStack stack(feedback);
+            const float start=stack.persistentNameY(),distance=start+.024f*static_cast<float>(rows);
+            stack.finishPersistent(distance);
+            assert(stack.hasPersistent&&stack.hoverNameY()>=distance+.035f);
+            assert(stack.hoverDistanceY()>stack.hoverNameY());
+            assert(stack.hoverDistanceY(3,false)>=stack.hoverNameY()+.071f);
+            if(feedback)assert(start>=compass::StripLayout::focusLabelY+.047f);
+        }
+        const compass::BelowCompassTextStack noReadout(false);
+        assert(noReadout.hoverNameY()==compass::StripLayout::focusLabelY);
+        assert(noReadout.hoverDistanceY()==compass::StripLayout::distanceY);
+        for(const char* message:{"Setting waypoint","Waypoint set","Destination reached"}){
+            const auto caption=compass::caption(message,.5f);compass::BelowCompassTextStack stack(caption.visible());
+            assert(caption.y<stack.persistentNameY()-.024f);
+            stack.finishPersistent(stack.persistentNameY()+.048f);
+            assert(stack.hoverNameY()>stack.persistentDistance+.024f);
+        }
+    }
+
+    {
         using namespace qolcamera;DrivingHeight height;
         assert(height.update(true,0,false)==HeightCommand::None&&!height.owned); // neutral is untouched
         assert(height.update(true,100,true)==HeightCommand::None&&!height.owned); // script-owned offset
@@ -96,14 +140,11 @@ int main(){
         auto venues=compass::outingVenues(active);
         assert(venues.friendActivity&&!venues.dating&&venues.contains(66));
         for(unsigned unrelated:{21u,22u,34u,47u,49u,52u,70u,71u})assert(!venues.contains(unrelated));
-        for(unsigned display:{2u,3u,4u,5u})assert(compass::outingDisplay(display,venues.contains(66)));
-        assert(!compass::outingDisplay(0,true)&&!compass::outingDisplay(1,true));
-        assert(!compass::outingDisplay(5,venues.contains(47))); // no indiscriminate venue promotion
-        assert(!compass::hideAmbientMissionMarker(true,false,false,venues.contains(66),66));
-        assert(compass::hideAmbientMissionMarker(true,false,false,venues.contains(47),47));
-        assert(compass::markerInRange(8000,100,!venues.contains(66),66));
+        for(unsigned display:{2u,4u})assert(compass::nativeRadarMarkerVisible(display,255,false,8000,100,66));
+        for(unsigned display:{0u,1u,3u,5u})assert(!compass::nativeRadarMarkerVisible(display,255,false,20,100,66));
+        assert(!compass::nativeRadarMarkerVisible(2,255,true,8000,100,66)); // outings do not bypass native range
         strip=false;venues=compass::outingVenues(active);
-        assert(!venues.friendActivity&&!venues.contains(66)&&!compass::outingDisplay(5,venues.contains(66)));
+        assert(!venues.friendActivity&&!venues.contains(66));
         const auto date=compass::outingVenues([](const char* name){return std::strcmp(name,"go_on_date")==0;});
         assert(date.dating&&date.contains(66)&&date.contains(47));
         const auto food=compass::outingVenues([](const char* name){return std::strcmp(name,"dwayneeat")==0;});
@@ -204,7 +245,7 @@ int main(){
         } backend;
         assert(compass::collectBlips(backend).empty());backend.initiated=true;
         const auto discovered=compass::collectBlips(backend);assert(discovered.size()==1&&discovered[0]==5401);
-        assert(compass::markerInRange(8000,100,true,54));assert(!compass::hideAmbientMissionMarker(true,false,false,false,54));
+        assert(compass::nativeRadarMarkerVisible(2,255,true,8000,100,54));
         const auto icons=compass::layout({{11,21,1,20,0,255,0},{5401,54,1,8000,0,255,0}});
         assert(icons.size()==1&&icons.front().marker.handle==5401);
         assert(std::strcmp(compass::fallbackSymbol(54),"<3")==0);
@@ -256,8 +297,6 @@ int main(){
     {
         // The SDK's shared heart/date sprite ignores distance on the compass,
         // including while a mission filters ordinary ambient contact icons.
-        assert(!compass::hideAmbientMissionMarker(true,false,false,false,54));
-        assert(compass::hideAmbientMissionMarker(true,false,false,false,52));
         assert(compass::dateMarker(54));assert(!compass::dateMarker(53)&&!compass::dateMarker(55));
         for(float distance:{0.0f,50.0f,5000.0f,100000.0f}){
             assert(compass::markerInRange(distance,100,true,54));

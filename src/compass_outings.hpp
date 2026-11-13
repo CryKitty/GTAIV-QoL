@@ -45,8 +45,4 @@ template<class Active> OutingVenues outingVenues(Active active){
         if(active(script.name))result.add(script.activity);
     return result;
 }
-// Friend scripts create native venue blips with display 3/5 (pause-map modes).
-// Only the current activity may promote those to the compass; hidden 0/1 and
-// transparent blips remain hidden. Ordinary POI display rules are unchanged.
-inline bool outingDisplay(unsigned display,bool relevant){return radarDisplay(display)||(relevant&&(display==3||display==5));}
 }

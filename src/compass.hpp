@@ -61,11 +61,16 @@ inline bool dateMarker(unsigned sprite){return sprite==54;}
 inline bool characterSprite(unsigned sprite){
     return dateMarker(sprite)||sprite==23||(sprite>=25&&sprite<=28)||
         (sprite>=31&&sprite<=45)||(sprite>=53&&sprite<=55)||sprite==63||sprite==64||
-        sprite==69||sprite==72||sprite==74||sprite==76||sprite==79||sprite==91||sprite==92;
+        sprite==69||sprite==72||sprite==74||sprite==76||sprite==80||sprite==92||sprite==93;
 }
 inline const char* fallbackSymbol(unsigned sprite){return dateMarker(sprite)?"<3":sprite==8?"X":sprite<=5?"*":".";}
 inline bool markerInRange(float distance,float range,bool shortRange,unsigned sprite=0){
     return std::isfinite(distance)&&distance>=0&&(!shortRange||dateMarker(sprite)||inRange(distance,range));
+}
+// Use native metadata uniformly. Overlap priority never grants visibility.
+// The deliberate heart exception alone ignores native short-range distance.
+inline bool nativeRadarMarkerVisible(unsigned display,unsigned alpha,bool shortRange,float distance,float range,unsigned sprite){
+    return radarDisplay(display)&&alpha>0&&markerInRange(distance,range,shortRange,sprite);
 }
 // Scripted custom colours are ARGB, unlike D3D's component argument order.
 inline std::array<unsigned,3> markerColour(unsigned value){
@@ -156,7 +161,6 @@ inline bool socialVenue(unsigned sprite){switch(sprite){
     default:return false;
 }}
 inline bool ambientMissionSprite(unsigned sprite){return (sprite>=21&&sprite<=52)||sprite==54||(sprite>=56&&sprite<=64)||sprite==66||sprite==67||sprite==69||sprite==70||sprite==71||sprite==74||sprite==75||sprite==79||(sprite>=83&&sprite<=92);}
-inline bool hideAmbientMissionMarker(bool mission,bool entity,bool enemy,bool outing,unsigned sprite){return mission&&!entity&&!enemy&&!outing&&!dateMarker(sprite)&&ambientMissionSprite(sprite);}
 inline bool hostileMarkerType(unsigned type){return type==1||type==2;} // Vehicle or person; location colour is not hostility.
 inline bool enemyColour(unsigned colour){
     if(colour<=255)return colour==1||colour==9||colour==10;

@@ -1,4 +1,5 @@
 #pragma once
+#include "compass.hpp"
 #include <algorithm>
 #include <cstdint>
 #include <cstdio>
@@ -12,6 +13,19 @@ inline std::string waypointMiles(float metres){
 }
 // Persistent waypoint rows reserve space below temporary hold/arrival captions.
 inline float waypointLabelY(bool caption){return .087f+(caption?.048f:0);}
+// All draw sites reserve the complete persistent name + distance block.
+// Captions remain above it; hover names and their distances follow its end.
+struct BelowCompassTextStack {
+    bool feedback=false,hasPersistent=false;float persistentDistance=0;
+    explicit BelowCompassTextStack(bool captionVisible):feedback(captionVisible){}
+    float persistentNameY()const{return waypointLabelY(feedback);}
+    void finishPersistent(float distanceY){hasPersistent=true;persistentDistance=distanceY;}
+    float hoverNameY()const{return hasPersistent?persistentDistance+.036f:StripLayout::focusLabelY;}
+    float hoverDistanceY(unsigned nameRows=1,bool nativeName=true)const{
+        if(!hasPersistent&&nativeName&&nameRows==1)return StripLayout::distanceY;
+        return hoverNameY()+.024f*static_cast<float>(nameRows);
+    }
+};
 inline bool hoverReadout(unsigned handle,unsigned waypoint,bool focused,bool holding,bool representedObjective=false){return handle!=waypoint&&!representedObjective&&(focused||holding);}
 
 // The same hold is available on foot and in vehicles; phone and combat retain
