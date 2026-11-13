@@ -68,8 +68,8 @@ inline void stabilizeRoadPath(RoadLine& line,const RoadLine& previous){
             const float dx=b.x-a.x,dy=b.y-a.y,length=std::hypot(dx,dy);
             if(length<.01f||tlen<.01f||(tx*dx+ty*dy)/(tlen*length)<.995f)continue;
             const float t=((point.x-a.x)*dx+(point.y-a.y)*dy)/(length*length);if(t<0||t>1)continue;
-            const Vec3 near{a.x+dx*t,a.y+dy*t,a.z+(b.z-a.z)*t};const float distance=distance2D(point,near);
-            if(distance<best&&std::fabs(point.z-near.z)<2){best=distance;matched.x=near.x;matched.y=near.y;}
+            const Vec3 projected{a.x+dx*t,a.y+dy*t,a.z+(b.z-a.z)*t};const float distance=distance2D(point,projected);
+            if(distance<best&&std::fabs(point.z-projected.z)<2){best=distance;matched.x=projected.x;matched.y=projected.y;}
         }
         line.points[n]=matched;
     }
