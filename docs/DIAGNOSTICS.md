@@ -1,7 +1,6 @@
 # Current crash evidence retrieval
 
-The reported date-entry crash has **no accessible uploaded capture**. The known
-private diagnostics issues are full; successful delivery must not be assumed.
+The reported date-entry crash has **no accessible uploaded capture**. Diagnostics uploads now open a fresh dated issue in the private repository each day, so a full issue no longer blocks delivery.
 The code change removes the unverified ScriptHook global-accessor call and unused
 date-start observer. Venue icons deliberately stay white until a safe provider is
 verified. Without a crash record the exact faulting instruction is unconfirmed.
@@ -32,7 +31,7 @@ Retest after updater delivery: initiate a date, pick her up, let all venue icons
 load, pan/hover/set a waypoint and drive between venues. Hearts should remain
 visible, venues should be white, and loading them should not crash. Compass HUD
 remains the pause-menu control. If it recurs, preserve the files before another
-launch overwrites/truncates logs. Do not rely on the full issue #10 receiving them.
+launch overwrites/truncates logs. Uploads now go to the dated issue for that day instead of the full issue #10.
 
 Historical capture instructions below describe an earlier diagnostic build.
 
