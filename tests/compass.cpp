@@ -87,14 +87,61 @@ int main(){
         assert(!choices.empty());for(const auto& choice:choices)assert(choice.point.x>0);
     }
 
+    {
+        // Arriving at one destination is not the end of a wanted pursuit.
+        using roadnav::Vec3;
+        const std::vector<Vec3> old{{0,0,0},{300,0,0}};
+        const Vec3 player{300,0,0},travel{1,0,0};
+        assert(policeescape::remaining(old,player)==0);
+        assert(policeescape::replanDue(false,true,100,0,0));
+        assert(!policeescape::replanDue(true,true,4999,0,0,true,20));
+        assert(policeescape::replanDue(true,true,5000,0,0,true,20)); // continuous sight, unchanged zone/risk
+        assert(!policeescape::replanDue(true,true,5000,0,0,false,20));
+        assert(!policeescape::replanDue(true,true,5000,0,0,true,0));
+        const auto choices=policeescape::candidates(player,{},150,0,
+            [](Vec3 a,Vec3& b){b=a;return true;},
+            [](Vec3 a,Vec3 b){return roadnav::distance2D(a,b);},{},true,policeescape::planningLead(30));
+        assert(!choices.empty());
+        const std::vector<Vec3> next{player,choices.front().point}; // stand-in for returned native GPS
+        assert(next.back().x>player.x);
+        assert(policeescape::usableReplacement(next,player,{},150,travel,30));
+        assert(!policeescape::usableReplacement(old,player,{},150,travel,30));
+        assert(!policeescape::usableReplacement(next,player,{},150,{-1,0,0},30));
+        assert(!policeescape::usableReplacement(next,player,next.back(),150,travel,30));
+        policeescape::ReplanState retry;
+        retry.observe(2,false,{},150,true,travel);retry.begin(0);retry.failed(200);
+        // Continuous moving search circles cannot cancel failure backoff.
+        for(unsigned t=1000;t<5000;t+=1000){
+            retry.observe(2,false,{static_cast<float>(t),0,0},150,true,travel);
+            assert(!retry.ready(t));
+        }
+        assert(retry.ready(5200));retry.begin(5200);retry.failed(5400);
+        retry.observe(2,false,{6000,0,0},150,true,travel);
+        assert(!retry.ready(15399)&&retry.ready(15400));
+        assert(policeescape::planningLead(30)==360&&policeescape::planningLead(0)==180);
+    }
+
     assert(compass::waypointMiles(1609.344f)=="1.00 mi");
     assert(compass::waypointMiles(804.672f)=="0.50 mi");
     assert(compass::waypointMiles(16093.44f)=="10.0 mi");
     assert(compass::waypointMiles(-1).empty());
+    assert(compass::waypointMiles(0)=="0.00 mi");
+    assert(compass::waypointMiles(16077.347f)=="9.99 mi");
+    assert(compass::waypointMiles(16898.112f)=="10.5 mi");
+    assert(compass::waypointMiles(std::numeric_limits<float>::infinity()).empty());
     assert(compass::waypointLabelY(true)>compass::waypointLabelY(false));
     assert(!compass::hoverReadout(42,42,true,false)); // pinned waypoint has its own persistent rows
     assert(compass::hoverReadout(7,42,true,false)); // other icons still hover
     assert(!compass::hoverReadout(7,42,false,false));
+    assert(!compass::hoverReadout(7,42,true,false,true)); // separate original objective blip represented by pin
+    assert(!compass::hoverReadout(7,42,false,true,true)); // holding still has ring/caption, no duplicate distance
+    assert(compass::hoverReadout(8,42,true,false,false)); // unrelated objective/icon remains hoverable
+    assert(compass::hoverReadout(7,0,true,false,false)); // without persistent pin, objective still hovers
+    assert(awareness::destinationRouteKind(false,false,false)==awareness::RouteKind::Mission);
+    assert(awareness::destinationRouteKind(false,false,true)==awareness::RouteKind::Custom);
+    assert(awareness::destinationRouteKind(true,false,false)==awareness::RouteKind::Enemy);
+    assert(awareness::destinationRouteKind(false,true,false)==awareness::RouteKind::Friend);
+
 
     {
         // A newly created contact/date sprite is discovered without radar-table

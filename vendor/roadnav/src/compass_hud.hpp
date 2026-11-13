@@ -104,7 +104,6 @@ class CompassHud {
     bool hidden_=false,initialized_=false,scanLogged_=false,startupComplete_=false;
     std::uintptr_t blipTable_=0;
     float fallbackRange_=300;
-    bool metric_=false;
     void (*log_)(const char*)=nullptr;
     template<class T> static bool read(std::uintptr_t address,T& value){
         SIZE_T bytes=0;return ReadProcessMemory(GetCurrentProcess(),reinterpret_cast<void*>(address),&value,sizeof(value),&bytes)&&bytes==sizeof(value);
@@ -151,7 +150,7 @@ class CompassHud {
         if(slash){strcpy_s(slash+1,MAX_PATH-static_cast<std::size_t>(slash+1-path),"GTAIV-QoL.ini");
             const int range=GetPrivateProfileIntA("Compass","FallbackRadiusMeters",300,path);
             fallbackRange_=static_cast<float>(std::clamp(range,50,1000));
-            metric_=GetPrivateProfileIntA("Compass","MetricDistances",0,path)!=0;}
+            }
         discoverNames();dictionary_=Scripting::GetTxd("blips");
         if(log_)log_(dictionary_.IsValid()?"Compass: borrowed game blips texture dictionary found":"Compass: blips dictionary unavailable; fallback symbols active");
         initialized_=true;
@@ -362,6 +361,12 @@ public:
         return count==1?only:Blip{};
     }
 
+    awareness::RouteKind navigationRouteKind(Scripting::Blip target){
+        using namespace Scripting;
+        ColourIndex colour=0;GetBlipColour(target,&colour);
+        const auto sprite=static_cast<unsigned>(GetBlipSprite(target));
+        return awareness::destinationRouteKind(enemyMarker(target,colour,sprite),friendMarker(target),sprite==BLIP_WAYPOINT);
+    }
     awareness::RouteKind routeKind(roadnav::Vec3 endpoint){
         refreshNavigationBlips();using namespace Scripting;
         auto result=GetMissionFlag()?awareness::RouteKind::Mission:awareness::RouteKind::Blue;float best=65;
@@ -560,9 +565,11 @@ public:
         auto pinned=navigationWaypoint();roadnav::Vec3 pinnedPoint{};
         const bool havePinned=pinned.IsValid()&&navigationTargetPosition(pinned,pinnedPoint);
         float hoverLabelY=Layout::focusLabelY;
+        bool pinnedObjective=false;
         if(havePinned){
             auto label=awareness_.briefFor(pinned.Get());
             const bool objective=haveMissionPoint&&awareness::objectiveLabel(mission,false,false,BLIP_WAYPOINT,pinned.Get()==missionTarget.Get(),roadnav::distance2D(pinnedPoint,missionPoint));
+            pinnedObjective=objective;
             if(label.empty()&&objective)label=awareness_.briefFor(missionTarget.Get());
             if(label.empty()&&objective)label=missionBrief;
             float y=compass::waypointLabelY(caption.visible());
@@ -589,7 +596,8 @@ public:
             }else {++fallbackIcons;const auto rgb=compass::markerColour(marker.colour);textStyle(.672f*scale,marker.alpha);SetTextColour(static_cast<u8>(rgb[0]),static_cast<u8>(rgb[1]),static_cast<u8>(rgb[2]),static_cast<u8>(marker.alpha));DisplayTextWithLiteralString(x,iconY-.011f,"STRING",compass::fallbackSymbol(marker.sprite));}
             const bool holding=hold>0&&marker.handle==waypointHold_.target;
             if(holding){caption=compass::caption("Setting waypoint",x);noticeFrame.holdX=x;noticeFrame.holdY=iconY;noticeFrame.holdRadius=height*.62f;noticeFrame.holdProgress=hold;}
-            if(compass::hoverReadout(marker.handle,havePinned?pinned.Get():0,centered,holding)){
+            if(compass::hoverReadout(marker.handle,havePinned?pinned.Get():0,centered,holding,
+                pinnedObjective&&marker.handle==missionTarget.Get())){
                 float distanceY=havePinned?hoverLabelY+.024f:Layout::distanceY;
                 auto objectiveText=marker.enemy?std::string{}:awareness_.briefFor(marker.handle);
                 if(objectiveText.empty()&&marker.missionDestination&&missionTarget.IsValid())objectiveText=awareness_.briefFor(missionTarget.Get());
@@ -604,8 +612,8 @@ public:
                     textStyle(.22f,235,.85f,1.10f);
                     NativeInvoke::Invoke<NATIVE_DISPLAY_TEXT_WITH_BLIP_NAME,ScriptVoid>(mid,hoverLabelY,"STRING",marker.handle);
                 }
-                char distance[32];const float number=metric_?marker.distance:marker.distance*3.2808399f;
-                std::snprintf(distance,sizeof(distance),"%.0f %s",number,metric_?"m":"ft");text(mid,distanceY,distance,.22f,215,1.0f,1.10f);}
+                const auto distance=compass::waypointMiles(marker.distance);
+                text(mid,distanceY,distance.c_str(),.22f,215,1.0f,1.10f);}
         }
         rect(mid,Layout::lineY-.002f,.0015f,.006f,235,237,225,195);
         if(!startupComplete_&&log_)log_("Compass: reading health and armour");

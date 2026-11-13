@@ -50,15 +50,37 @@ and fitted ribbon are retained while requests run; no forced blank is introduced
 The fallback radius/geometry remain an escape proximity heuristic, not sight-line
 prediction or an exact substitute for a missing live circle.
 
-Each observed pursuit reset captures travel velocity above crawling speed, or the
-vehicle's body heading at low speed. Later candidate comparisons retain that
-heading. Candidate endpoints must lie ahead and the first native GPS leg must
-also lead ahead. On a pursuit reset, the old route receives no hysteresis credit;
-it stays displayed until a valid replacement wins. If heading/GPS/road data are
-unavailable or all legal candidates lead backward, keep the old route and back
-off rather than inventing a straight line or reverse direction. A later ordinary
-refresh captures the then-current direction. Police escape scoring/backoff and
-primary-route coexistence otherwise retain their existing structure.
+Every new attempt, including retries, captures current travel velocity above
+crawling speed or the vehicle body heading at low speed. Candidate endpoints
+must lie ahead; returned native GPS geometry must still lead in the current
+travel direction, exit the latest circle and have useful road remaining.
+Candidates use real road-node travel costs, with 12 seconds of speed-based
+planning room (180–900 metres). The first usable candidate commits immediately;
+other candidates are fallbacks, rather than delaying publication for a full
+comparison cycle. No artificial segment is added.
+
+### Continuing past the first destination
+
+There was no arrival-means-escape-complete flag: zero wanted level clears escape
+guidance. The renewal loop could instead cancel an active native request on
+every meaningful circle movement, and its fixed 150-metre destination margin
+could run out while waiting through four candidates. Retry state also retained
+an earlier heading, and continuous sight had no explicit refresh trigger.
+
+Circle observations now leave the native request in flight. Its result is
+validated against the latest circle and current travel; obsolete results go
+through fallback candidates and bounded failure backoff. Boundary observations
+cannot erase that backoff. Reaching/running out of a destination requests another
+forward route while wanted; continuous native sight also requests renewal every
+five seconds while moving at least 2.5 m/s, without needing a sight transition,
+new risk score or circle reset. The committed snapshot/fitted ribbon stay during
+calculation and failure. If road data cannot produce a valid replacement, the
+old road cannot be extended by inventing a shortcut. Real Deck route selection
+and visibility still require acceptance testing.
+
+All compass distance rows now use miles (two decimals below 10 mi, one above),
+including hovered icons. Legacy MetricDistances preferences no longer change
+this display; no file editing or new menu setting is needed.
 
 ## Deck acceptance through updater and pause menu
 
@@ -76,3 +98,11 @@ primary-route coexistence otherwise retain their existing structure.
    through wanted-level changes, pause and cutscenes. Confirm readability with a
    waypoint and nearby clustered icons. Native route choice and actual Deck
    visuals still need this in-game acceptance; unit tests do not prove them.
+
+5. While continuously seen, drive through the first escape endpoint and keep
+   driving while wanted. Check forward renewal before/after arrival, no blanking
+   during requests and normal cleanup only when wanted clears. Repeat after a
+   turn/search reset. If GPS cannot find a valid road, check it retains the last
+   line and backs off rather than drawing a shortcut.
+6. Hover multiple compass icons and set a waypoint. Every distance must end in
+   mi, with no feet/metres readout; existing Compass HUD controls still work.

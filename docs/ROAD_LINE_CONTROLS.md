@@ -77,3 +77,46 @@ Heart/date icons (the SDK's shared BLIP_DATE sprite) remain on the compass at
 any finite distance, even during a mission. The centered distance readout is
 unchanged. Check a far-away date heart with Compass HUD On, then turn Compass HUD
 Off/On; the map itself and other local POI distance limits are unchanged.
+
+## Objective readout and GPS recovery
+
+The original mission blip and a player waypoint can be different handles for the
+same objective. When the persistent waypoint represents the selected mission
+goal, hovering that original mission icon does not add a second objective/distance
+pair. The waypoint itself remains deduplicated, unrelated icons retain their
+hover details, and hold progress/captions still draw.
+
+A fixed objective now retries missing GPS in the primary path, independently of
+`updateChase`. Previously the wanted branch bypassed those retries entirely;
+the initial primary request only received a 1.5-second acquisition window before
+escape GPS could take over. Primary acquisition now gets the existing cold/warm
+GPS window (6/2.5 seconds), ends early on a valid route, and retries after 6 then
+10 seconds if the native road never arrives. Active escape/forward jobs finish
+before a recovery retry borrows the planner. A new or moved goal resets recovery.
+Existing primary snapshots and escape snapshots remain separate. During recovery,
+a validated primary path no longer expires after two seconds if it still matches
+the live fixed destination and the player remains on its road (within 12 metres
+horizontally/four vertically). Changing destinations or departing that road does
+not grant indefinite stale-route retention.
+
+The route reader also accepts a native road ending at the destination's closest
+drivable node, rather than rejecting every off-road objective over 65 metres
+from the road. The pin stays at the exact marker; the ribbon only follows real
+native geometry, with no invented off-road connector. Once a primary target is
+known, its own classification controls the line; nearby unrelated enemy/custom
+icons cannot supply the wrong type gate. Mission Line Off still intentionally
+hides mission lines, and Road Line Off hides all lines. These fixes do not reset
+any user's switches. A manually set waypoint still uses Custom Line, even when
+it is placed on a mission objective, so that switch must also be On when using
+a manual pin. Without session diagnostics we cannot establish which gate
+or missing native request caused the particular reported objective; the above
+are code-confirmed gaps, not a claimed in-game reproduction. Ambiguous goals
+without an authoritative/unique mission target and unavailable native road or
+surface data remain limitations, not permission to fabricate a path.
+
+After updating, use Pause → QoL only: enable Road Line and Mission Line, start a
+fixed-objective drive (also while wanted), then change goals and check recovery
+and primary/escape coexistence. Set a waypoint on the mission objective and
+hover its original icon: only one persistent objective/distance pair should
+show. Hover an unrelated icon to confirm its details still show. Confirm Mission
+Line Off hides only mission lines and restoring On shows them again.

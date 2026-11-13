@@ -21,9 +21,8 @@ struct ReplanState {
         else if(inSight!=nextInSight)reason=nextInSight?"police sighting reset":"police lost sight";
         else if(searching!=nextSearching)reason=nextSearching?"police lost player":"police re-found player";
         else if(roadnav::distance2D(center,nextCenter)>=25||std::fabs(radius-nextRadius)>=15)reason="search boundary changed";
-        // New pursuit information re-arms the normal debounce; repeated failures
-        // in the same search area retain exponential backoff.
-        if(reason){observed=true;inSight=nextInSight;heading=travel;stars=nextStars;searching=nextSearching;center=nextCenter;radius=nextRadius;pending=true;failures=0;}
+        // Boundary motion must not erase failure backoff during continuous sight.
+        if(reason){observed=true;inSight=nextInSight;heading=travel;stars=nextStars;searching=nextSearching;center=nextCenter;radius=nextRadius;pending=true;}
         return reason;
     }
     unsigned delay()const{return std::min(10000u,2500u*(1u<<std::min(failures,2u)));}
@@ -72,9 +71,10 @@ inline float refreshLead(float speed){return std::max(100.0f,std::max(0.0f,speed
 inline bool needsForwardRoute(const std::vector<roadnav::Vec3>& path,roadnav::Vec3 player,float speed){
     return !onPath(path,player)||remaining(path,player)<std::max(30.0f,std::max(0.0f,speed)*2.5f);
 }
-inline bool replanDue(bool valid,bool onRoute,unsigned age,float committedRisk,float risk){
+inline float planningLead(float speed){return std::clamp(std::max(0.0f,speed)*12,180.0f,900.0f);}
+inline bool replanDue(bool valid,bool onRoute,unsigned age,float committedRisk,float risk,bool inSight=false,float speed=0){
     if(!valid||!onRoute)return true;
-    return age>=12000||(age>=5000&&risk>committedRisk+250);
+    return age>=12000||(age>=5000&&(risk>committedRisk+250||(inSight&&speed>=2.5f)));
 }
 inline bool exits(const std::vector<roadnav::Vec3>& path,roadnav::Vec3 center,float radius){
     return path.size()>1&&outside(path.back(),center,radius);
@@ -97,11 +97,17 @@ inline bool followsHeading(const std::vector<roadnav::Vec3>& path,roadnav::Vec3 
     const float dx=b.x-a.x,dy=b.y-a.y,d=std::hypot(dx,dy);
     return d>1&&(dx*heading.x+dy*heading.y)/(d*h)>.2f;
 }
-template<class Snap,class Cost> std::vector<Candidate> candidates(roadnav::Vec3 player,roadnav::Vec3 center,float radius,float heading,Snap snap,Cost cost,const std::vector<roadnav::Vec3>& police,bool forward=false){
+// Only publish real native geometry still ahead of the moving player.
+inline bool usableReplacement(const std::vector<roadnav::Vec3>& path,roadnav::Vec3 player,roadnav::Vec3 center,float radius,roadnav::Vec3 travel,float speed){
+    const float heading=std::hypot(travel.x,travel.y);
+    return std::isfinite(heading)&&heading>=.5f&&exits(path,center,radius)&&
+        followsHeading(path,player,travel)&&remaining(path,player)>std::max(30.0f,std::max(0.0f,speed)*2.5f);
+}
+template<class Snap,class Cost> std::vector<Candidate> candidates(roadnav::Vec3 player,roadnav::Vec3 center,float radius,float heading,Snap snap,Cost cost,const std::vector<roadnav::Vec3>& police,bool forward=false,float lead=150){
     std::vector<Candidate> result;
     if(!std::isfinite(radius)||radius<50||radius>3000)return result;
     const float distance=roadnav::distance2D(player,center);
-    const float sampleRadius=std::max(radius+150,distance+150);
+    const float sampleRadius=std::max(radius+lead,distance+lead);
     const float angle=distance>10?std::atan2(player.y-center.y,player.x-center.x):heading;
 
     for(unsigned i=0;i<16;++i){const float a=angle+static_cast<float>(i)*.3926990817f;
