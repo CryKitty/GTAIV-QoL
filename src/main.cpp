@@ -10,6 +10,7 @@
 #include "opening_zoom.hpp"
 #include "interactive_zoom.hpp"
 #include "qol_settings.hpp"
+#include "ingame_updates.hpp"
 static_assert(sizeof(void*) == 4, "GTA IV requires x86");
 namespace {
 char logPath[MAX_PATH]{};
@@ -242,6 +243,7 @@ DWORD WINAPI AutoZoom(LPVOID) {
     bool decoded=false,failed=false;
     unsigned priorMenuRows=0;
     for (;;) {
+        ingameupdates::Tick(qolsettings::Get(QOL_CHECK_UPDATES)!=0);
         const unsigned rows=qolsettings::menuRows.load();
         if(rows!=priorMenuRows){char line[100];sprintf_s(line,"QoL native menu registered rows mask=%04X",rows);Log(line);priorMenuRows=rows;}
         if(!qolsettings::Get(QOL_MAP_AUTOZOOM)) {RestoreZoomStop();gate={};Sleep(50);continue;}

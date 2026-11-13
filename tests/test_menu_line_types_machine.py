@@ -31,10 +31,10 @@ class LineTypeMenuTests(unittest.TestCase):
    u.mem_write(0x808000-0x38+i*4,struct.pack('<I',0x80b000+i*0x100))
   return u
  def test_all_rows_keys_labels_and_original_stack_contracts_after_rebase(self):
-  keys=['QOL_ESCAPE','QOL_MISSION','QOL_FRIEND','QOL_ENEMY','QOL_CUSTOM']
-  labels=['Police Escape Line','Mission Line','Friend Line','Enemy Line','Custom Line']
+  keys=['QOL_ESCAPE','QOL_MISSION','QOL_FRIEND','QOL_ENEMY','QOL_CUSTOM','QOL_UPDATES']
+  labels=['Police Escape Line','Mission Line','Friend Line','Enemy Line','Custom Line','Check for QoL Updates']
   for base in [0x10000000,0x30000000]:
-   for row in range(12):
+   for row in range(13):
     u=self.machine(base,row);site=base+0xd7c9a
     u.emu_start(site,site+5,count=100)
     key=u.reg_read(UC_X86_REG_ESI)
@@ -60,7 +60,7 @@ class LineTypeMenuTests(unittest.TestCase):
     self.assertEqual(u.reg_read(UC_X86_REG_EDI),row)
  def test_extra_rows_use_toggle_path_not_sliders(self):
   base=0x10000000
-  for row in range(12):
+  for row in range(13):
    u=self.machine(base,row);reached=[]
    def stop(machine,address,size,unused):
     if address in [base+0xd7cfc,base+0xd7dd3]:reached.append(address);machine.emu_stop()
@@ -80,10 +80,10 @@ class LineTypeMenuTests(unittest.TestCase):
  def test_registration_order_nests_all_children_immediately_beneath_master(self):
   for base in [0x10000000,0x30000000]:
    u=self.machine(base,0);order=[0]
-   for _ in range(12):
-    u.emu_start(base+0xd7e29,base+(0xd7c80 if len(order)<12 else 0xd7e33),count=100)
+   for _ in range(13):
+    u.emu_start(base+0xd7e29,base+(0xd7c80 if len(order)<13 else 0xd7e33),count=100)
     row=u.reg_read(UC_X86_REG_EDI);order.append(row)
-   self.assertEqual(order,[0,1,2,3,4,7,8,9,10,11,5,6,12])
+   self.assertEqual(order,[0,1,2,3,4,7,8,9,10,11,5,6,12,13])
  def test_optional_label_bridge_and_old_core_fallback_preserve_x86_contract(self):
   for base in [0x10000000,0x30000000]:
    for api_size,handled in [(20,False),(24,False),(24,True)]:
@@ -120,7 +120,7 @@ class LineTypeMenuTests(unittest.TestCase):
 
  def test_master_setter_refreshes_cached_labels_without_changing_callback_ids(self):
   for base in [0x10000000,0x30000000]:
-   for row in range(12):
+   for row in range(13):
     for value in [0,1]:
      u=self.machine(base,row)
      u.mem_write(0x809100,struct.pack('<3I',0,0x80c000,row))

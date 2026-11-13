@@ -283,6 +283,132 @@ def perform_update():
         atomic(CONFIG,json.dumps(config).encode())
         progress(100,'Update complete — ready to play')
 
+# In-game bridge: a Linux user service watches the shared game folder. The ASI
+# queues requests; it never tries to execute Linux Python through Wine.
+def selected_game():
+    for path in (CONFIG,Path.home()/'.config/roadnav-uploader/config.json'):
+        try:
+            value=json.loads(path.read_text()).get('game')
+            if value:return Path(value).resolve()
+        except (OSError,ValueError,TypeError):pass
+    return None
+
+def game_running():
+    for path in Path('/proc').glob('[0-9]*/comm'):
+        try:
+            if path.read_text().strip().lower() in ('gtaiv.exe','gtaiv'):return True
+        except OSError:pass
+    return False
+
+def update_opt_in(game):
+    import configparser
+    try:
+        ini=configparser.ConfigParser(interpolation=None,strict=False)
+        ini.read_string((game/'GTAIV-QoL.ini').read_text(encoding='utf-8-sig'))
+        return ini.getint('Updates','CheckForUpdates',fallback=0)==1
+    except (OSError,ValueError,configparser.Error):return False
+
+def install_game_updater(game,source):
+    # Keep the existing five-file archive format: this verified updater is its
+    # own worker. No unsigned extra program is fetched at installation time.
+    if sys.platform=='win32':return False # Deck/Linux installer owns this bridge.
+    game=Path(game).resolve()
+    if any(ord(c)<32 for c in str(game)):raise RuntimeError('Unsupported game path.')
+    atomic(game/'GTAIV-QoL-Updater.py',source)
+    unit=Path.home()/'.config/systemd/user/gtaiv-qol-updates.service'
+    def quote(value):
+        return '"'+str(value).replace('\\','\\\\').replace('"','\\"').replace('%','%%').replace('$','$$')+'"'
+    text='[Unit]\nDescription=GTA IV QoL opt-in update staging\n[Service]\nType=simple\nExecStart=/usr/bin/python3 '+quote(game/'GTAIV-QoL-Updater.py')+' --watch-game '+quote(game)+'\nRestart=always\nRestartSec=5\n[Install]\nWantedBy=default.target\n'
+    atomic(unit,text.encode())
+    # A manual/first-time install reloads the worker (including a changed game
+    # path). During the worker's own apply, do not stop ourselves mid-transaction;
+    # watch_game returns after success and systemd reloads the new script.
+    action='start' if '--watch-game' in sys.argv else 'restart'
+    for args in (['daemon-reload'],['enable','gtaiv-qol-updates.service'],[action,'gtaiv-qol-updates.service']):
+        result=subprocess.run(['systemctl','--user']+args,capture_output=True,timeout=15)
+        if result.returncode:raise RuntimeError('In-game update worker could not be enabled. The manual updater remains available; rerun setup in Desktop Mode.')
+    return True
+
+def pending_directory(game):
+    return ROOT/'staged'/hashlib.sha256(str(Path(game).resolve()).encode()).hexdigest()[:24]
+
+def update_status(game,state):
+    atomic(game/'GTAIV-QoL-update-status.json',json.dumps({'schema':1,'state':state}).encode())
+
+def stage_game_update(game):
+    if not update_opt_in(game):return False
+    config=json.loads(CONFIG.read_text());channel=config.get('channel','beta')
+    if selected_game()!=game.resolve():raise RuntimeError('Configured game does not match update worker.')
+    select={'dev':dev_candidate,'beta':beta_candidate,'release':release_candidate}.get(channel)
+    if select is None:raise RuntimeError('Unsupported channel.')
+    token='' if channel=='beta' else config.get('token','')
+    candidate=select(token)
+    if candidate is None:update_status(game,'No published update available');return False
+    saved=json.loads((ROOT/'installed.json').read_text()) if (ROOT/'installed.json').is_file() else {}
+    if candidate.get('sha') and candidate['sha']==saved.get('sha'):
+        update_status(game,'Already up to date');return False
+    current,next_version=version_key(saved.get('version')),version_key(candidate.get('version'))
+    if channel=='beta' and current and next_version and current>=next_version:
+        update_status(game,'Already up to date');return False
+    data=request(token,candidate['route'],binary=True)
+    manifest,files=validate_archive(data,candidate)
+    if manifest['sha']==saved.get('sha'):
+        update_status(game,'Already up to date');return False
+    if not update_opt_in(game):return False
+    folder=pending_directory(game)
+    atomic(folder/'payload.zip',data)
+    candidate=dict(candidate,installed_sha=saved.get('sha',''))
+    atomic(folder/'candidate.json',json.dumps(candidate).encode())
+    update_status(game,'Update staged; applies after GTA IV exits')
+    return True
+
+def apply_game_update(game):
+    folder=pending_directory(game);candidate_file=folder/'candidate.json';payload=folder/'payload.zip'
+    if not candidate_file.is_file():return False
+    if game_running():return False
+    if not update_opt_in(game):
+        candidate_file.unlink();payload.unlink(missing_ok=True);update_status(game,'Update cancelled: option Off');return False
+    if candidate_file.is_symlink() or payload.is_symlink() or payload.stat().st_size>MAX_ARCHIVE:raise RuntimeError('Invalid staged payload.')
+    candidate=json.loads(candidate_file.read_text())
+    saved=json.loads((ROOT/'installed.json').read_text()) if (ROOT/'installed.json').is_file() else {}
+    config=json.loads(CONFIG.read_text())
+    if candidate.get('installed_sha','')!=saved.get('sha','') or candidate.get('channel')!=config.get('channel','beta'):
+        candidate_file.unlink();payload.unlink(missing_ok=True);update_status(game,'Staged update cancelled: installation/channel changed');return False
+    manifest,files=validate_archive(payload.read_bytes(),candidate)
+    if game_running():return False
+    # apply_update checks the running process again and uses the existing
+    # installer session lock, backups, settings preservation and rollback.
+    apply_update(manifest,files,candidate['channel'])
+    candidate_file.unlink();payload.unlink(missing_ok=True)
+    update_status(game,'Update installed; ready for next launch')
+    return True
+
+def game_update_tick(game):
+    import fcntl
+    ROOT.mkdir(parents=True,exist_ok=True,mode=0o700)
+    with (ROOT/'update.lock').open('a') as lock:
+        try:fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+        except BlockingIOError:return False
+        if selected_game()!=game.resolve() or not (game/'GTAIV.exe').is_file():return False
+        request_file=game/'GTAIV-QoL-update-request.txt'
+        if update_opt_in(game) and request_file.is_file() and not request_file.is_symlink():
+            if request_file.stat().st_size>96:raise RuntimeError('Invalid update request.')
+            request_file.unlink() # One network check per startup / Off->On edge.
+            stage_game_update(game)
+        return apply_game_update(game)
+
+def watch_game(game):
+    import time
+    os.umask(0o077);game=Path(game).resolve()
+    while True:
+        try:
+            if game_update_tick(game):return 0 # systemd restarts the new worker.
+        except Exception as exc:
+            # No credentials, API bodies or private file paths in status output.
+            update_status(game,'Check/apply deferred ('+type(exc).__name__+'); manual updater remains available')
+        time.sleep(3)
+
+
 def main(window=None):
     global PROGRESS
     if window is not None:
@@ -305,7 +431,7 @@ def main(window=None):
 
 
 if __name__=='__main__':
-    try:sys.exit(main())
+    try:sys.exit(watch_game(sys.argv[2]) if len(sys.argv)==3 and sys.argv[1]=='--watch-game' else main())
     except Exception as exc:
         message=str(exc) if isinstance(exc,RuntimeError) else 'The updater could not finish ('+type(exc).__name__+'). Check the connection and saved authorization; existing backups and logs remain on the Deck.'
         dialog('error',message);sys.exit(1)

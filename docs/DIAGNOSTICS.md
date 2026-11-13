@@ -1,3 +1,41 @@
+# Current crash evidence retrieval
+
+The reported date-entry crash has **no accessible uploaded capture**. The known
+private diagnostics issues are full; successful delivery must not be assumed.
+The code change removes the unverified ScriptHook global-accessor call and unused
+date-start observer. Venue icons deliberately stay white until a safe provider is
+verified. Without a crash record the exact faulting instruction is unconfirmed.
+
+Pull these exact files **if present beside GTAIV.exe** (the uploader collection in
+`tools/steam-deck/enable-qol-logs.py`):
+
+- `RoadNav-arrow.log` — includes any QoL passive fault record (registers/module/offset).
+- `RoadNav.log`
+- `GTAIV-QoL.log`
+- `GTAIV-QoL-diagnostics.log`
+- `GTAIV-QoL-pause.log`
+- `GTAIV-QoL-audio-layout.log`
+- `GTAIV-QoL-police.log`
+- `ScriptHook.log`
+- `LibertyLoadout.log`
+- `FusionFix.log`
+
+Do not substitute launcher/Social Club logs for a missing QoL fault record. This
+mod's passive recorder appends to RoadNav-arrow.log; it does **not** create a .dmp.
+If a game/other-mod crash dump exists, preserve it separately. Local queued captures
+may remain under `~/.local/share/roadnav-uploader/pending/` and confirmed archived
+originals under `~/.local/share/roadnav-uploader/delivered/`; their existence is not
+proof that this crash was captured or uploaded. Supply available files privately
+rather than posting raw diagnostics to the public source PR. No save files are needed.
+
+Retest after updater delivery: initiate a date, pick her up, let all venue icons
+load, pan/hover/set a waypoint and drive between venues. Hearts should remain
+visible, venues should be white, and loading them should not crash. Compass HUD
+remains the pause-menu control. If it recurs, preserve the files before another
+launch overwrites/truncates logs. Do not rely on the full issue #10 receiving them.
+
+Historical capture instructions below describe an earlier diagnostic build.
+
 # Broad cutscene and audio capture
 
 This build is for collecting evidence for cutscene pause and future voice-volume controls. It does not pause cutscenes or implement voice sliders. The existing 300% map zoom remains enabled.

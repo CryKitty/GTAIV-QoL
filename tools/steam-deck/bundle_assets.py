@@ -35,4 +35,6 @@ def render_helper(root):
               'sha256': hashlib.sha256(data).hexdigest(),
               'supported_sha256': ['14f6ac879bcc7df5fb18ce7b410bc436e16675b0dad640378dcb1e6dd3be98b3'],
               'notice': notice}
-    return source.replace('FUSIONFIX_BRIDGE = {}', 'FUSIONFIX_BRIDGE = '+repr(bundle), 1)
+    worker=(root/'tools/steam-deck/qol-updater.py').read_bytes()
+    embedded={'data':base64.b64encode(worker).decode(),'sha256':hashlib.sha256(worker).hexdigest()}
+    return source.replace('FUSIONFIX_BRIDGE = {}', 'FUSIONFIX_BRIDGE = '+repr(bundle), 1).replace('INGAME_UPDATER = {}','INGAME_UPDATER = '+repr(embedded),1)

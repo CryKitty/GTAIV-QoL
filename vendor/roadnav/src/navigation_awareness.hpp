@@ -13,8 +13,8 @@ class NavigationAwareness {
     using Native=void (__cdecl*)(GameTypes::scrNativeCallContext*);
     inline static NavigationAwareness* active_=nullptr;
     inline static thread_local bool internalRequest_=false;
-    inline static std::array<Native,15> originals_{};
-    std::array<void*,15> targets_{};
+    inline static std::array<Native,14> originals_{};
+    std::array<void*,14> targets_{};
     std::mutex mutex_;
     void (*log_)(const char*)=nullptr;
     std::unordered_map<unsigned,unsigned> combat_;
@@ -68,18 +68,9 @@ class NavigationAwareness {
     }
     void capture(unsigned index,GameTypes::scrNativeCallContext* context){
         std::array<std::uint32_t,3> head{};std::array<unsigned,6> args{};SIZE_T bytes=0;
-        if(!read(reinterpret_cast<std::uintptr_t>(context),head)||head[1]<(index==14?4u:index>=13?1u:2u)||head[1]>32||head[2]<0x10000)return;
+        if(!read(reinterpret_cast<std::uintptr_t>(context),head)||head[1]<(index>=13?1u:2u)||head[1]>32||head[2]<0x10000)return;
         const auto count=std::min(head[1],6u);
         if(!ReadProcessMemory(GetCurrentProcess(),reinterpret_cast<void*>(head[2]),args.data(),count*4,&bytes)||bytes!=count*4)return;
-        if(index==14){
-            if(stringAt(args[0],32)!="go_on_date")return;
-            datecompass::Preferences prefs;
-            std::array<std::uint32_t,datecompass::argumentWords> words{};
-            if(args[2]==datecompass::argumentWords&&read(args[1],words))prefs=datecompass::preferences(words);
-            std::lock_guard<std::mutex> lock(mutex_);dateSession_.begin(prefs,GetTickCount());
-            if(log_)log_(prefs.valid?"Compass date: captured live per-venue preferences":"Compass date: unsupported argument layout; venues stay neutral");
-            return;
-        }
         if(index==12){
             if(internalRequest_)return;
             // Observe the script's actual route request, never infer an objective
@@ -170,14 +161,14 @@ public:
             }
         }
         policeProbe_.start(lookup,names);
-        const NativeHashes hashes[]={NATIVE_PRINT,NATIVE_PRINT_NOW,NATIVE_PRINT_STRING_IN_STRING,NATIVE_PRINT_STRING_IN_STRING_NOW,NATIVE_PRINT_STRING_WITH_LITERAL_STRING,NATIVE_PRINT_STRING_WITH_LITERAL_STRING_NOW,NATIVE_PRINT_WITH_NUMBER,NATIVE_PRINT_WITH_NUMBER_NOW,NATIVE_PRINT_WITH_2_NUMBERS,NATIVE_PRINT_WITH_2_NUMBERS_NOW,NATIVE_TASK_COMBAT,NATIVE_TASK_COMBAT_TIMED,NATIVE_SET_ROUTE,NATIVE_SET_CAM_FOV,NATIVE_START_NEW_SCRIPT_WITH_ARGS};
-        const char* labels[]={"PRINT","PRINT_NOW","PRINT_STRING_IN_STRING","PRINT_STRING_IN_STRING_NOW","PRINT_STRING_WITH_LITERAL_STRING","PRINT_STRING_WITH_LITERAL_STRING_NOW","PRINT_WITH_NUMBER","PRINT_WITH_NUMBER_NOW","PRINT_WITH_2_NUMBERS","PRINT_WITH_2_NUMBERS_NOW","TASK_COMBAT","TASK_COMBAT_TIMED","SET_ROUTE","SET_CAM_FOV","START_NEW_SCRIPT_WITH_ARGS"};
-        const Native callbacks[]={observe<0>,observe<1>,observe<2>,observe<3>,observe<4>,observe<5>,observe<6>,observe<7>,observe<8>,observe<9>,observe<10>,observe<11>,observe<12>,observe<13>,observe<14>};
+        const NativeHashes hashes[]={NATIVE_PRINT,NATIVE_PRINT_NOW,NATIVE_PRINT_STRING_IN_STRING,NATIVE_PRINT_STRING_IN_STRING_NOW,NATIVE_PRINT_STRING_WITH_LITERAL_STRING,NATIVE_PRINT_STRING_WITH_LITERAL_STRING_NOW,NATIVE_PRINT_WITH_NUMBER,NATIVE_PRINT_WITH_NUMBER_NOW,NATIVE_PRINT_WITH_2_NUMBERS,NATIVE_PRINT_WITH_2_NUMBERS_NOW,NATIVE_TASK_COMBAT,NATIVE_TASK_COMBAT_TIMED,NATIVE_SET_ROUTE,NATIVE_SET_CAM_FOV};
+        const char* labels[]={"PRINT","PRINT_NOW","PRINT_STRING_IN_STRING","PRINT_STRING_IN_STRING_NOW","PRINT_STRING_WITH_LITERAL_STRING","PRINT_STRING_WITH_LITERAL_STRING_NOW","PRINT_WITH_NUMBER","PRINT_WITH_NUMBER_NOW","PRINT_WITH_2_NUMBERS","PRINT_WITH_2_NUMBERS_NOW","TASK_COMBAT","TASK_COMBAT_TIMED","SET_ROUTE","SET_CAM_FOV"};
+        const Native callbacks[]={observe<0>,observe<1>,observe<2>,observe<3>,observe<4>,observe<5>,observe<6>,observe<7>,observe<8>,observe<9>,observe<10>,observe<11>,observe<12>,observe<13>};
         for(unsigned i=0;i<targets_.size();++i){if(targets_[i])continue;auto address=lookup?lookup(hashes[i]):nullptr;if(!address&&names)address=names(labels[i]);
             if(!address||MH_CreateHook(address,reinterpret_cast<void*>(callbacks[i]),reinterpret_cast<void**>(&originals_[i]))!=MH_OK)continue;
             if(MH_EnableHook(address)!=MH_OK){MH_RemoveHook(address);originals_[i]=nullptr;continue;}targets_[i]=address;
         }
-        if(log_){unsigned count=0;for(auto target:targets_)if(target)++count;char line[100];std::snprintf(line,sizeof(line),"Compass mission/combat native observers: %u/15",count);log_(line);}
+        if(log_){unsigned count=0;for(auto target:targets_)if(target)++count;char line[100];std::snprintf(line,sizeof(line),"Compass mission/combat native observers: %u/14",count);log_(line);}
     }
     bool policeCircle(unsigned player,unsigned stars,roadnav::Vec3& center,float& radius){return policeProbe_.circle(player,stars,center.x,center.y,center.z,radius);}
     void policeSample(unsigned playerIndex,unsigned stars,roadnav::Vec3 player){policeProbe_.sample(playerIndex,stars,player.x,player.y,player.z);}

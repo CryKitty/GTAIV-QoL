@@ -18,6 +18,7 @@ import sys
 TITLE = 'GTA IV QoL bundle'
 BUNDLE = {}
 FUSIONFIX_BRIDGE = {}
+INGAME_UPDATER = {}
 INSTALL_BUILD = ''
 
 def progress(percent,phase,**details):pass
@@ -246,7 +247,7 @@ def extend(source):
 
 
 def merge_preferences(previous, fresh):
-    limits = {('Camera', 'TaxiRearFOV'): (0, 120), ('RoadGPSLine', 'Enabled'): (0, 1), ('RoadNav', 'Enabled'): (0, 1), ('RoadNav', 'ChaseGuidance'): (0, 1), ('RoadNav', 'DestinationColours'): (0, 1), ('DefaultMapZoom', 'Enabled'): (0, 1),
+    limits = {('Updates', 'CheckForUpdates'): (0, 1), ('Camera', 'TaxiRearFOV'): (0, 120), ('RoadGPSLine', 'Enabled'): (0, 1), ('RoadNav', 'Enabled'): (0, 1), ('RoadNav', 'ChaseGuidance'): (0, 1), ('RoadNav', 'DestinationColours'): (0, 1), ('DefaultMapZoom', 'Enabled'): (0, 1),
               ('RoadGPSLine', 'ShowPoliceEscape'): (0, 1),
               ('RoadGPSLine', 'ShowMission'): (0, 1),
               ('RoadGPSLine', 'ShowFriend'): (0, 1),
@@ -318,6 +319,14 @@ def install_bundle(game, bundle):
         if hashlib.sha256(data).hexdigest() != item['sha256']:
             raise RuntimeError('The installer checksum failed. No game files were changed.')
         decoded[game/name] = data
+    worker=None;worker_source=None
+    if INGAME_UPDATER:
+        import types
+        worker_source=base64.b64decode(INGAME_UPDATER['data'],validate=True)
+        if hashlib.sha256(worker_source).hexdigest()!=INGAME_UPDATER['sha256']:raise RuntimeError('In-game updater checksum failed.')
+        worker=types.ModuleType('qol_game_update_installer')
+        exec(compile(worker_source,'<verified in-game updater>','exec'),worker.__dict__)
+        decoded[game/'GTAIV-QoL-Updater.py']=worker_source
     changes = []
     ff_targets = []
     for folder in (game, game/'plugins', game/'scripts'):
@@ -388,6 +397,7 @@ def install_bundle(game, bundle):
         for path, data in decoded.items():
             if hashlib.sha256(path.read_bytes()).hexdigest() != hashlib.sha256(data).hexdigest():
                 raise RuntimeError('Installed bundle checksum failed.')
+        if worker is not None:worker.install_game_updater(game,worker_source)
     except Exception:
         for path in installed:
             path.unlink(missing_ok=True)

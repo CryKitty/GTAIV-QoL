@@ -1,3 +1,10 @@
+> Current safety status: the PR #5 venue-colour runtime path described below is
+> disabled after a date-entry crash report. The unverified GetGlobalAddress call
+> and date-start observer are removed; venue icons remain white. No uploaded
+> capture proves the exact fault. See [current diagnostics](DIAGNOSTICS.md).
+> Heart discovery and chase guidance remain enabled. The preference section below
+> records historical research, not a currently enabled memory-access feature.
+
 # Date compass and moving-enemy investigation
 
 Starting point: public main includes PR #4 at `6f9ab5e`. The user confirmed both
