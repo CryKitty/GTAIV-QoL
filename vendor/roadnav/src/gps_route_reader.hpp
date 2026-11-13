@@ -8,7 +8,8 @@ namespace roadnav {
 struct NativeGpsRoute {int slot=-1,state=0;std::vector<Vec3> points;};
 // The two native buffers can simultaneously contain old and new requests.
 // Copy each consistently, then choose the endpoint belonging to our request.
-template<class Read> bool readGpsRoute(std::uintptr_t slots,Read read,NativeGpsRoute& result,const Vec3* target=nullptr,const Vec3* start=nullptr){
+struct AcceptGpsRoute {bool operator()(const std::vector<Vec3>&)const{return true;}};
+template<class Read,class Accept=AcceptGpsRoute> bool readGpsRoute(std::uintptr_t slots,Read read,NativeGpsRoute& result,const Vec3* target=nullptr,const Vec3* start=nullptr,Accept accept={}){
     constexpr std::size_t stride=0xdb0,countAt=0xd60,stateAt=0xd64,maxPoints=countAt/16;
     result={};float best=std::numeric_limits<float>::max(),bestOrigin=std::numeric_limits<float>::max();
     for(int slot=0;slot<2;++slot){
@@ -22,6 +23,9 @@ template<class Read> bool readGpsRoute(std::uintptr_t slots,Read read,NativeGpsR
         }
         std::int32_t countAfter=0,stateAfter=0;
         if(!valid||!read(base+countAt,&countAfter,4)||!read(base+stateAt,&stateAfter,4)||countAfter!=count||stateAfter!=state)continue;
+        // Validate each buffer before ranking. A backward old buffer can have
+        // a more exact endpoint than a usable new forward calculation.
+        if(!accept(points))continue;
         const float error=target?distance2D(points.back(),*target)+4*std::fabs(points.back().z-target->z):0;
         // Opt-in only after a primary replan. Use origin only for effectively
         // identical endpoints; never trade ownership for a nearer other goal.

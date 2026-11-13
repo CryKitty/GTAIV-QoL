@@ -6,11 +6,58 @@
 #include "../vendor/roadnav/src/road_projection.hpp"
 #include "../src/police_escape.hpp"
 #include "../src/primary_gps_recovery.hpp"
+#include "../src/primary_route_replan.hpp"
+#include "../src/escape_gps_request.hpp"
 #include "../src/navigation_awareness.hpp"
+#include "../src/compass.hpp"
 #include <cassert>
 #include <cstdio>
 using namespace roadnav;
 int main(){
+    {
+        assert(compass::enemyOwnsAutomaticGps(false,true,true,true)); // wanted must not veto acquisition
+        assert(!compass::enemyOwnsAutomaticGps(true,true,true,true)); // fixed goal retains priority
+        assert(!compass::enemyOwnsAutomaticGps(false,true,false,true)); // Enemy Off returns escape ownership
+        assert(!compass::enemyOwnsAutomaticGps(false,false,true,true));
+        assert(!compass::enemyOwnsAutomaticGps(false,true,true,false));
+        // A target moving every 200ms must not cancel a cold GPS request.
+        unsigned requests=1;
+        for(unsigned elapsed=200;elapsed<6000;elapsed+=200){
+            if(chaseRefreshDue(elapsed,true,false))++requests;
+        }
+        assert(requests==1);
+        const std::vector<Vec3> stale{{0,0,0},{0,100,0}};
+        const Vec3 shifted{0,105,0};
+        assert(routeDestinationMatches(stale,shifted)); // endpoint tolerance alone is insufficient
+        assert(!chaseRefreshDue(200,true,!sameGpsRoad(stale,stale)));
+        assert(!sameGpsRoad(stale,{{0,0,0},{0,105,0}}));
+        assert(chaseRefreshDue(6000,true,false)); // bounded failure recovery
+        assert(chaseRefreshDue(800,true,true)); // completed request can refresh
+        assert(!chaseRefreshDue(199,true,true));
+        PrimaryWrongWay wrong;
+        unsigned fired=0;
+        for(unsigned t=0;t<=1500;t+=primaryReplanPollMs)if(wrong.update(t,42,true))fired=t;
+        assert(fired==1500); // unchanged sustained/brief-swerve gates
+        const Vec3 heading{0,-1,0},target{0,-100,0};
+        assert(forwardGpsRoute({{0,0,0},{0,-100,0}}, {},heading,target));
+        assert(!forwardGpsRoute({{0,0,0},{0,50,0},{0,-100,0}}, {},heading,target));
+    }
+    {
+        for(const float direction:{-1.0f,1.0f}){
+            auto lane=roadLine({{0,0,0},{0,100*direction,0}}, {},10);
+            offsetDrivingSide(lane);
+            for(auto point:lane.points)assert(std::fabs(point.x-2*direction)<.001f);
+            fitRoadSurface(lane,{},RoadLine{},[](float,float,float){return 0.0f;});
+            for(auto point:lane.points)assert(std::fabs(point.z-roadSurfaceClearance)<.001f);
+        }
+        auto curve=roadLine({{0,0,10},{0,30,10},{10,60,11},{30,80,12}}, {},20);
+        const auto center=curve.points;offsetDrivingSide(curve);
+        for(std::size_t i=0;i<center.size();++i){
+            assert(std::fabs(distance2D(center[i],curve.points[i])-2)<.001f);
+            assert(curve.points[i].z==center[i].z); // height is fitted afterward, no floor jump
+            if(i)assert(distance2D(curve.points[i-1],curve.points[i])<3.5f);
+        }
+    }
     {
         auto displayed=roadLine({{0,0,0},{0,100,0}},Vec3{},20);
         const auto old=displayed.points;
@@ -246,6 +293,24 @@ int main(){
             fitRoadSurface(line,{},RoadLine{},[](float,float,float){return 0.0f;});
             pinDestination(line,objective);
             assert(line.visible()&&roadLineDestination(line).y==objective.y);
+        }
+        {
+            // Both buffers end near the ahead node. Old backward buffer wins
+            // endpoint ranking unless forward validation happens per candidate.
+            const Vec3 lead{0,-100,0},origin{},heading{0,-1,0};
+            fill(0,lead);fill(1,{0,-98,0});
+            const float backward[]{0,0,0,0,0,30,0,0,0,-100,0,0};
+            const std::int32_t count=3;
+            std::memcpy(memory.data(),backward,sizeof(backward));
+            std::memcpy(memory.data()+0xd60,&count,4);
+            NativeGpsRoute candidate;
+            assert(readGpsRoute(0,read,candidate,&lead,&origin)&&candidate.slot==0);
+            assert(!forwardGpsRoute(candidate.points,origin,heading,lead));
+            const auto forward=[&](const std::vector<Vec3>& points){return forwardGpsRoute(points,origin,heading,lead);};
+            assert(readGpsRoute(0,read,candidate,&lead,&origin,forward)&&candidate.slot==1);
+            auto line=roadLine(candidate.points,origin,10);offsetDrivingSide(line,candidate.points);
+            fitRoadSurface(line,origin,RoadLine{},[](float,float,float){return 0.0f;});
+            assert(line.visible()&&line.points.back().y<0);
         }
         fill(0,{0,300,0});fill(1,{300,0,0});NativeGpsRoute route;const Vec3 target{300,0,0};
         assert(readGpsRoute(0,read,route,&target)&&route.slot==1&&route.points.back().x==300);
