@@ -27,39 +27,40 @@ int main(){
     using namespace roadnav;
     const std::vector<Vec3> old{{0,0,0},{0,100,0}};const Vec3 backwards{0,-1,0},velocity{0,-10,0};
     PrimaryWrongWay brief;
-    for(unsigned t=0;t<3000;t+=200)assert(!brief.update(t,1,movingAgainstRoute(old,{0,-static_cast<float>(t)*.01f,0},backwards,velocity)));
-    assert(!brief.update(3000,1,false)); // Swerving/alignment breaks continuity.
-    for(unsigned t=3200;t<6200;t+=200)assert(!brief.update(t,1,true));
-    assert(brief.update(6200,1,true));
-    for(unsigned t=6400;t<16200;t+=200)assert(!brief.update(t,1,true));
-    assert(brief.update(16200,1,true)); // Ten-second request backoff, not every tick.
+    for(unsigned t=0;t<900;t+=100)assert(!brief.update(t,1,true));
+    assert(!brief.update(900,1,false));
+    for(unsigned t=1000;t<2500;t+=100)assert(!brief.update(t,1,true));
+    assert(brief.update(2500,1,true));
+    for(unsigned t=2600;t<12500;t+=100)assert(!brief.update(t,1,true));
+    assert(brief.update(12500,1,true)); // Same ten-second request backoff.
     PrimaryWrongWay failedRequest;
-    for(unsigned t=0;t<=3000;t+=200)failedRequest.update(t,1,true);
-    assert(failedRequest.retaining(3000)&&failedRequest.retaining(12999));
-    assert(!failedRequest.retaining(13000)); // No one-tick blank on a failed attempt.
+    for(unsigned t=0;t<=1500;t+=100)failedRequest.update(t,1,true);
+    assert(failedRequest.retaining(1500)&&failedRequest.retaining(11499));
+    assert(!failedRequest.retaining(11500));
     PrimaryWrongWay sustained;
-    for(unsigned t=0;t<3000;t+=200)assert(!sustained.update(t,1,movingAgainstRoute(old,{0,-static_cast<float>(t)*.01f,0},backwards,velocity)));
-    assert(sustained.update(3000,1,movingAgainstRoute(old,{0,-30,0},backwards,velocity)));
+    for(unsigned t=0;t<1500;t+=100)assert(!sustained.update(t,1,movingAgainstRoute(old,{0,-static_cast<float>(t)*.01f,0},backwards,velocity)));
+    assert(sustained.update(1500,1,movingAgainstRoute(old,{0,-15,0},backwards,velocity)));
     assert(!movingAgainstRoute(old,{0,0,0},backwards,{}));
-    assert(!movingAgainstRoute(old,{0,0,0},backwards,{0,-1,0})); // Crawl.
-    assert(!movingAgainstRoute(old,{0,0,0},backwards,{0,10,0})); // Reversing along route.
-    assert(!movingAgainstRoute(old,{0,0,0},{1,0,0},velocity)); // Sideways, not opposite.
-    assert(!movingAgainstRoute(old,{0,0,10},backwards,velocity)); // Another floor.
+    assert(!movingAgainstRoute(old,{0,0,0},backwards,{0,-1,0}));
+    assert(!movingAgainstRoute(old,{0,0,0},backwards,{0,10,0}));
+    assert(!movingAgainstRoute(old,{0,0,0},{1,0,0},velocity));
+    assert(!movingAgainstRoute(old,{0,0,10},backwards,velocity));
+    assert(movingAgainstRoute(old,{0,0,0},backwards,{0,-2.5f,0}));
     PrimaryWrongWay stopped;
     for(unsigned t=0;t<10000;t+=200)assert(!stopped.update(t,1,movingAgainstRoute(old,{0,0,0},backwards,{})));
     PrimaryWrongWay gaps;assert(!gaps.update(0,1,true));assert(!gaps.update(3000,1,true));
     assert(!gaps.update(3200,2,true));
-    for(unsigned t=3400;t<6200;t+=200)assert(!gaps.update(t,2,true));
-    assert(gaps.update(6200,2,true));
+    for(unsigned t=3400;t<4800;t+=200)assert(!gaps.update(t,2,true));
+    assert(gaps.update(4800,2,true));
     assert(!samePrimaryGoal({0,0,0},{3,0,0})&&!samePrimaryGoal({0,0,0},{0,0,4}));
     PrimaryWrongWay moved;
-    for(unsigned t=0;t<3000;t+=200)assert(!moved.update(t,1,true,{0,100,0}));
-    assert(!moved.update(3000,1,true,{100,100,0})); // Same handle, different destination.
-    for(unsigned t=3200;t<6000;t+=200)assert(!moved.update(t,1,true,{100,100,0}));
-    assert(moved.update(6000,1,true,{100,100,0}));
+    for(unsigned t=0;t<1500;t+=100)assert(!moved.update(t,1,true,{0,100,0}));
+    assert(!moved.update(1500,1,true,{100,100,0}));
+    for(unsigned t=1600;t<3000;t+=100)assert(!moved.update(t,1,true,{100,100,0}));
+    assert(moved.update(3000,1,true,{100,100,0}));
     PrimaryWrongWay wrap;const unsigned start=0xfffffc00u;
-    for(unsigned dt=0;dt<3000;dt+=200)assert(!wrap.update(start+dt,1,true));
-    assert(wrap.update(start+3000,1,true));
+    for(unsigned dt=0;dt<1500;dt+=100)assert(!wrap.update(start+dt,1,true));
+    assert(wrap.update(start+1500,1,true));
     Vec3 lead{};
     assert(forwardRoadTarget({0,-30,0},backwards,10,[](Vec3 probe,unsigned,Vec3& p){p=probe;return true;},lead));
     assert(lead.y<-60&&lead.x==0);

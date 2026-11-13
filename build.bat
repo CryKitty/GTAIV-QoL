@@ -1,6 +1,8 @@
 @echo off
 setlocal
 if not exist build mkdir build
+python tools\write-qol-version.py
+if errorlevel 1 exit /b 1
 cl /nologo /O2 /MT /W3 /c vendor\minhook\src\buffer.c vendor\minhook\src\hook.c vendor\minhook\src\trampoline.c vendor\minhook\src\hde\hde32.c /Fo:build\
 if errorlevel 1 exit /b 1
 cl /nologo /std:c++17 /EHsc /W4 /WX /O2 /LD /MT src\main.cpp version.lib user32.lib /Fe:build\GTAIV-QoL.asi /link /MACHINE:X86 /DLL

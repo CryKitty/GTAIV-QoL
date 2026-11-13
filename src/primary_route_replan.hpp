@@ -5,7 +5,7 @@
 namespace roadnav {
 // Extend only the first road tangent behind its old calculation origin. A
 // driver can cover >30m during debounce; clamping at that origin would cancel
-// the trigger before three seconds simply because the old GPS plan is stale.
+// the trigger before the debounce elapses simply because the old GPS plan is stale.
 inline Sample primaryRouteSample(const std::vector<Vec3>& path,Vec3 player){
     Sample result{};float best=std::numeric_limits<float>::max(),along=0;bool first=true;
     for(std::size_t i=1;i<path.size();++i){
@@ -41,7 +41,7 @@ struct PrimaryWrongWay {
         if(!goal||!opposite){cancel();return false;}
         if(!observing||target!=goal||now-last>600){observing=true;since=now;target=goal;}
         last=now;
-        if(now-since<3000||(attempted&&now-attemptAt<10000))return false;
+        if(now-since<1500||(attempted&&now-attemptAt<10000))return false;
         attempted=true;attemptAt=now;cancel();return true;
     }
 };
