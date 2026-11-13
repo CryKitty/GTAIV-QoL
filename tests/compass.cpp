@@ -61,6 +61,15 @@ struct FakeGps {
     void configure(unsigned){}
 };
 int main(){
+    assert(compass::waypointMiles(1609.344f)=="1.00 mi");
+    assert(compass::waypointMiles(804.672f)=="0.50 mi");
+    assert(compass::waypointMiles(16093.44f)=="10.0 mi");
+    assert(compass::waypointMiles(-1).empty());
+    assert(compass::waypointLabelY(true)>compass::waypointLabelY(false));
+    assert(!compass::hoverReadout(42,42,true,false)); // pinned waypoint has its own persistent rows
+    assert(compass::hoverReadout(7,42,true,false)); // other icons still hover
+    assert(!compass::hoverReadout(7,42,false,false));
+
     {
         // A newly created contact/date sprite is discovered without radar-table
         // addresses, survives mission/range gates, and wins overlap with shops.
@@ -99,6 +108,7 @@ int main(){
         assert(preference(35)==Preference::Neutral&&preference(50)==Preference::Neutral&&preference(34)==Preference::Disliked&&preference(95)==Preference::Liked);
         assert(colour(Preference::Liked)==8&&colour(Preference::Disliked)==9&&colour(Preference::Unknown)==0xffffffffu&&colour(Preference::Neutral)==0xffffffffu);
         assert(match(prefs,places,false,21,{100,200,10})==Preference::Unknown);
+        assert(colour(match(prefs,places,false,21,{100,200,10}))==0xffffffffu);
         assert(match({},places,true,21,{100,200,10})==Preference::Unknown);
         assert(match(prefs,places,true,22,{100,200,10})==Preference::Unknown);
         places[1]=places[0];assert(match(prefs,places,true,21,{100,200,10})==Preference::Unknown);

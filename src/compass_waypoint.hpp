@@ -1,8 +1,19 @@
 #pragma once
 #include <algorithm>
 #include <cstdint>
+#include <cstdio>
+#include <string>
 #include "../vendor/roadnav/src/marker_geometry.hpp"
 namespace compass {
+inline std::string waypointMiles(float metres){
+    if(!std::isfinite(metres)||metres<0)return {};
+    const float miles=metres/1609.344f;char text[48]{};
+    std::snprintf(text,sizeof(text),miles<10?"%.2f mi":"%.1f mi",static_cast<double>(miles));return text;
+}
+// Persistent waypoint rows reserve space below temporary hold/arrival captions.
+inline float waypointLabelY(bool caption){return .087f+(caption?.048f:0);}
+inline bool hoverReadout(unsigned handle,unsigned waypoint,bool focused,bool holding){return handle!=waypoint&&(focused||holding);}
+
 // The same hold is available on foot and in vehicles; phone and combat retain
 // their input priority. Steering, throttle and other D-pad directions are untouched.
 inline bool waypointEligible(bool phone,bool combat){return !phone&&!combat;}

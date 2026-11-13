@@ -31,13 +31,11 @@ class CompassHud {
     bool dateTableValid_=false,dateTableReported_=false;DWORD dateTableAt_=0;
     void readDateVenues(DWORD now){
         if(dateTableAt_&&now-dateTableAt_<1000)return;dateTableAt_=now;
-        using GlobalAddress=void*(__cdecl*)(unsigned);
-        const auto module=GetModuleHandleA("ScriptHook.dll");
-        const auto address=module?reinterpret_cast<GlobalAddress>(GetProcAddress(module,"?GetGlobalAddress@Game@@SAPAXI@Z")):nullptr;
-        datecompass::Table words{};
-        const bool previous=dateTableValid_;
-        dateTableValid_=address&&read(reinterpret_cast<std::uintptr_t>(address(datecompass::venueGlobal)),words)&&datecompass::venues(words,dateVenues_);
-        if((!dateTableReported_||previous!=dateTableValid_)&&log_){log_(dateTableValid_?"Compass date: live 29-place table validated (read-only)":"Compass date: live venue table unavailable; icons stay neutral");dateTableReported_=true;}
+        // No verified safe CE provider exists yet. In particular, never call
+        // ScriptHook GetGlobalAddress: it dereferences internal pointers before
+        // our checked ReadProcessMemory boundary can run.
+        dateTableValid_=false;
+        if(!dateTableReported_&&log_){log_("Compass date: unsafe global accessor disabled; venue icons stay white");dateTableReported_=true;}
     }
     unsigned compassWaypointSource_=0;roadnav::Vec3 compassWaypointPoint_{};
     compass::WaypointFeedback feedback_{};float feedbackAnchor_=compass::StripLayout::center;
@@ -551,6 +549,22 @@ public:
         }
         const float hold=waypointHold_.progress(now);
         auto caption=feedback_.draw(now);
+        if(hold>0)caption=compass::caption("Setting waypoint",feedbackAnchor_);
+        const auto pinned=navigationWaypoint();roadnav::Vec3 pinnedPoint{};
+        const bool havePinned=pinned.IsValid()&&navigationTargetPosition(pinned,pinnedPoint);
+        float hoverLabelY=Layout::focusLabelY;
+        if(havePinned){
+            auto label=awareness_.briefFor(pinned.Get());
+            const bool objective=haveMissionPoint&&awareness::objectiveLabel(mission,false,false,BLIP_WAYPOINT,pinned.Get()==missionTarget.Get(),roadnav::distance2D(pinnedPoint,missionPoint));
+            if(label.empty()&&objective)label=awareness_.briefFor(missionTarget.Get());
+            if(label.empty()&&objective)label=missionBrief;
+            float y=compass::waypointLabelY(caption.visible());
+            if(!label.empty()){const auto lines=awareness::briefLines(label);
+                for(const auto& line:lines){text(mid,y,line.c_str(),.22f,235,.85f,1.10f);y+=.024f;}
+            }else{textStyle(.22f,235,.85f,1.10f);NativeInvoke::Invoke<NATIVE_DISPLAY_TEXT_WITH_BLIP_NAME,ScriptVoid>(mid,y,"STRING",pinned.Get());y+=.024f;}
+            const auto distance=compass::waypointMiles(roadnav::distance2D(playerPoint,pinnedPoint));
+            text(mid,y,distance.c_str(),.22f,215,1.0f,1.10f);hoverLabelY=y+.032f;
+        }
         const auto message=messages_.snapshot();
         compass::NoticeFrame noticeFrame{message.alpha(now),now,minimap_.frontendAddress()};
         if(!dictionary_.IsValid()&&(!dictionaryRetry_||now-dictionaryRetry_>=1000)){dictionary_=GetTxd("blips");dictionaryRetry_=now;}
@@ -568,8 +582,8 @@ public:
             }else {++fallbackIcons;const auto rgb=compass::markerColour(marker.colour);textStyle(.672f*scale,marker.alpha);SetTextColour(static_cast<u8>(rgb[0]),static_cast<u8>(rgb[1]),static_cast<u8>(rgb[2]),static_cast<u8>(marker.alpha));DisplayTextWithLiteralString(x,iconY-.011f,"STRING",compass::fallbackSymbol(marker.sprite));}
             const bool holding=hold>0&&marker.handle==waypointHold_.target;
             if(holding){caption=compass::caption("Setting waypoint",x);noticeFrame.holdX=x;noticeFrame.holdY=iconY;noticeFrame.holdRadius=height*.62f;noticeFrame.holdProgress=hold;}
-            if(centered||holding){
-                float distanceY=Layout::distanceY;
+            if(compass::hoverReadout(marker.handle,havePinned?pinned.Get():0,centered,holding)){
+                float distanceY=havePinned?hoverLabelY+.024f:Layout::distanceY;
                 auto objectiveText=marker.enemy?std::string{}:awareness_.briefFor(marker.handle);
                 if(objectiveText.empty()&&marker.missionDestination&&missionTarget.IsValid())objectiveText=awareness_.briefFor(missionTarget.Get());
                 if(objectiveText.empty()&&marker.missionDestination)objectiveText=missionBrief;
@@ -577,11 +591,11 @@ public:
                     // The shared caption replaces objective text, avoiding overlap.
                 }else if(!objectiveText.empty()){
                     const auto lines=awareness::briefLines(objectiveText);
-                    for(unsigned row=0;row<lines.size();++row)text(mid,Layout::focusLabelY+.024f*row,lines[row].c_str(),.22f,235,.85f,1.10f);
-                    distanceY=Layout::focusLabelY+.024f*static_cast<float>(lines.size());
+                    for(unsigned row=0;row<lines.size();++row)text(mid,hoverLabelY+.024f*row,lines[row].c_str(),.22f,235,.85f,1.10f);
+                    distanceY=hoverLabelY+.024f*static_cast<float>(lines.size());
                 }else{
                     textStyle(.22f,235,.85f,1.10f);
-                    NativeInvoke::Invoke<NATIVE_DISPLAY_TEXT_WITH_BLIP_NAME,ScriptVoid>(mid,Layout::focusLabelY,"STRING",marker.handle);
+                    NativeInvoke::Invoke<NATIVE_DISPLAY_TEXT_WITH_BLIP_NAME,ScriptVoid>(mid,hoverLabelY,"STRING",marker.handle);
                 }
                 char distance[32];const float number=metric_?marker.distance:marker.distance*3.2808399f;
                 std::snprintf(distance,sizeof(distance),"%.0f %s",number,metric_?"m":"ft");text(mid,distanceY,distance,.22f,215,1.0f,1.10f);}
