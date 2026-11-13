@@ -33,15 +33,15 @@ class RecoveryTests(unittest.TestCase):
             def api(token,route,payload=None):
                 self.assertEqual(token,'fixture token')
                 if payload:
-                    self.assertEqual(route,'/issues/10/comments');posts.append(payload['body']);return {'id':99,'body':payload['body']}
+                    if route=='/issues':return {'number':11,'state':'open','locked':False,'comments':0}
+                    self.assertEqual(route,'/issues/11/comments');posts.append(payload['body']);return {'id':99,'body':payload['body']}
                 gets.append(route)
                 if route=='':return {'private':True}
-                if route=='/issues/10':return {'state':'open','locked':False}
                 return [{'body':'<!-- roadnav-session:'+first[2]['id']+' -->'}] if route.startswith('/issues/2/comments') else []
-            ns=self.fixture(root,api)
+            ns=self.fixture(root,api);config={'issue':2,'token':'fixture token'}
             with patch('time.sleep'):
-                ns['drain']({'issue':2,'token':'fixture token'})
-            self.assertEqual(len(posts),1);self.assertIn(second[2]['id'],posts[0]);self.assertEqual(len(gets),5)
+                ns['drain'](config)
+            self.assertEqual(len(posts),1);self.assertIn(second[2]['id'],posts[0]);self.assertEqual(len(gets),6);self.assertEqual(config['issue'],11);self.assertEqual(config['issue_date'],helper.diagnostics_issue_day())
             for path,data,_ in [first,second]:
                 self.assertFalse(path.exists());self.assertEqual((root/'delivered'/path.name).read_bytes(),data)
 
@@ -50,10 +50,11 @@ class RecoveryTests(unittest.TestCase):
             root=Path(tmp);(root/'pending').mkdir();path,raw,item=self.enqueue(root,3);remote=[];posts=[]
             def api(token,route,payload=None):
                 if payload:
+                    if route=='/issues':return {'number':12,'state':'open','locked':False,'comments':0}
                     posts.append(payload);remote.append({'body':payload['body']});raise TimeoutError('simulated lost reply')
                 if route=='':return {'private':True}
-                if route=='/issues/10':return {'state':'open','locked':False}
-                return remote if route.startswith('/issues/10/comments') else []
+                if route=='/issues/12':return {'state':'open','locked':False,'comments':0}
+                return remote if '/comments' in route else []
             ns=self.fixture(root,api);config={'issue':9,'token':'fixture'}
             ns['drain'](config);self.assertEqual(path.read_bytes(),raw)
             ns['drain'](config);self.assertEqual(len(posts),1);self.assertEqual((root/'delivered'/path.name).read_bytes(),raw)
@@ -63,9 +64,10 @@ class RecoveryTests(unittest.TestCase):
             with tempfile.TemporaryDirectory() as tmp:
                 root=Path(tmp);(root/'pending').mkdir();path,raw,_=self.enqueue(root,4)
                 def api(token,route,payload=None):
-                    if payload:return response
+                    if payload:
+                    if route=='/issues':return {'number':13,'state':'open','locked':False,'comments':0}
+                    return response
                     if route=='':return {'private':True}
-                    if route=='/issues/10':return {'state':'open','locked':False}
                     return []
                 self.fixture(root,api)['drain']({'issue':9,'token':'fixture'})
                 self.assertEqual(path.read_bytes(),raw)
@@ -75,9 +77,10 @@ class RecoveryTests(unittest.TestCase):
             root=Path(tmp);(root/'pending').mkdir();all_files=[self.enqueue(root,n) for n in range(10,32)]
             summary=self.enqueue(root,32,'0000-nav-');all_files.append(summary);police=self.enqueue(root,33,'0000-police-');all_files.append(police);posts=[]
             def api(token,route,payload=None):
-                if payload:posts.append(payload['body']);return {'id':len(posts),'body':payload['body']}
+                if payload:
+                    if route=='/issues':return {'number':14,'state':'open','locked':False,'comments':0}
+                    posts.append(payload['body']);return {'id':len(posts),'body':payload['body']}
                 if route=='':return {'private':True}
-                if route=='/issues/10':return {'state':'open','locked':False}
                 return []
             with patch('time.sleep'):
                 self.fixture(root,api)['drain']({'issue':9,'token':'fixture'})
@@ -94,21 +97,100 @@ class RecoveryTests(unittest.TestCase):
             for n in range(101,130):self.enqueue(root,n)
             posts=[]
             def api(token,path,payload=None):
-                if payload:posts.append(payload['body']);return {'id':len(posts),'body':payload['body']}
+                if payload:
+                    if path=='/issues':return {'number':14,'state':'open','locked':False,'comments':0}
+                    posts.append(payload['body']);return {'id':len(posts),'body':payload['body']}
                 if path=='':return {'private':True}
-                if path=='/issues/10':return {'state':'open','locked':False}
                 return []
             ns=self.fixture(root,api);ns['body']=lambda value:'<!-- roadnav-session:'+value['id']+' -->\n'+next(iter(value['logs'].values()))
             with patch('time.sleep'):ns['drain']({'issue':10,'token':'fixture'})
             self.assertIn('original route evidence',posts[0]);self.assertEqual((root/'delivered'/route.name).read_bytes(),raw)
 
-    def test_config_migration_preserves_authorization_and_is_repeatable(self):
+    def test_config_migration_preserves_authorization_and_retires_old_issue(self):
         with tempfile.TemporaryDirectory() as tmp:
             path=Path(tmp)/'config.json';original={'issue':2,'token':'private fixture','game':'/fixture/game','extra':True};path.write_text(json.dumps(original));raw=path.read_bytes()
             helper.migrate_upload_destination(path,original)
-            self.assertEqual(json.loads(path.read_text()),dict(original,issue=10));self.assertEqual(original['issue'],10)
-            backup=path.with_name('config.before-log-issue-10.json');self.assertEqual(backup.read_bytes(),raw)
-            helper.migrate_upload_destination(path,original);self.assertEqual(backup.read_bytes(),raw)
+            self.assertEqual(json.loads(path.read_text()),dict(original,issue=None,issue_date=None));self.assertIsNone(original['issue']);self.assertIsNone(original['issue_date'])
+            backup=path.with_name('config.before-log-issue-2.json');self.assertEqual(backup.read_bytes(),raw)
+            with self.assertRaisesRegex(RuntimeError,'Unrecognized RoadNav log issue'):
+                helper.migrate_upload_destination(path,original)
+            self.assertEqual(backup.read_bytes(),raw)
+            if sys.platform!='win32':self.assertEqual(path.stat().st_mode&0o777,0o600)
+
+    def test_full_current_day_issue_opens_fresh_issue_and_flushes_pending(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);(root/'pending').mkdir();path,data,_=self.enqueue(root,50);posts=[];today=helper.diagnostics_issue_day()
+            def api(token,route,payload=None):
+                if payload:
+                    if route=='/issues':return {'number':31,'state':'open','locked':False,'comments':0}
+                    posts.append(payload['body']);return {'id':1,'body':payload['body']}
+                if route=='':return {'private':True}
+                if route=='/issues/10':return {'number':10,'state':'open','locked':False,'comments':2500}
+                return []
+            config={'issue':10,'issue_date':today,'token':'fixture token'}
+            with patch('time.sleep'):
+                self.fixture(root,api)['drain'](config)
+            self.assertEqual(len(posts),1);self.assertEqual(config['issue'],31);self.assertEqual(config['issue_date'],today)
+            self.assertFalse(path.exists());self.assertEqual((root/'delivered'/path.name).read_bytes(),data)
+
+    def test_resolve_reuses_usable_current_day_issue(self):
+        today=helper.diagnostics_issue_day();calls=[]
+        def api(token,path,payload=None):
+            calls.append(path)
+            if path=='/issues/7':return {'number':7,'state':'open','locked':False,'comments':100}
+            return []
+        config={'issue':7,'issue_date':today,'token':'fixture'}
+        self.assertEqual(helper.resolve_diagnostics_issue(api,'fixture',config),7)
+        self.assertEqual(calls,['/issues/7']);self.assertEqual(config,{'issue':7,'issue_date':today,'token':'fixture'})
+
+    def test_resolve_opens_new_issue_when_current_day_issue_is_full(self):
+        today=helper.diagnostics_issue_day();title='QoL diagnostics — '+today;created=[]
+        def api(token,path,payload=None):
+            if payload:
+                created.append(payload);return {'number':22,'state':'open','locked':False,'comments':0}
+            if path=='/issues/7':return {'number':7,'state':'open','locked':False,'comments':2500}
+            if path.startswith('/issues?'):return [{'number':8,'state':'open','locked':False,'comments':2500,'title':title}]
+            return []
+        config={'issue':7,'issue_date':today,'token':'fixture'}
+        self.assertEqual(helper.resolve_diagnostics_issue(api,'fixture',config),22)
+        self.assertEqual((config['issue'],config['issue_date']),(22,today))
+        self.assertEqual(created[0]['title'],title);self.assertIn('Daily automatic diagnostics',created[0]['body']){'issue':7,'issue_date':today,'token':'fixture'}
+
+    def test_resolve_reuses_open_issue_with_todays_title(self):
+        today=helper.diagnostics_issue_day();title='QoL diagnostics — '+today
+        def api(token,path,payload=None):
+            if payload:self.fail('a reusable issue already exists for today')
+            if path=='/issues/7':return {'number':7,'state':'open','locked':True}
+            if path.startswith('/issues?'):return [{'number':23,'state':'open','locked':False,'comments':3,'title':title}]
+            return []
+
+    def test_resolve_creates_issue_when_current_is_unreachable(self):
+        today=helper.diagnostics_issue_day();created=[]
+        def api(token,path,payload=None):
+            if payload:
+                created.append(payload);return {'number':24,'state':'open','locked':False,'comments':0}
+            if path=='/issues/7':raise ConnectionError('unreachable')
+            return []
+        config={'issue':7,'issue_date':today,'token':'fixture'}
+        self.assertEqual(helper.resolve_diagnostics_issue(api,'fixture',config),24)
+        self.assertEqual((config['issue'],config['issue_date']),(24,today))
+        self.assertEqual(created[0]['title'],'QoL diagnostics — '+today)
+
+    def test_config_migration_leaves_current_day_destination_alone(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path=Path(tmp)/'config.json';today=helper.diagnostics_issue_day()
+            original={'issue':21,'issue_date':today,'token':'private fixture'}
+            path.write_text(json.dumps(original));raw=path.read_bytes()
+            helper.migrate_upload_destination(path,original)
+            self.assertEqual(path.read_bytes(),raw);self.assertEqual(original,{'issue':21,'issue_date':today,'token':'private fixture'})
+            self.assertFalse(path.with_name('config.before-log-issue-21.json').exists())
+
+    def test_save_upload_config_writes_atomically_with_restricted_mode(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path=Path(tmp)/'config.json';today=helper.diagnostics_issue_day()
+            path.write_text(json.dumps({'issue':7}))
+            helper.save_upload_config(path,{'issue':7,'issue_date':today})
+            self.assertEqual(json.loads(path.read_text()),{'issue':7,'issue_date':today})
             if sys.platform!='win32':self.assertEqual(path.stat().st_mode&0o777,0o600)
 
 class RepairLockTests(unittest.TestCase):
