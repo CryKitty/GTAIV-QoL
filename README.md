@@ -8,7 +8,7 @@ The canonical source and development-build branch is **[main](https://github.com
 
 | Component | What it does | Pause-menu control |
 | --- | --- | --- |
-| Road Navigation Line | Draws a surface-fitted native-GPS ribbon, with camera-facing twisted presentation. Includes separate red/blue police escape guidance alongside manual/mission routes. Sustained moving wrong-way driving requests a forward lead-in for manual/fixed primary destinations after three seconds; see [replanning](docs/PRIMARY_ROUTE_REPLAN.md). | QoL → Road Line: On / Off; Police Escape / Mission / Friend / Enemy / Custom Line |
+| Road Navigation Line | Draws a surface-fitted native-GPS ribbon, with camera-facing twisted presentation. Includes separate red/blue police escape guidance alongside manual/mission routes. Sustained moving wrong-way driving requests a forward lead-in for manual/fixed primary destinations after 1.5 seconds; see [replanning](docs/PRIMARY_ROUTE_REPLAN.md). | QoL → Road Line: On / Off; Police Escape / Mission / Friend / Enemy / Custom Line |
 | Turn Arrows | Directional turn chevrons, linked turns, destination cues and wrong-way/U-turn guidance. Also supports automatic guidance toward eligible moving enemies when no explicit route is selected. | QoL → Turn Arrows |
 | Map Autozoom | Opens the interactive pause map at 300% while preserving subsequent manual navigation. | QoL → Map Autozoom |
 | Pause Cutscenes | Pauses picture, dialogue, actors and camera together in supported voiced cutscenes, with a blurred frame and Paused label. Press Esc or controller Start again to resume; no time limit. | QoL → Pause During Cutscenes |
