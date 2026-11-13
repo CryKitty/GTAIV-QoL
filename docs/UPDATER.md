@@ -1,3 +1,10 @@
+The recurring update can now be enabled in Pause → QoL → **Check for QoL Updates**
+(default Off). The installer puts the updater in the game folder and registers a
+Deck Linux user worker. The ASI queues a request; checks/staging happen on the
+host and the existing installer applies only after exit. No loaded ASI is replaced.
+First-time setup and the manual updater remain. Full flow, errors and acceptance:
+[IN_GAME_UPDATES.md](IN_GAME_UPDATES.md). Canonical channel selection below is unchanged.
+
 # One GUI installer with an integrated updater
 
 Download/extract the complete Nexus beta archive and run **Install-GTAIV-QoL.desktop** in Desktop Mode (Execute/Trust if asked). The archive includes the exact verified payload and the current dependency guide/updater sources. There is no second required updater download. [INSTALLER_AUDIT.md](INSTALLER_AUDIT.md) records what was already implemented versus fixed and gives the exact fresh-install checklist.
