@@ -1,5 +1,6 @@
 #pragma once
 #include "road_line.hpp"
+#include <utility>
 namespace roadnav {
 inline constexpr float roadSurfaceClearance=.24f;
 struct RoadSurfaceStats {unsigned sampled=0,reused=0,missing=0;};
@@ -73,6 +74,14 @@ inline void stabilizeRoadSurface(RoadLine& line,const RoadLine& previous){
             if(n<line.edges.size())for(unsigned side=0;side<2;++side)if(std::fabs(line.edges[n][side]-oldEdges[side])<.35f)line.edges[n][side]=oldEdges[side]+std::clamp((line.edges[n][side]-oldEdges[side])*.2f,-.04f,.04f);
         }
     }
+}
+
+// Publish a fitted escape candidate without dropping the last valid ribbon
+// during planner retries or collision-streaming misses. Return true if retained.
+inline bool updateEscapeSurface(RoadLine& current,RoadLine next,bool committed,bool planning){
+    if(planning)next.endsAtDestination=false;
+    if(!next.visible()&&current.visible()&&committed)return true;
+    current=std::move(next);return false;
 }
 
 }

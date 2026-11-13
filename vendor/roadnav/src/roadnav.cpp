@@ -1107,13 +1107,7 @@ protected:
                     NativeInvoke::Invoke<Scripting::NATIVE_GET_GROUND_Z_FOR_3D_COORD,Scripting::ScriptVoid>(x,y,z,&ground);return ground;};
                 const auto surface=roadnav::fitRoadSurface(nextEscape,player,escapeLine_,probe,&line_);
                 roadnav::stabilizeRoadSurface(nextEscape,escapeLine_);
-                if(escapePlanning_)nextEscape.endsAtDestination=false;
-                // A brief collision-streaming miss must not erase the entire
-                // previously sampled road. Keep the last good surface during retries,
-                // even after the player leaves its path or reaches its endpoint.
-                const bool retainSurface=!nextEscape.visible()&&escapeLine_.visible()&&
-                    escapeShown_.points.size()>1;
-                if(!retainSurface)escapeLine_=std::move(nextEscape);
+                const bool retainSurface=roadnav::updateEscapeSurface(escapeLine_,std::move(nextEscape),escapeShown_.points.size()>1,escapePlanning_);
                 if(now-lastCueLog_>5000){char status[200];std::snprintf(status,sizeof(status),"Police escape surface: sampled=%u reused=%u missing=%u points=%u retained=%u remaining=%.1fm",surface.sampled,surface.reused,surface.missing,static_cast<unsigned>(escapeLine_.points.size()),retainSurface?1u:0u,policeescape::remaining(escapeShown_.points,player));event(status);}
             }else{escapeLine_={};gEscapeLineRenderer.clear();}
             if(escapeReplan_.observed){

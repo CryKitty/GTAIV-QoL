@@ -80,8 +80,7 @@ int main(){
         assert(reset.pending&&reset.heading.x==1&&!reset.ready(200));
         assert(reset.observe(2,false,{60,0,0},250,true,{1,0,0}));
         assert(reset.heading.x==1&&reset.ready(2500));
-        const std::vector<roadnav::Vec3> retained{{0,0,0},{0,300,0}};auto displayed=retained;
-        reset.begin(2500);assert(displayed.back().y==300); // request observation leaves last route intact
+        reset.begin(2500);assert(reset.heading.x==1); // requested course survives backoff/begin
         assert(policeescape::followsHeading({{0,0,0},{30,0,0},{400,0,0}}, {},reset.heading));
         assert(!policeescape::followsHeading({{0,0,0},{-30,0,0},{400,0,0}}, {},reset.heading));
         auto choices=policeescape::candidates({}, {},250,0,[](roadnav::Vec3 a,roadnav::Vec3& b){b=a;return true;},[](roadnav::Vec3 a,roadnav::Vec3 b){return roadnav::distance2D(a,b);},{},true);
