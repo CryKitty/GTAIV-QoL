@@ -1,5 +1,11 @@
 # Driving and compass follow-ups after PRs #10/#11
 
+> Current follow-up: the driving-side offset/lane-station blending below is
+> reverted to centred GPS lines. Native visibility replaces the person, selection
+> and outing range/display exceptions. Camera height, people overlap priority
+> and jitter fixes remain. See [regression fixes](ROAD_AND_COMPASS_REGRESSIONS.md).
+> The sections below record the PR #12 design and its original acceptance limits.
+
 All five changes use the normal updater. Existing Road Line and Compass HUD
 pause-menu switches control their respective fixes. The new Driving Camera
 Height slider is also in Pause → QoL; no manual configuration is required.

@@ -6,7 +6,6 @@
 #include "../vendor/roadnav/src/road_projection.hpp"
 #include "../src/police_escape.hpp"
 #include "../src/primary_gps_recovery.hpp"
-#include "../src/road_lane_offset.hpp"
 #include "../src/primary_route_replan.hpp"
 #include "../src/escape_gps_request.hpp"
 #include "../src/navigation_awareness.hpp"
@@ -16,36 +15,26 @@
 using namespace roadnav;
 int main(){
     {
-        const Vec3 point{0,40,0},north{0,1,0};
-        RoadLaneSegment road{{0,0,0},{0,200,0},1,0,0};
-        assert(roadLaneCount(road,point,north)==1);
-        road.backward=1;assert(roadLaneCount(road,point,north)==2);
-        road.forward=2;road.backward=0;assert(roadLaneCount(road,point,north)==2); // two-lane one-way
-        assert(roadLaneCount(road,{20,40,0},north)==0); // unrelated parallel street
-        assert(roadLaneCount(road,{0,40,15},north)==0); // another deck
-        assert(roadLaneCount(road,point,{1,0,0})==0); // crossing road
-        road.forward=-1;assert(roadLaneCount(road,point,north)==0);
-        road.forward=1065353216;assert(roadLaneCount(road,point,north)==0); // reject float/ABI-looking counts
-        LaneOffsetSample state;state.wide=true;state.amount=1;
-        state.observe(false);state.observe(true);assert(state.wide); // isolated count noise cannot flip side
-        state.observe(false);state.observe(false);assert(!state.wide);
-        float before=state.amount;
-        for(unsigned now=200;now<=1600;now+=200){const float after=state.advance(now);assert(after<=before&&before-after<=.134f);before=after;}
-        assert(before==0);
-        const std::vector<Vec3> route{{0,0,0},{0,180,0}};
-        auto center=roadLine(route,{},20);RoadLaneOffset narrow,wide,transition;
-        const auto zero=narrow.amounts(center,route,0,[](Vec3,Vec3){return 1;});
-        const auto two=wide.amounts(center,route,0,[](Vec3,Vec3){return 2;});
-        auto old=center,filtered=center;offsetDrivingSide(old,route);offsetDrivingSide(filtered,route,two);
-        for(std::size_t i=0;i<center.points.size();++i){assert(zero[i]==0&&two[i]==2);assert(distance2D(old.points[i],filtered.points[i])<.001f);}
-        filtered=center;offsetDrivingSide(filtered,route,zero);
-        for(std::size_t i=0;i<center.points.size();++i)assert(distance2D(center.points[i],filtered.points[i])<.001f);
-        const auto amounts=transition.amounts(center,route,0,[](Vec3 p,Vec3){return p.y<60?1:2;});
-        bool blended=false;
-        for(std::size_t i=0;i<amounts.size();++i){assert(amounts[i]>=0&&amounts[i]<=2);blended=blended||(amounts[i]>0&&amounts[i]<2);
-            if(i)assert(std::fabs(amounts[i]-amounts[i-1])<.4f);}
-        assert(blended);
-        const auto stable=transition.amounts(center,route,200,[](Vec3,Vec3){return 0;});assert(amounts==stable); // cached dropout cannot swing the line
+        // Centred geometry cannot inherit station-wise alternating lane offsets.
+        // Changing GPS origin, speed, direction and native point density must
+        // leave every point on a straight native road, before and after fitting.
+        for(float direction:{-1.0f,1.0f}){
+            RoadLine previous;
+            for(unsigned frame=0;frame<80;++frame){
+                const float y=direction*static_cast<float>(frame);
+                const std::vector<Vec3> route=frame%2?std::vector<Vec3>{{0,y-20*direction,0},{0,y+200*direction,0}}:
+                    std::vector<Vec3>{{0,y-20*direction,0},{0,y+30*direction,0},{0,y+200*direction,0}};
+                auto next=roadLine(route,{0,y,0},10+static_cast<float>(frame%20));
+                stabilizeRoadPath(next,previous);
+                fitRoadSurface(next,{0,y,1},previous,[](float,float,float){return 0.0f;});
+                stabilizeRoadSurface(next,previous);
+                assert(next.visible());for(auto point:next.points)assert(std::fabs(point.x)<.0001f);
+                previous=next;
+            }
+        }
+        const std::vector<Vec3> diagonal{{0,0,0},{300,400,0}};
+        const auto line=roadLine(diagonal,{},25);
+        for(auto point:line.points)assert(std::fabs(point.x*.8f-point.y*.6f)<.001f);
     }
 
     {
@@ -75,22 +64,6 @@ int main(){
         const Vec3 heading{0,-1,0},target{0,-100,0};
         assert(forwardGpsRoute({{0,0,0},{0,-100,0}}, {},heading,target));
         assert(!forwardGpsRoute({{0,0,0},{0,50,0},{0,-100,0}}, {},heading,target));
-    }
-    {
-        for(const float direction:{-1.0f,1.0f}){
-            auto lane=roadLine({{0,0,0},{0,100*direction,0}}, {},10);
-            offsetDrivingSide(lane);
-            for(auto point:lane.points)assert(std::fabs(point.x-2*direction)<.001f);
-            fitRoadSurface(lane,{},RoadLine{},[](float,float,float){return 0.0f;});
-            for(auto point:lane.points)assert(std::fabs(point.z-roadSurfaceClearance)<.001f);
-        }
-        auto curve=roadLine({{0,0,10},{0,30,10},{10,60,11},{30,80,12}}, {},20);
-        const auto center=curve.points;offsetDrivingSide(curve);
-        for(std::size_t i=0;i<center.size();++i){
-            assert(std::fabs(distance2D(center[i],curve.points[i])-2)<.001f);
-            assert(curve.points[i].z==center[i].z); // height is fitted afterward, no floor jump
-            if(i)assert(distance2D(curve.points[i-1],curve.points[i])<3.5f);
-        }
     }
     {
         auto displayed=roadLine({{0,0,0},{0,100,0}},Vec3{},20);
@@ -346,7 +319,7 @@ int main(){
             assert(!forwardGpsRoute(candidate.points,origin,heading,lead));
             const auto forward=[&](const std::vector<Vec3>& points){return forwardGpsRoute(points,origin,heading,lead);};
             assert(readGpsRoute(0,read,candidate,&lead,&origin,forward)&&candidate.slot==1);
-            auto line=roadLine(candidate.points,origin,10);offsetDrivingSide(line,candidate.points);
+            auto line=roadLine(candidate.points,origin,10);
             fitRoadSurface(line,origin,RoadLine{},[](float,float,float){return 0.0f;});
             assert(line.visible()&&line.points.back().y<0);
         }

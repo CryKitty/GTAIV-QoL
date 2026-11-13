@@ -1,5 +1,6 @@
 #pragma once
 #include "turn_cue.hpp"
+#include <cstdint>
 
 namespace roadnav {
 inline constexpr float roadSurfaceClearance=.24f;
@@ -100,24 +101,6 @@ inline RoadLine roadLine(const std::vector<Vec3>& route,Vec3 player,float speed,
         along=segmentEnd;if(along>=end)break;
     }
     line.ahead=routeLength2D(line.points);line.bank=roadLineBank(line.points);line.endsAtDestination=end>=routeLength2D(route)-.01f&&!line.points.empty()&&distance2D(line.points.back(),route.back())<.01f;return line;
-}
-// Constant-width parallel path: derive the right normal from a symmetric
-// world-distance tangent, never the vehicle heading or a segment index. Avoid
-// miter amplification at sharp turns; the displacement is bounded to 2 metres.
-inline void offsetDrivingSide(RoadLine& line,const std::vector<Vec3>& route={},const std::vector<float>& offsets={}){
-    const auto center=line.points;
-    const auto& reference=route.empty()?center:route;
-    float along=0;
-    for(std::size_t i=0;i<center.size();++i){
-        if(i)along+=distance2D(center[i-1],center[i]);
-        const float anchor=route.empty()?along:nearestDistanceAlong(reference,center[i]);
-        const auto a=sampleAt(reference,std::max(0.0f,anchor-4)).position;
-        const auto b=sampleAt(reference,anchor+4).position;
-        const float length=distance2D(a,b);
-        const float offset=offsets.size()==center.size()?std::clamp(offsets[i],0.0f,2.0f):2.0f;
-        if(length>.01f){line.points[i].x+=offset*(b.y-a.y)/length;line.points[i].y-=offset*(b.x-a.x)/length;}
-    }
-    line.ahead=routeLength2D(line.points);line.bank=roadLineBank(line.points);
 }
 // Shared mitered cross sections keep neighboring ribbon quads joined smoothly.
 inline float roadLineBankHeight(Vec3 point,Vec3 player){
