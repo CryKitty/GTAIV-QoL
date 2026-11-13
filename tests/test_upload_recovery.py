@@ -65,8 +65,8 @@ class RecoveryTests(unittest.TestCase):
                 root=Path(tmp);(root/'pending').mkdir();path,raw,_=self.enqueue(root,4)
                 def api(token,route,payload=None):
                     if payload:
-                    if route=='/issues':return {'number':13,'state':'open','locked':False,'comments':0}
-                    return response
+                        if route=='/issues':return {'number':13,'state':'open','locked':False,'comments':0}
+                        return response
                     if route=='':return {'private':True}
                     return []
                 self.fixture(root,api)['drain']({'issue':9,'token':'fixture'})
