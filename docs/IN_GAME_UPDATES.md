@@ -32,6 +32,8 @@ rollback and preference preservation. The next launch uses the installed build.
 If a session lock is still busy, apply is deferred. Do not relaunch the game while
 an update is being installed; the normal manual updater has the same restriction.
 
+Manual upgrades reload the installed worker, including a changed game path.
+During its own apply the worker finishes first, then systemd restarts the new code.
 The worker shares the manual updater's lock. A manual update or channel change
 invalidates an older pending stage, preventing a stale overwrite. Turning the
 option Off prevents apply. Failed/tampered stages never install. Offline/auth/
