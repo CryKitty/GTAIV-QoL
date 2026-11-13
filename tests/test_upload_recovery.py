@@ -154,7 +154,7 @@ class RecoveryTests(unittest.TestCase):
         config={'issue':7,'issue_date':today,'token':'fixture'}
         self.assertEqual(helper.resolve_diagnostics_issue(api,'fixture',config),22)
         self.assertEqual((config['issue'],config['issue_date']),(22,today))
-        self.assertEqual(created[0]['title'],title);self.assertIn('Daily automatic diagnostics',created[0]['body']){'issue':7,'issue_date':today,'token':'fixture'}
+        self.assertEqual(created[0]['title'],title);self.assertIn('Daily automatic diagnostics',created[0]['body'])
 
     def test_resolve_reuses_open_issue_with_todays_title(self):
         today=helper.diagnostics_issue_day();title='QoL diagnostics — '+today
@@ -163,6 +163,9 @@ class RecoveryTests(unittest.TestCase):
             if path=='/issues/7':return {'number':7,'state':'open','locked':True}
             if path.startswith('/issues?'):return [{'number':23,'state':'open','locked':False,'comments':3,'title':title}]
             return []
+        config={'issue':7,'issue_date':today,'token':'fixture'}
+        self.assertEqual(helper.resolve_diagnostics_issue(api,'fixture',config),23)
+        self.assertEqual((config['issue'],config['issue_date']),(23,today))
 
     def test_resolve_creates_issue_when_current_is_unreachable(self):
         today=helper.diagnostics_issue_day();created=[]
