@@ -76,19 +76,23 @@ public:
         device->SetRenderState(D3DRS_CULLMODE,D3DCULL_NONE);device->SetRenderState(D3DRS_FILLMODE,D3DFILL_SOLID);device->SetRenderState(D3DRS_ALPHATESTENABLE,FALSE);device->SetRenderState(D3DRS_ALPHABLENDENABLE,TRUE);
         device->SetRenderState(D3DRS_SRCBLEND,D3DBLEND_SRCALPHA);device->SetRenderState(D3DRS_DESTBLEND,D3DBLEND_INVSRCALPHA);device->SetRenderState(D3DRS_BLENDOP,D3DBLENDOP_ADD);device->SetRenderState(D3DRS_SEPARATEALPHABLENDENABLE,FALSE);device->SetRenderState(D3DRS_COLORWRITEENABLE,0xf);
         device->SetTextureStageState(0,D3DTSS_COLOROP,D3DTOP_SELECTARG1);device->SetTextureStageState(0,D3DTSS_COLORARG1,D3DTA_DIFFUSE);device->SetTextureStageState(0,D3DTSS_ALPHAOP,D3DTOP_SELECTARG1);device->SetTextureStageState(0,D3DTSS_ALPHAARG1,D3DTA_DIFFUSE);device->SetTextureStageState(1,D3DTSS_COLOROP,D3DTOP_DISABLE);
-        const auto lift=roadLineLift(f.line.points,f.line.bank,f.player);
-        const float yaw=f.camera.rotation.z*.01745329252f;const Vec3 forward{-std::sin(yaw),std::cos(yaw),0};
+        // Ground-reference banking, not the bouncing vehicle body's Z.
+        const auto bankAnchor=roadLineGroundAnchor(f.line,f.player);
+        const auto lift=roadLineLift(f.line.points,f.line.bank,bankAnchor);
+        const float yaw=f.camera.rotation.z*.01745329252f;
+        const Vec3 forward=rendered.valid?rendered.forward():Vec3{-std::sin(yaw),std::cos(yaw),0};
+        const Vec3 geometryCamera=rendered.valid?rendered.eye():f.camera.position;
         const bool joined=f.line.edges.empty()||f.line.edges.size()>=f.line.points.size();
         const auto rgb=awareness::routeColour(f.kind,f.colours,GetTickCount());bool drew=false;unsigned submitted=0;
         for(unsigned layer=0;layer<2;++layer){float along=0;auto& vertices=vertices_;vertices.clear();vertices.reserve(f.line.points.size()*6+12);
             const float width=(layer?.5292f:.8568f)*f.widthScale;
-            if(joined)roadLineRenderSections(f.line,lift,width,forward,f.camera.position,f.viewBend,sections_);
+            if(joined)roadLineRenderSections(f.line,lift,width,forward,geometryCamera,f.viewBend,sections_);
             for(std::size_t i=1;i<f.line.points.size();++i){
                 const auto a=f.line.points[i-1],b=f.line.points[i];if(distance2D(a,b)<.02f)continue;
                 const float distance=distance2D(f.player,a);const float fade=std::clamp((distance-3)/4,0.0f,1.0f)*std::clamp((f.line.ahead-along)/12,0.0f,1.0f);along+=distance2D(a,b);
                 const DWORD alpha=static_cast<DWORD>((layer?76:44)*fade);if(!alpha)continue;
-                const auto sectionA=joined?sections_[i-1]:roadLineRenderSection(f.line,lift,i-1,width,forward,f.camera.position,f.viewBend,i<f.line.edges.size());
-                const auto sectionB=joined?sections_[i]:roadLineRenderSection(f.line,lift,i,width,forward,f.camera.position,f.viewBend,i<f.line.edges.size());
+                const auto sectionA=joined?sections_[i-1]:roadLineRenderSection(f.line,lift,i-1,width,forward,geometryCamera,f.viewBend,i<f.line.edges.size());
+                const auto sectionB=joined?sections_[i]:roadLineRenderSection(f.line,lift,i,width,forward,geometryCamera,f.viewBend,i<f.line.edges.size());
                 const std::array<Vec3,4> quad{{sectionA[0],sectionA[1],sectionB[1],sectionB[0]}};std::array<Vertex,4> v{};bool valid=true;
                 for(unsigned n=0;n<4;++n){ScreenPoint point{};float d=0;const bool projected=projectScene(quad[n],point,d);
                     if(!projected||d<=std::max(.6f,nearClip)||std::fabs(point.x)>viewport.Width*4.0f||std::fabs(point.y)>viewport.Height*4.0f){valid=false;break;}

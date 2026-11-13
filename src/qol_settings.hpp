@@ -13,7 +13,7 @@ constexpr Definition definitions[QOL_SETTING_COUNT]={
     {"RoadGPSLine","ViewBendStrengthPercent",100,100},
     {"RoadGPSLine","ShowPoliceEscape",1,1},{"RoadGPSLine","ShowMission",1,1},
     {"RoadGPSLine","ShowFriend",1,1},{"RoadGPSLine","ShowEnemy",1,1},{"RoadGPSLine","ShowCustom",1,1},
-    {"Updates","CheckForUpdates",0,1}
+    {"Updates","CheckForUpdates",0,1},{"Camera","DrivingHeightCm",0,200}
 };
 std::atomic<int> values[QOL_SETTING_COUNT];
 char path[MAX_PATH]{};
@@ -55,7 +55,7 @@ const QolSettingsApi api{sizeof(QolSettingsApi),1,Get,Set,MenuReady,nullptr};
 // Its UI-only adapter maps that row to Road Line On/Off; the normal settings
 // ABI and reserved gameplay-voice value stay unchanged for existing clients.
 // Appended UI rows 7..11 map to the five new IDs 11..15.
-unsigned UiId(unsigned id){return id>=7&&id<13?id+4:id==3?QOL_TAXI_FOV:id==4?QOL_GPS_LINE:id;}
+unsigned UiId(unsigned id){return id==13?QOL_DRIVING_CAMERA_HEIGHT:id>=7&&id<13?id+4:id==3?QOL_TAXI_FOV:id==4?QOL_GPS_LINE:id;}
 int32_t __cdecl UiGet(uint32_t id){
     if(id==QOL_GAMEPLAY_VOICE)return Get(QOL_GPS_LINE)?1:0;
     return Get(UiId(id));
@@ -72,7 +72,7 @@ int32_t __cdecl UiSet(uint32_t id,int32_t value){
     const auto result=Set(UiId(id),value);
     if(result&&id==QOL_CUTSCENE_VOICE)return Set(QOL_VOCAL_SLIDERS,1);return result;
 }
-void __cdecl UiReady(uint32_t rows){unsigned actual=0;for(unsigned id=0;id<13;++id)if(rows&(1u<<id))actual|=1u<<UiId(id);MenuReady(actual);}
+void __cdecl UiReady(uint32_t rows){unsigned actual=0;for(unsigned id=0;id<14;++id)if(rows&(1u<<id))actual|=1u<<UiId(id);MenuReady(actual);}
 int32_t __cdecl UiLabel(const char* key,wchar_t* text,uint32_t capacity){
     const auto label=qolmenu::label(key,Get(QOL_GPS_LINE)!=0);
     if(!label||!text)return 0;

@@ -2,7 +2,12 @@
 #include "turn_cue.hpp"
 
 namespace roadnav {
+inline constexpr float roadSurfaceClearance=.24f;
 struct RoadLine {std::vector<Vec3> points;std::vector<float> bank;std::vector<std::array<float,2>> edges;float ahead=0;bool endsAtDestination=false;Vec3 destination{};bool destinationPinned=false;bool visible()const{return points.size()>1;}};
+inline Vec3 roadLineGroundAnchor(const RoadLine& line,Vec3 player){
+    if(!line.points.empty())player.z=sampleAt(line.points,nearestDistanceAlong(line.points,player)).position.z-roadSurfaceClearance;
+    return player;
+}
 inline float roadLineLookAhead(float speed){
     const float v=std::isfinite(speed)?std::clamp(speed,0.0f,80.0f):0;
     return std::clamp(35+5*v+.025f*v*v,35.0f,300.0f);
@@ -82,7 +87,7 @@ inline RoadLine roadLine(const std::vector<Vec3>& route,Vec3 player,float speed,
 // Constant-width parallel path: derive the right normal from a symmetric
 // world-distance tangent, never the vehicle heading or a segment index. Avoid
 // miter amplification at sharp turns; the displacement is bounded to 2 metres.
-inline void offsetDrivingSide(RoadLine& line,const std::vector<Vec3>& route={}){
+inline void offsetDrivingSide(RoadLine& line,const std::vector<Vec3>& route={},const std::vector<float>& offsets={}){
     const auto center=line.points;
     const auto& reference=route.empty()?center:route;
     float along=0;
@@ -92,7 +97,8 @@ inline void offsetDrivingSide(RoadLine& line,const std::vector<Vec3>& route={}){
         const auto a=sampleAt(reference,std::max(0.0f,anchor-4)).position;
         const auto b=sampleAt(reference,anchor+4).position;
         const float length=distance2D(a,b);
-        if(length>.01f){line.points[i].x+=2*(b.y-a.y)/length;line.points[i].y-=2*(b.x-a.x)/length;}
+        const float offset=offsets.size()==center.size()?std::clamp(offsets[i],0.0f,2.0f):2.0f;
+        if(length>.01f){line.points[i].x+=offset*(b.y-a.y)/length;line.points[i].y-=offset*(b.x-a.x)/length;}
     }
     line.ahead=routeLength2D(line.points);line.bank=roadLineBank(line.points);
 }

@@ -1,5 +1,7 @@
 #pragma once
 #include "../../../src/compass.hpp"
+#include "../../../src/compass_outings.hpp"
+#include "../../../src/driving_camera_height.hpp"
 #include <algorithm>
 #include <atomic>
 #include <unordered_set>
@@ -20,7 +22,7 @@
 static_assert(Scripting::BLIP_DATE==54,"Compass date classification follows the supported SDK");
 class CompassHud {
     using RadarNative=void (__cdecl*)(GameTypes::scrNativeCallContext*);
-    MinimapLayout minimap_;
+    MinimapLayout minimap_;qolcamera::DrivingHeight drivingHeight_{};
     PhoneNotifications messages_;
     compass::NoticeRenderer* noticeRenderer_=nullptr;
     compass::WaypointHold waypointHold_{};
@@ -28,7 +30,7 @@ class CompassHud {
     compass::WaypointVehicleGate vehicleGate_{};bool inputShooting_=false;DWORD inputReportAt_=0;
     Scripting::Blip compassWaypoint_{};
     wantedcompass::Background wantedBackground_{};
-    DWORD socialAt_=0;bool social_=false,dating_=false;
+    DWORD socialAt_=0;bool social_=false,dating_=false;compass::OutingVenues outing_{};
     std::array<datecompass::Venue,datecompass::venueCount> dateVenues_{};
     bool dateTableValid_=false,dateTableReported_=false;DWORD dateTableAt_=0;
     void readDateVenues(DWORD now){
@@ -254,6 +256,23 @@ class CompassHud {
         Scripting::DisplayTextWithLiteralString(x,y,"STRING",value);
     }
 
+    void drivingCameraHeightTick(bool stopping=false){
+        using namespace Scripting;
+        const int desired=stopping?0:qolclient::Get(QOL_DRIVING_CAMERA_HEIGHT,0);
+        if(!desired&&!drivingHeight_.owned)return; // Default does not even query/write the camera.
+        const auto player=ConvertIntToPlayerIndex(GetPlayerId());Ped ped{};GetPlayerChar(player,&ped);
+        Vehicle car{};Ped driver{};Camera gameplay{};
+        if(ped.IsValid()&&DoesCharExist(ped)&&IsCharInAnyCar(ped)){GetCarCharIsUsing(ped,&car);if(car.IsValid()&&DoesVehicleExist(car))GetDriverOfCar(car,&driver);}
+        GetGameCamChild(&gameplay);
+        const bool cutscene=NativeInvoke::Invoke<NATIVE_HAS_CUTSCENE_LOADED,b8>()&&!NativeInvoke::Invoke<NATIVE_HAS_CUTSCENE_FINISHED,b8>();
+        const bool normal=desired>0&&driver.Get()==ped.Get()&&ped.IsValid()&&car.IsValid()&&!cutscene&&
+            !IsPauseMenuActive()&&IsScreenFadedIn()&&IsPlayerControlOn(player)&&gameplay.IsValid()&&IsCamPropagating(gameplay)&&!IsCamInterpolating();
+        const bool active=NativeInvoke::Invoke<NATIVE_IS_FOLLOW_VEHICLE_CAM_OFFSET_ACTIVE,b8>()!=0;
+        const auto command=drivingHeight_.update(normal,desired,active);
+        if(command==qolcamera::HeightCommand::Apply)NativeInvoke::Invoke<NATIVE_SET_FOLLOW_VEHICLE_CAM_OFFSET,ScriptVoid>(true,0.0f,0.0f,drivingHeight_.meters());
+        else if(command==qolcamera::HeightCommand::Release)NativeInvoke::Invoke<NATIVE_SET_FOLLOW_VEHICLE_CAM_OFFSET,ScriptVoid>(false,0.0f,0.0f,0.0f);
+    }
+
     void clearCompassWaypoint(){
         if(compassWaypoint_.IsValid()&&Scripting::DoesBlipExist(compassWaypoint_)){Scripting::SetRoute(compassWaypoint_,false);Scripting::RemoveBlip(compassWaypoint_);}
         compassWaypoint_={};compassWaypointSource_=0;scanAt_=0;
@@ -419,7 +438,7 @@ public:
     bool policeCircle(unsigned player,unsigned stars,roadnav::Vec3& center,float& radius){return awareness_.policeCircle(player,stars,center,radius);}
     void releaseRadar(){minimap_.release();hidden_=false;focused_=0;if(noticeRenderer_)noticeRenderer_->clear();}
     void stop(){
-        CompassInput::stop();
+        drivingCameraHeightTick(true);CompassInput::stop();
         awareness_.stop();messages_.stop();clearCompassWaypoint();waypointHold_={};vehicleGate_={};inputShooting_=false;inputReportAt_=0;
         releaseRadar();
         for(auto target:{enemyTarget_,friendlyTarget_})if(target){MH_DisableHook(target);MH_RemoveHook(target);}
@@ -445,7 +464,7 @@ public:
             if(noticeRenderer_)noticeRenderer_->clear();waypointHold_.update(waypointDown,false,0,inputNow);
             if(waypointStart&&log_)log_("Compass waypoint: hold rejected by pause/fade/control/cutscene/compass gate");
         };
-        awareness_.activate();awareness_.configureTaxi(static_cast<float>(qolclient::Get(QOL_TAXI_FOV,70)));awareness_.taxiTick();
+        awareness_.activate();awareness_.configureTaxi(static_cast<float>(qolclient::Get(QOL_TAXI_FOV,70)));awareness_.taxiTick();drivingCameraHeightTick();
         if(!qolclient::Enabled(QOL_COMPASS,compassDefault_)){wantedBackground_={};awareness_.clearMarks();awareness_.brief(false);releaseRadar();cancelWaypoint();return;}
         minimap_.enable(log_);hidden_=minimap_.active();
         const auto player=ConvertIntToPlayerIndex(GetPlayerId());Ped ped{};GetPlayerChar(player,&ped);
@@ -483,19 +502,10 @@ public:
         const float range=live?liveRange:fallbackRange_;
         const bool mission=GetMissionFlag()!=0;
         if(!socialAt_||now-socialAt_>=1000){
-            socialAt_=now;social_=false;dating_=false;
-            for(const char* name:{"go_on_date","date_activity","date_food"})if(GetNumberOfInstancesOfStreamedScript(name)){dating_=true;social_=true;}
+            socialAt_=now;
+            outing_=compass::outingVenues([](const char* script){return Scripting::GetNumberOfInstancesOfStreamedScript(script)!=0;});
+            dating_=outing_.dating;social_=dating_||outing_.friendActivity;
 
-            // These are the shipped outing scripts, not the resident friendship
-            // managers or dating contact scripts, which run outside outings too.
-            for(const char* name:{"go_on_date","date_activity","date_food",
-                "romandarts","romandrink","romaneat","romanpool","romanshow","romanstrip","romantenpin",
-                "jacobdarts","jacobdrink","jacobeat","jacoblift","jacobpool","jacobshow","jacobstrip",
-                "bruciedrink","brucieeat","brucielift","brucieshow","bruciestrip","brucietenpin",
-                "dwaynedrink","dwayneeat","dwayneshow","dwaynestrip","dwaynetenpin",
-                "packiedarts","packiedrink","packiepool","packieshow","packiestrip","packietenpin",
-                "jimhangout","terryhangout","clayhangout","dominicanfriend","friends1","friends2"})
-                if(GetNumberOfInstancesOfStreamedScript(name)){social_=true;break;}
         }
         const auto datePreferences=awareness_.datePreferences(dating_,now);
         if(dating_)readDateVenues(now);else{dateTableValid_=false;dateTableAt_=0;dateTableReported_=false;}
@@ -505,29 +515,33 @@ public:
         if(awareness_.due(now)){scan();scanAt_=now;} // Fresh ownership snapshot before creating any attacker blip.
         awareness_.tick(ped,playerPoint,blips_,blipTable_!=0);
         std::vector<compass::Marker> markers;
-        unsigned displayFiltered=0,invalidPosition=0,rangeFiltered=0,alphaFiltered=0,textureIcons=0,fallbackIcons=0;
+        unsigned displayFiltered=0,invalidPosition=0,rangeFiltered=0,alphaFiltered=0,textureIcons=0,fallbackIcons=0,outingCandidates=0,outingPromoted=0;
         for(auto blip:blips_){
             if(blip.Get()==routeHelper_||blip.Get()==forwardRouteHelper_||blip.Get()==compassWaypoint_.Get()||!DoesBlipExist(blip))continue;
+            const unsigned sprite=static_cast<unsigned>(GetBlipSprite(blip));
+            const bool outingVenue=outing_.contains(sprite);
             const auto display=NativeInvoke::Invoke<NATIVE_GET_BLIP_INFO_ID_DISPLAY,u32>(blip);
-            if(!compass::radarDisplay(display)){++displayFiltered;continue;}
+            if(outingVenue)++outingCandidates;
+            if(!compass::outingDisplay(display,outingVenue)){++displayFiltered;continue;}
+            if(outingVenue&&!compass::radarDisplay(display))++outingPromoted;
             const auto alpha=compass::readBlipAlpha<NativeCalls>(blip.Get());if(!alpha){++alphaFiltered;continue;}
             roadnav::Vec3 point{};if(!position(blip,point)){++invalidPosition;continue;}
-            const unsigned sprite=static_cast<unsigned>(GetBlipSprite(blip));if(sprite>=128||sprite==BLIP_PLAYER||sprite==BLIP_NORTH)continue;
+            if(sprite>=128||sprite==BLIP_PLAYER||sprite==BLIP_NORTH)continue;
             const float distance=roadnav::distance2D(playerPoint,point);
             const bool selected=blip.Get()==compassWaypointSource_&&compassWaypoint_.IsValid();
-            const bool outingVenue=social_&&compass::socialVenue(sprite);
-            if(!selected&&!compass::markerInRange(distance,range,IsBlipShortRange(blip)!=0&&!outingVenue,sprite)){++rangeFiltered;continue;}
-            ColourIndex col=0;GetBlipColour(blip,&col);
             const auto type=GetBlipInfoIdType(blip);
+            const bool person=compass::characterSprite(sprite)||type==BLIP_TYPE_CHAR;
+            if(!selected&&!compass::markerInRange(distance,range,IsBlipShortRange(blip)!=0&&!outingVenue&&!person,sprite)){++rangeFiltered;continue;}
+            ColourIndex col=0;GetBlipColour(blip,&col);
             const bool entity=type==BLIP_TYPE_CAR||type==BLIP_TYPE_CHAR||type==BLIP_TYPE_OBJECT||type==BLIP_TYPE_PICKUP;
             const bool enemy=enemyMarker(blip,col,sprite);
-            if(!selected&&compass::hideAmbientMissionMarker(mission,entity,enemy,outingVenue,sprite))continue;
+            if(!selected&&compass::hideAmbientMissionMarker(mission,entity||person,enemy,outingVenue,sprite))continue;
             const int priority=selected||sprite==BLIP_WAYPOINT?3:(sprite<=BLIP_OBJECTIVE_5?2:0);
             const bool police=policeMarker(blip);
             const bool objective=!outingVenue&&!police&&awareness::objectiveLabel(mission,enemy,entity,sprite,blip.Get()==missionTarget.Get(),haveMissionPoint?roadnav::distance2D(point,missionPoint):100000.0f);
             if(police)col=enemy?9:3;else if(friendMarker(blip))col=8;else if(enemy)col=9;else if(objective&&sprite!=BLIP_WAYPOINT)col=5;
             if(dating_&&outingVenue)col=datecompass::colour(datecompass::match(datePreferences,dateVenues_,dateTableValid_,sprite,point));
-            markers.push_back({blip.Get(),sprite,compass::relativeBearing(point.x-playerPoint.x,point.y-playerPoint.y,rotation.z),distance,col,std::min(alpha,255u),priority,enemy,objective});
+            markers.push_back({blip.Get(),sprite,compass::relativeBearing(point.x-playerPoint.x,point.y-playerPoint.y,rotation.z),distance,col,std::min(alpha,255u),priority,enemy,objective,person});
         }
         if(!startupComplete_&&log_)log_("Compass: marker snapshot ready");
         const auto placed=compass::layout(std::move(markers));focused_=compass::focus(placed,focused_);
@@ -653,6 +667,7 @@ public:
             unsigned focusedSprite=999,focusedObjective=0;for(const auto& item:placed)if(item.marker.handle==focused_){focusedSprite=item.marker.sprite;focusedObjective=item.marker.missionDestination?1u:0u;}
             std::snprintf(line,sizeof(line),"Compass objective: mission=%u social=%u target=%u focused-sprite=%u focused-objective=%u brief-chars=%u",mission?1u:0u,social_?1u:0u,missionTarget.Get(),focusedSprite,focusedObjective,static_cast<unsigned>(missionBrief.size()));log_(line);
             std::snprintf(line,sizeof(line),"Compass bound objective: focus-chars=%u target-chars=%u",static_cast<unsigned>(awareness_.briefFor(focused_).size()),static_cast<unsigned>(awareness_.briefFor(missionTarget.Get()).size()));log_(line);
+            std::snprintf(line,sizeof(line),"Compass outing venues: date=%u friend-activity=%u candidates=%u promoted=%u",dating_?1u:0u,outing_.friendActivity?1u:0u,outingCandidates,outingPromoted);log_(line);
             std::snprintf(line,sizeof(line),"Compass filters: display=%u alpha=%u position=%u range=%u icons=%u fallback-icons=%u",displayFiltered,alphaFiltered,invalidPosition,rangeFiltered,textureIcons,fallbackIcons);log_(line);}logAt_=now;}
     }
 };

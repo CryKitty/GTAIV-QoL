@@ -35,6 +35,12 @@ public:
             roadnav::RoadProjection result;
             if(address<0x10000||!read(address+0x180,result.view)||!read(address+0x1c0,result.projection))return roadnav::RoadProjection{};
             result.valid=result.usable()&&result.matchesCamera(camera);
+            // Some viewport passes leave a non-gameplay/stale view matrix.
+            // The documented inverse-view slot is an independent candidate;
+            // retain every original perspective/position/direction gate.
+            if(!result.valid){float inverse[4][4]{};
+                if(read(address+0x140,inverse)&&result.fromInverseView(inverse))result.valid=result.matchesCamera(camera);
+            }
             if(result.valid){read(address+0x2c0,result.nearClip);read(address+0x2c4,result.farClip);}
             return result;
         };

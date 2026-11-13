@@ -37,6 +37,7 @@
 #include "../../../src/police_escape.hpp"
 #include "../../../src/escape_gps_request.hpp"
 #include "../../../src/primary_route_replan.hpp"
+#include "../../../src/road_lane_offset.hpp"
 #include "../../../src/passive_crash_capture.hpp"
 
 namespace {
@@ -578,7 +579,7 @@ class RoadNavScript final : public ScriptThread {
     DWORD previousTick_=0, lastServiceTry_=0, lastCueLog_=0;
     bool tickLogged_=false, attached_=false, wasVisible_=false;
     roadnav::NavigationCues cues_{};
-    roadnav::RoadLine line_{},escapeLine_{};
+    roadnav::RoadLine line_{},escapeLine_{};roadnav::RoadLaneOffset laneOffset_{};
     Scripting::Blip primaryRouteBlip_{},forwardRouteHelper_{};DWORD primaryWarmAt_=0;
     roadnav::PrimaryGpsRecovery primaryRecovery_{};roadnav::Vec3 primaryRoadPoint_{};bool primaryRoadLocated_=false;
     roadnav::PrimaryWrongWay primaryWrongWay_{};
@@ -874,6 +875,17 @@ class RoadNavScript final : public ScriptThread {
     roadnav::Vec3 previousPlayer_{};
     DWORD motionAt_=0;
     float motionSpeed_=0;
+    void offsetRoadLine(roadnav::RoadLine& line,const std::vector<roadnav::Vec3>& route,DWORD now){
+        const auto query=[](roadnav::Vec3 point,roadnav::Vec3 tangent){
+            Scripting::Vector3 a{},b{};int forward=-1,backward=-1;float median=-1;
+            const bool found=NativeInvoke::Invoke<Scripting::NATIVE_GET_CLOSEST_ROAD,b8>(
+                point.x,point.y,point.z,0.0f,1,&a,&b,&forward,&backward,&median)!=0;
+            if(!found)return 0;
+            return roadnav::roadLaneCount({{a.X,a.Y,a.Z},{b.X,b.Y,b.Z},forward,backward,median},point,tangent);
+        };
+        const auto offsets=laneOffset_.amounts(line,route,now,query);
+        roadnav::offsetDrivingSide(line,route,offsets);
+    }
     void resetMotion(){motionAt_=0;motionSpeed_=0;primaryWrongWay_.cancel();finishForwardRoute(GetTickCount());forwardRestoreAt_=0;}
 
     void reportEscapeDisplay(const char* reason,DWORD now){
@@ -1085,7 +1097,8 @@ protected:
                     auto nextLine=roadnav::roadLine(forwardRoute_.points.size()>1?forwardRoute_.points:route.points,player,motionSpeed_,tracked);
                     const auto probe=[](float x,float y,float z){float ground=-10000;
                         NativeInvoke::Invoke<Scripting::NATIVE_GET_GROUND_Z_FOR_3D_COORD,Scripting::ScriptVoid>(x,y,z,&ground);return ground;};
-                    roadnav::offsetDrivingSide(nextLine,forwardRoute_.points.size()>1?forwardRoute_.points:route.points);
+                    offsetRoadLine(nextLine,forwardRoute_.points.size()>1?forwardRoute_.points:route.points,now);
+                    roadnav::stabilizeRoadPath(nextLine,line_);
                     const auto stats=roadnav::fitRoadSurface(nextLine,player,line_,probe);
                     roadnav::stabilizeRoadSurface(nextLine,line_);
                     roadnav::Vec3 exact{};
@@ -1111,7 +1124,8 @@ protected:
                 auto nextEscape=roadnav::roadLine(escapeShown_.points,player,motionSpeed_);
                 const auto probe=[](float x,float y,float z){float ground=-10000;
                     NativeInvoke::Invoke<Scripting::NATIVE_GET_GROUND_Z_FOR_3D_COORD,Scripting::ScriptVoid>(x,y,z,&ground);return ground;};
-                roadnav::offsetDrivingSide(nextEscape,escapeShown_.points);
+                offsetRoadLine(nextEscape,escapeShown_.points,now);
+                roadnav::stabilizeRoadPath(nextEscape,escapeLine_);
                 const auto surface=roadnav::fitRoadSurface(nextEscape,player,escapeLine_,probe,&line_);
                 roadnav::stabilizeRoadSurface(nextEscape,escapeLine_);
                 const bool retainSurface=roadnav::updateEscapeSurface(escapeLine_,std::move(nextEscape),escapeShown_.points.size()>1,escapePlanning_);

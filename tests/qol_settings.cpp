@@ -37,7 +37,10 @@ int main(){
     wchar_t untouched[60]=L"stock";
     assert(!qolsettings::uiApi.MenuLabel("QOL_TAXI",untouched,60));assert(std::wcscmp(untouched,L"stock")==0);
     assert(!qolsettings::uiApi.MenuLabel(keys[0],untouched,2));assert(std::wcscmp(untouched,L"stock")==0);
-    qolsettings::uiApi.MenuReady(0x1fff);
+    assert(qolsettings::api.Get(QOL_DRIVING_CAMERA_HEIGHT)==0);
+    assert(qolsettings::uiApi.Set(13,125));qolsettings::Load();assert(qolsettings::api.Get(QOL_DRIVING_CAMERA_HEIGHT)==125);
+    assert(!qolsettings::uiApi.Set(13,201));assert(qolsettings::uiApi.Set(13,0));
+    qolsettings::uiApi.MenuReady(0x3fff);
     for(unsigned id=QOL_LINE_ESCAPE;id<QOL_SETTING_COUNT;++id)assert(qolsettings::menuRows.load()&(1u<<id));
     assert(!(qolsettings::menuRows.load()&(1u<<QOL_ROUTE_COLOURS)));
     for(unsigned id=0;id<4;++id){assert(qolsettings::api.Set(id,0));assert(qolsettings::api.Get(id)==0);assert(qolsettings::api.Set(id,1));assert(qolsettings::api.Get(id)==1);}
