@@ -11,6 +11,7 @@
 #include "phone_notifications.hpp"
 #include "compass_notice_renderer.hpp"
 #include "compass_controller.hpp"
+#include "wanted_signals.hpp"
 #include "../../../src/compass_waypoint.hpp"
 #include "../../../src/compass_feedback.hpp"
 
@@ -26,6 +27,7 @@ class CompassHud {
     CompassController controller_{};bool waypointDownLast_=false;
     compass::WaypointVehicleGate vehicleGate_{};bool inputShooting_=false;DWORD inputReportAt_=0;
     Scripting::Blip compassWaypoint_{};
+    wantedcompass::Background wantedBackground_{};
     DWORD socialAt_=0;bool social_=false,dating_=false;
     std::array<datecompass::Venue,datecompass::venueCount> dateVenues_{};
     bool dateTableValid_=false,dateTableReported_=false;DWORD dateTableAt_=0;
@@ -438,14 +440,14 @@ public:
             if(waypointStart&&log_)log_("Compass waypoint: hold rejected by pause/fade/control/cutscene/compass gate");
         };
         awareness_.activate();awareness_.configureTaxi(static_cast<float>(qolclient::Get(QOL_TAXI_FOV,70)));awareness_.taxiTick();
-        if(!qolclient::Enabled(QOL_COMPASS,compassDefault_)){awareness_.clearMarks();awareness_.brief(false);releaseRadar();cancelWaypoint();return;}
+        if(!qolclient::Enabled(QOL_COMPASS,compassDefault_)){wantedBackground_={};awareness_.clearMarks();awareness_.brief(false);releaseRadar();cancelWaypoint();return;}
         minimap_.enable(log_);hidden_=minimap_.active();
         const auto player=ConvertIntToPlayerIndex(GetPlayerId());Ped ped{};GetPlayerChar(player,&ped);
         if(IsPauseMenuActive()||!IsScreenFadedIn()||!IsHUDPreferenceSwitchedOn()||!IsPlayerControlOn(player)||!ped.IsValid()||!DoesCharExist(ped)){
-            focused_=0;cancelWaypoint();return;
+            wantedBackground_={};focused_=0;cancelWaypoint();return;
         }
         const bool cutscene=NativeInvoke::Invoke<NATIVE_HAS_CUTSCENE_LOADED,b8>() && !NativeInvoke::Invoke<NATIVE_HAS_CUTSCENE_FINISHED,b8>();
-        if(cutscene){awareness_.clearMarks();focused_=0;cancelWaypoint();return;}
+        if(cutscene){wantedBackground_={};awareness_.clearMarks();focused_=0;cancelWaypoint();return;}
         const bool inVehicle=IsCharInAnyCar(ped)!=0,vehicleChanged=vehicleGate_.update(inVehicle);
         if(vehicleChanged)waypointHold_.update(waypointDown,false,0,inputNow);
         const bool shooting=IsCharShooting(ped)!=0;
@@ -539,7 +541,12 @@ public:
         using Layout=compass::StripLayout;
         constexpr float left=Layout::left,right=Layout::right,mid=Layout::center,half=Layout::half;
         if(!startupComplete_&&log_)log_("Compass: drawing native strip");
-        // No filled panel or bottom border; the top line is the health/armour meter.
+        u32 wanted=0;StoreWantedLevel(player,&wanted);
+        const auto tint=wantedBackground_.update(wantednative::sample(player,wanted),true,now);
+        // Low-alpha dark tints sit behind the strip; labels/readouts below it
+        // retain their existing clear backing/outline and remain unobscured.
+        if(tint.a)rect(mid,.054f,.43f,.060f,tint.r,tint.g,tint.b,tint.a);
+        // The top line is the health/armour meter.
         for(unsigned tick=0;tick<24;++tick){
             const float bearing=compass::wrap(static_cast<float>(tick)*15+rotation.z);if(std::fabs(bearing)>90)continue;
             const float x=mid+half*bearing/90;

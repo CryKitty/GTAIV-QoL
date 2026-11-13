@@ -9,6 +9,19 @@
 using namespace roadnav;
 int main(){
     {
+        auto displayed=roadLine({{0,0,0},{0,100,0}},Vec3{},20);
+        const auto old=displayed.points;
+        assert(updateEscapeSurface(displayed,{},true,true)); // reset job waiting, no new surface
+        assert(displayed.points.size()==old.size()&&displayed.points.back().y==old.back().y);
+        assert(updateEscapeSurface(displayed,{},true,false)); // failed request/backoff also retains
+        auto replacement=roadLine({{0,0,0},{100,0,0}},Vec3{},20);
+        assert(!updateEscapeSurface(displayed,std::move(replacement),true,true));
+        assert(displayed.points.back().x>0&&!displayed.endsAtDestination);
+        assert(!updateEscapeSurface(displayed,{},false,false)); // explicit committed-route clear
+        assert(!displayed.visible());
+    }
+
+    {
         const Vec3 car{400,250,10};
         assert(routeDestinationMatches({{0,0,0},{400,250,9}},car));
         assert(!routeDestinationMatches({{0,0,0},{0,200,0}},car)); // leftover other-goal GPS

@@ -4,6 +4,7 @@
 #include "../src/compass_waypoint.hpp"
 #include "../src/compass_feedback.hpp"
 #include "../src/qol_menu_labels.hpp"
+#include "../src/wanted_compass.hpp"
 #include "../src/date_compass.hpp"
 #include <cwchar>
 #include "../src/navigation_awareness.hpp"
@@ -61,6 +62,31 @@ struct FakeGps {
     void configure(unsigned){}
 };
 int main(){
+    {
+        wantedcompass::Background bg;
+        auto red=bg.update({true,2,false,false},true,0),blue=bg.update({true,2,false,false},true,400);
+        assert(red.a&&blue.a&&red.r>red.b&&blue.b>blue.r&&red.a<=85);
+        assert(!bg.update({true,2,true,false},true,500).a); // lost sight within zone
+        assert(bg.update({true,2,true,true},true,600).g>100);
+        const auto fade=bg.update({true,0,false,false},true,700);
+        assert(fade.a==80&&bg.update({true,0,false,false},true,1600).a<fade.a);
+        assert(!bg.update({true,0,false,false},true,2500).a);
+        assert(!bg.update({true,2,false,false},false,2600).a);
+        assert(!bg.update({false,2,false,false},true,2700).a); // missing native => no guess
+        assert(std::wcsstr(qolmenu::label("QOL_UPDATES",false),QOL_VERSION_WIDE));
+        policeescape::ReplanState reset;
+        assert(reset.observe(2,false,{0,0,0},250,false,{0,1,0}));reset.begin(0);reset.committed();
+        assert(reset.observe(2,false,{0,0,0},250,true,{1,0,0})); // sighting reset without flashing transition
+        assert(reset.pending&&reset.heading.x==1&&!reset.ready(200));
+        assert(reset.observe(2,false,{60,0,0},250,true,{1,0,0}));
+        assert(reset.heading.x==1&&reset.ready(2500));
+        reset.begin(2500);assert(reset.heading.x==1); // requested course survives backoff/begin
+        assert(policeescape::followsHeading({{0,0,0},{30,0,0},{400,0,0}}, {},reset.heading));
+        assert(!policeescape::followsHeading({{0,0,0},{-30,0,0},{400,0,0}}, {},reset.heading));
+        auto choices=policeescape::candidates({}, {},250,0,[](roadnav::Vec3 a,roadnav::Vec3& b){b=a;return true;},[](roadnav::Vec3 a,roadnav::Vec3 b){return roadnav::distance2D(a,b);},{},true);
+        assert(!choices.empty());for(const auto& choice:choices)assert(choice.point.x>0);
+    }
+
     assert(compass::waypointMiles(1609.344f)=="1.00 mi");
     assert(compass::waypointMiles(804.672f)=="0.50 mi");
     assert(compass::waypointMiles(16093.44f)=="10.0 mi");

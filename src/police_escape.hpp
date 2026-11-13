@@ -10,18 +10,20 @@ inline bool outside(roadnav::Vec3 point,roadnav::Vec3 center,float radius){retur
 struct Candidate {roadnav::Vec3 point;float score;};
 // Failed requests must not disarm the chase. Use elapsed unsigned times for wrap.
 struct ReplanState {
-    bool observed=false,searching=false,pending=false,attempted=false;
+    bool observed=false,searching=false,pending=false,attempted=false,inSight=false;
+    roadnav::Vec3 heading{};
     unsigned stars=0,failures=0;std::uint32_t attemptedAt=0;
     roadnav::Vec3 center{};float radius=0;
-    const char* observe(unsigned nextStars,bool nextSearching,roadnav::Vec3 nextCenter,float nextRadius){
+    const char* observe(unsigned nextStars,bool nextSearching,roadnav::Vec3 nextCenter,float nextRadius,bool nextInSight=false,roadnav::Vec3 travel={}){
         const char* reason=nullptr;
         if(!observed)reason="wanted started";
         else if(stars!=nextStars)reason="wanted level changed";
+        else if(inSight!=nextInSight)reason=nextInSight?"police sighting reset":"police lost sight";
         else if(searching!=nextSearching)reason=nextSearching?"police lost player":"police re-found player";
         else if(roadnav::distance2D(center,nextCenter)>=25||std::fabs(radius-nextRadius)>=15)reason="search boundary changed";
         // New pursuit information re-arms the normal debounce; repeated failures
         // in the same search area retain exponential backoff.
-        if(reason){observed=true;stars=nextStars;searching=nextSearching;center=nextCenter;radius=nextRadius;pending=true;failures=0;}
+        if(reason){observed=true;inSight=nextInSight;heading=travel;stars=nextStars;searching=nextSearching;center=nextCenter;radius=nextRadius;pending=true;failures=0;}
         return reason;
     }
     unsigned delay()const{return std::min(10000u,2500u*(1u<<std::min(failures,2u)));}
@@ -87,7 +89,15 @@ inline unsigned routeWait(unsigned shownPoints){return shownPoints>1?2500u:6000u
 inline bool matches(const std::vector<roadnav::Vec3>& path,roadnav::Vec3 target){return path.size()>1&&roadnav::distance2D(path.back(),target)<=45&&std::fabs(path.back().z-target.z)<=15;}
 // Snap boundary samples to drivable nodes, then compare actual road travel
 // costs instead of drawing a straight line over buildings or water.
-template<class Snap,class Cost> std::vector<Candidate> candidates(roadnav::Vec3 player,roadnav::Vec3 center,float radius,float heading,Snap snap,Cost cost,const std::vector<roadnav::Vec3>& police){
+inline bool followsHeading(const std::vector<roadnav::Vec3>& path,roadnav::Vec3 player,roadnav::Vec3 heading){
+    const float h=std::hypot(heading.x,heading.y);if(h<.5f)return true;
+    if(path.size()<2)return false;
+    const float at=roadnav::nearestDistanceAlong(path,player);
+    const auto a=roadnav::sampleAt(path,at).position,b=roadnav::sampleAt(path,std::min(roadnav::routeLength2D(path),at+15)).position;
+    const float dx=b.x-a.x,dy=b.y-a.y,d=std::hypot(dx,dy);
+    return d>1&&(dx*heading.x+dy*heading.y)/(d*h)>.2f;
+}
+template<class Snap,class Cost> std::vector<Candidate> candidates(roadnav::Vec3 player,roadnav::Vec3 center,float radius,float heading,Snap snap,Cost cost,const std::vector<roadnav::Vec3>& police,bool forward=false){
     std::vector<Candidate> result;
     if(!std::isfinite(radius)||radius<50||radius>3000)return result;
     const float distance=roadnav::distance2D(player,center);
@@ -97,6 +107,8 @@ template<class Snap,class Cost> std::vector<Candidate> candidates(roadnav::Vec3 
     for(unsigned i=0;i<16;++i){const float a=angle+static_cast<float>(i)*.3926990817f;
         const roadnav::Vec3 sample{center.x+std::cos(a)*sampleRadius,center.y+std::sin(a)*sampleRadius,player.z};
         roadnav::Vec3 node{};if(!snap(sample,node)||!std::isfinite(node.x)||!std::isfinite(node.y)||!std::isfinite(node.z)||roadnav::distance2D(node,center)<radius+120||std::fabs(node.z-player.z)>90)continue;
+        const float dx=node.x-player.x,dy=node.y-player.y;
+        if(forward&&dx*std::cos(heading)+dy*std::sin(heading)<=.2f*std::hypot(dx,dy))continue;
         const float travel=cost(player,node);
         if(!std::isfinite(travel)||travel<1||travel>15000||travel+30<roadnav::distance2D(player,node))continue;
         bool duplicate=false;for(const auto& old:result)if(roadnav::distance2D(old.point,node)<20)duplicate=true;

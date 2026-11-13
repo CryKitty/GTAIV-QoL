@@ -1,8 +1,10 @@
 #pragma once
 #include <cstring>
+#include "qol_version.hpp"
 namespace qolmenu {
 inline const wchar_t* label(const char* key,bool master){
     if(!key)return nullptr;
+    if(std::strcmp(key,"QOL_UPDATES")==0)return L"Check for QoL Updates (" QOL_VERSION_WIDE L")";
     const char* keys[]={"QOL_ESCAPE","QOL_MISSION","QOL_FRIEND","QOL_ENEMY","QOL_CUSTOM"};
     const wchar_t* enabled[]={L"    Police Escape Line",L"    Mission Line",L"    Friend Line",L"    Enemy Line",L"    Custom Line"};
     // Native GTA text colour controls: grey while disabled, then reset so the
