@@ -608,7 +608,7 @@ def main():
     elif pending:
         message += 'The existing log was captured. Some uploads remain queued; RoadNav will retry in the background. Tell Codex you ran the helper.'
     else:
-        message += 'The existing QoL log has been delivered to the private RoadNav log issue #10. Tell Codex to check it. No game launch is needed.'
+        message += 'The existing QoL log has been delivered to the private RoadNav log issue for today. Tell Codex to check it. No game launch is needed.'
     if BUNDLE:
         message = ('Installed QoL bundle '+INSTALL_BUILD+' with verified ASI checksums.\nYour settings were preserved. Prior QoL, RoadNav and FusionFix files were backed up; standalone RoadNav copies were disabled.\n\nQoL tab: RoadNav, Map Autozoom, Pause During Cutscenes and Cutscene Audio Volume. Audio: Cutscene Audio controls the complete cutscene mix; gameplay volume is restored afterward. Esc/Start pauses and resumes cutscenes without a time limit.\n\n') + message
     dialog("GTA IV QoL is ready to play. Logs will upload in the background.")
