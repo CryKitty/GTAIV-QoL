@@ -85,14 +85,14 @@ def line_type_menu(raw):
     code=bytearray(); fixes=[]; turn_fixes=[]
     # Registration order is independent of persistent setting/callback IDs.
     # Road Line's children are contiguous before Compass HUD (audio is elsewhere).
-    order=[0,1,2,3,4,7,8,9,10,11,5,6]
-    next_rows=[12]*12
+    order=[0,1,2,3,4,7,8,9,10,11,5,6,12]
+    next_rows=[13]*13
     for a,b in zip(order,order[1:]):next_rows[a]=b
     next_row=len(code)
     code.extend(bytes.fromhex('50 e800000000 58'))
     row_anchor=len(code)-1
     code.extend(bytes.fromhex('0fb6bc38'));row_fix=len(code);code.extend(b'\0'*4)
-    code.extend(bytes.fromhex('58 83ff0c 0f82'))
+    code.extend(bytes.fromhex('58 83ff0d 0f82'))
     j=len(code);code.extend(struct.pack('<i',0xd7c80-(rva+j+4)))
     code.extend(b'\xe9');j=len(code);code.extend(struct.pack('<i',0xd7e33-(rva+j+4)))
     row_table=len(code);code.extend(bytes(next_rows))
@@ -150,10 +150,10 @@ def line_type_menu(raw):
     j=len(code);code.extend(struct.pack('<i',0xd90d0-(rva+j+4)))
     code.extend(bytes.fromhex('83c404 58 5e 5d c20400'))
     keys_at=len(code)
-    for key_text in ['QOL_ESCAPE','QOL_MISSION','QOL_FRIEND','QOL_ENEMY','QOL_CUSTOM']:
+    for key_text in ['QOL_ESCAPE','QOL_MISSION','QOL_FRIEND','QOL_ENEMY','QOL_CUSTOM','QOL_UPDATES']:
         code.extend(key_text.encode().ljust(16,b'\0'))
     labels_at=len(code)
-    for label_text in ['Police Escape Line','Mission Line','Friend Line','Enemy Line','Custom Line']:
+    for label_text in ['Police Escape Line','Mission Line','Friend Line','Enemy Line','Custom Line','Check for QoL Updates']:
         code.extend(label_text.encode('utf-16le').ljust(64,b'\0'))
     turns_at=len(code);code.extend('Turn Arrows\0'.encode('utf-16le'))
     for displacement,anchor in turn_fixes:struct.pack_into('<i',code,displacement,turns_at-anchor)

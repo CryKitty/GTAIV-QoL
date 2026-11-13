@@ -7,6 +7,9 @@
 int main(){
     qolsettings::Ensure();char temp[MAX_PATH]{},file[MAX_PATH]{};assert(GetTempPathA(MAX_PATH,temp));assert(GetTempFileNameA(temp,"qol",0,file));strcpy_s(qolsettings::path,file);
     qolsettings::Load();
+    assert(qolsettings::uiApi.Get(12)==0);
+    assert(qolsettings::uiApi.Set(12,1));assert(qolsettings::api.Get(QOL_CHECK_UPDATES)==1);
+    assert(qolsettings::uiApi.Set(12,0));
     for(unsigned row=7;row<12;++row){const auto id=row+4;
         assert(qolsettings::uiApi.Get(row)==1&&qolsettings::api.Get(id)==1);
         assert(qolsettings::uiApi.Set(row,0));assert(qolsettings::api.Get(id)==0);
@@ -34,7 +37,7 @@ int main(){
     wchar_t untouched[60]=L"stock";
     assert(!qolsettings::uiApi.MenuLabel("QOL_TAXI",untouched,60));assert(std::wcscmp(untouched,L"stock")==0);
     assert(!qolsettings::uiApi.MenuLabel(keys[0],untouched,2));assert(std::wcscmp(untouched,L"stock")==0);
-    qolsettings::uiApi.MenuReady(0xfff);
+    qolsettings::uiApi.MenuReady(0x1fff);
     for(unsigned id=QOL_LINE_ESCAPE;id<QOL_SETTING_COUNT;++id)assert(qolsettings::menuRows.load()&(1u<<id));
     assert(!(qolsettings::menuRows.load()&(1u<<QOL_ROUTE_COLOURS)));
     for(unsigned id=0;id<4;++id){assert(qolsettings::api.Set(id,0));assert(qolsettings::api.Get(id)==0);assert(qolsettings::api.Set(id,1));assert(qolsettings::api.Get(id)==1);}

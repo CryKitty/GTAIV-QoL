@@ -131,6 +131,13 @@ jobs:
           if errorlevel 1 exit /b 1
           build\qol-settings-tests.exe
           if errorlevel 1 exit /b 1
+      - name: Test opt-in in-game update request edges
+        shell: cmd
+        run: |
+          cl /nologo /std:c++17 /EHsc /W4 /WX /O2 /MT tests\ingame_updates.cpp /Fe:build\ingame-update-tests.exe
+          if errorlevel 1 exit /b 1
+          build\ingame-update-tests.exe
+          if errorlevel 1 exit /b 1
       - name: Test range policy and signature fail-closed behavior
         shell: cmd
         run: |

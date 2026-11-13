@@ -65,3 +65,7 @@ ViewBendStrengthPercent = 100
 ViewBendMaxDegrees = 75
 ; 25-400: higher values delay the roll until nearer a perpendicular turn.
 ViewBendResponsePercent = 100
+
+[Updates]
+; Opt in through Pause -> QoL. Downloads stage; apply only after exit.
+CheckForUpdates=0
