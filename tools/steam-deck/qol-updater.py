@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Persistent, user-run updater for the public QoL development/beta/release channels."""
+from datetime import datetime, timezone
 import base64
 import hashlib
 import io
@@ -19,7 +20,9 @@ import zipfile
 UPDATE_SOURCE={'repository':'CryKitty/GTAIV-QoL','branch':'main'}
 # Canonical public source. The old GTAIV-QoL-dev repository remains private.
 REPO=UPDATE_SOURCE['repository']
-BOOTSTRAP_REVISION=6
+BOOTSTRAP_REVISION=7
+BUILD_SHA = ''
+BUILD_NUMBER = ''
 PROGRESS_UI = ''
 PROGRESS = None
 
@@ -208,8 +211,13 @@ def apply_update(manifest,files,channel):
     progress(95,'Finishing installation')
     atomic(ROOT/'install-helper.py',files['install-helper.py'])
     atomic(ROOT/'qol-updater.py',files['qol-updater.py'])
-    atomic(ROOT/'installed.json',json.dumps({'sha':manifest['sha'],'files':manifest['files'],'channel':channel,'version':manifest.get('release_version',''),'repository':REPO,'branch':BRANCH}).encode())
+    utc=datetime.now(timezone.utc).isoformat()
+    local=datetime.now().astimezone().strftime('%Y-%m-%d %H:%M')
     shortcut()
+    atomic(ROOT/'installed.json',json.dumps({'sha':manifest['sha'],'files':manifest['files'],'channel':channel,'version':manifest.get('release_version',''),'repository':REPO,'branch':BRANCH,
+        'build':str(manifest.get('version','')),'run_id':manifest.get('run_id',0),'updated_at':utc,'updated_local':local}).encode())
+    game=selected_game()
+    if game is not None:update_status(game,'updated')
 
 def bundle_files_intact(game,manifest):
     if not all((game/name).is_file() and hashlib.sha256((game/name).read_bytes()).hexdigest()==manifest['files'][name] for name in ('GTAIV-QoL.asi','GTAIV-QoL-Pause.asi')):
@@ -253,7 +261,9 @@ def uploader_files_intact(files=None):
     except (OSError,ValueError,KeyError,TypeError,RuntimeError,AttributeError,SyntaxError):return False
 
 
-def perform_update():
+def _perform_update():
+    game=selected_game()
+    if game is not None:update_status(game,'checking')
     progress(3,"Checking for updates")
     os.umask(0o077)
     ROOT.mkdir(parents=True,exist_ok=True,mode=0o700)
@@ -274,13 +284,17 @@ def perform_update():
             if channel=='beta':raise PublicBetaUnavailable('Public beta download is unavailable; no private token is requested.') from None
             token=authorize(config);candidate=select(token)
         if candidate is None:
-            progress(100,'No public beta update has been published yet');return
+            progress(100,'No public beta update has been published yet')
+            if game is not None:update_status(game,'no_release')
+            return
         if channel=='beta' and (ROOT/'installed.json').is_file() and config.get('game'):
             saved=json.loads((ROOT/'installed.json').read_text())
             previous,next_version=version_key(saved.get('version')),version_key(candidate.get('version'))
             if previous and next_version and previous>next_version and bundle_files_intact(Path(config['game']),saved):
                 if not uploader_files_intact():raise RuntimeError('Installed beta is newer, but diagnostics need repair; no update was applied.')
-                progress(100,'Installed beta is newer than the published update; kept');return
+                progress(100,'Installed beta is newer than the published update; kept')
+                if game is not None:update_status(game,'up_to_date')
+                return
         notes=candidate.get('notes','')
         installed=ROOT/'installed.json'
         if channel=='dev' and installed.is_file():
@@ -291,6 +305,7 @@ def perform_update():
                     notes='\n\n'.join(item['commit']['message'] for item in compare.get('commits',[])[:40]) or notes
             except (OSError,ValueError,RuntimeError,urllib.error.URLError):pass
         progress(12,'Preparing download',version=candidate['label'].capitalize(),size='Download: %.3f MB'%(candidate.get('size',0)/1000000),changelog=notes)
+        if game is not None:update_status(game,'downloading')
         data=request(token,candidate['route'],binary=True)
         progress(58,'Verifying download')
         manifest,files=validate_archive(data,candidate)
@@ -300,10 +315,19 @@ def perform_update():
             roadnav=Path.home()/'.config/roadnav-uploader/config.json'
             game=Path(config['game']) if config.get('game') else Path(json.loads(roadnav.read_text())['game'])
             if bundle_files_intact(game,manifest) and updater_files_intact(json.loads(state.read_text())) and uploader_files_intact(files):
-                atomic(CONFIG,json.dumps(config).encode());shortcut();progress(100,'Already up to date');return
+                atomic(CONFIG,json.dumps(config).encode());shortcut();progress(100,'Already up to date')
+                update_status(game,'up_to_date');return
         apply_update(manifest,files,channel)
         atomic(CONFIG,json.dumps(config).encode())
         progress(100,'Update complete — ready to play')
+
+def perform_update():
+    try:return _perform_update()
+    except Exception:
+        game=selected_game()
+        if game is not None:update_status(game,'failed')
+        raise
+
 
 # In-game bridge: a Linux user service watches the shared game folder. The ASI
 # queues requests; it never tries to execute Linux Python through Wine.
@@ -349,40 +373,79 @@ def install_game_updater(game,source):
     for args in (['daemon-reload'],['enable','gtaiv-qol-updates.service'],[action,'gtaiv-qol-updates.service']):
         result=subprocess.run(['systemctl','--user']+args,capture_output=True,timeout=15)
         if result.returncode:raise RuntimeError('In-game update worker could not be enabled. The manual updater remains available; rerun setup in Desktop Mode.')
+    if re.fullmatch('[0-9a-f]{40}',BUILD_SHA):
+        update_status(game,'updated',{'sha':BUILD_SHA,'build':BUILD_NUMBER,
+            'updated_at':datetime.now(timezone.utc).isoformat(),
+            'updated_local':datetime.now().astimezone().strftime('%Y-%m-%d %H:%M')})
     return True
 
 def pending_directory(game):
     return ROOT/'staged'/hashlib.sha256(str(Path(game).resolve()).encode()).hexdigest()[:24]
 
-def update_status(game,state):
-    atomic(game/'GTAIV-QoL-update-status.json',json.dumps({'schema':1,'state':state}).encode())
+STATUS_TEXT={'idle':'Updates off','checking':'Checking...', 'downloading':'Downloading/staging',
+    'staged':'Staged - exit to apply','applying':'Applying update','up_to_date':'Up to date',
+    'failed':'Update failed - retry','updated':'Updated','no_release':'No published update','cancelled':'Update cancelled'}
+
+def update_status(game,state,installed=None):
+    if state not in STATUS_TEXT:raise RuntimeError('Unknown update state.')
+    saved=installed if installed is not None else json.loads((ROOT/'installed.json').read_text()) if (ROOT/'installed.json').is_file() else {}
+    # An old updater can install the new verified helper but still write its
+    # old installed.json schema afterward. Preserve the install receipt that
+    # the helper seeded, including when that old worker overwrites status JSON.
+    import configparser
+    prior=configparser.ConfigParser()
+    try:prior.read(game/'GTAIV-QoL-update-info.ini',encoding='ascii')
+    except (OSError,UnicodeError,configparser.Error):prior=configparser.ConfigParser()
+    if saved.get('sha') and prior.get('Installed','Sha',fallback='')==saved['sha']:
+        saved=dict(saved)
+        for key,field in [('build','Build'),('updated_local','UpdatedLocal'),('updated_at','UpdatedUtc')]:
+            if not saved.get(key):saved[key]=prior.get('Installed',field,fallback='')
+    sha=saved.get('sha','');sha=sha if re.fullmatch('[0-9a-f]{40}',sha) else ''
+    build=str(saved.get('build',''));build=build if re.fullmatch('[0-9]{1,6}',build) else ''
+    installed=saved.get('updated_local','');installed=installed if isinstance(installed,str) and re.fullmatch(r'\d{4}-\d{2}-\d{2} \d{2}:\d{2}',installed) else ''
+    utc=saved.get('updated_at','')
+    try:
+        value=datetime.fromisoformat(utc);utc=value.isoformat() if value.tzinfo else ''
+    except (ValueError,TypeError):utc=''
+    # Only fixed state codes and validated public build/date fields cross into
+    # the native menu. Never serialize config, paths, API responses or errors.
+    record={'schema':2,'code':state,'state':STATUS_TEXT[state],'sha':sha,'build':build,
+            'updated_at':utc,'updated_local':installed}
+    atomic(game/'GTAIV-QoL-update-status.json',json.dumps(record).encode())
+    receipt='[Update]\nState='+state+'\n[Installed]\nSha='+sha+'\nBuild='+build+'\nUpdatedLocal='+installed+'\nUpdatedUtc='+utc+'\n'
+    atomic(game/'GTAIV-QoL-update-info.ini',receipt.encode('ascii'))
+
 
 def stage_game_update(game):
     if not update_opt_in(game):return False
     config=json.loads(CONFIG.read_text());channel=config.get('channel','beta')
     if selected_game()!=game.resolve():raise RuntimeError('Configured game does not match update worker.')
+    if (pending_directory(game)/'candidate.json').is_file():
+        update_status(game,'staged');return False
+    update_status(game,'checking')
     select={'dev':dev_candidate,'beta':beta_candidate,'release':release_candidate}.get(channel)
     if select is None:raise RuntimeError('Unsupported channel.')
     token='' if channel=='beta' else config.get('token','')
     candidate=select(token)
-    if candidate is None:update_status(game,'No published update available');return False
+    if candidate is None:update_status(game,'no_release');return False
     saved=json.loads((ROOT/'installed.json').read_text()) if (ROOT/'installed.json').is_file() else {}
     if candidate.get('sha') and candidate['sha']==saved.get('sha') and uploader_files_intact():
-        update_status(game,'Already up to date');return False
+        update_status(game,'up_to_date');return False
     current,next_version=version_key(saved.get('version')),version_key(candidate.get('version'))
     if channel=='beta' and current and next_version and current>next_version:
         if not uploader_files_intact():raise RuntimeError('Installed beta is newer, but diagnostics need repair; no update was staged.')
-        update_status(game,'Already up to date');return False
+        update_status(game,'up_to_date');return False
+    update_status(game,'downloading')
     data=request(token,candidate['route'],binary=True)
     manifest,files=validate_archive(data,candidate)
     if manifest['sha']==saved.get('sha') and uploader_files_intact(files):
-        update_status(game,'Already up to date');return False
+        update_status(game,'up_to_date');return False
     if not update_opt_in(game):return False
     folder=pending_directory(game)
     atomic(folder/'payload.zip',data)
     candidate=dict(candidate,installed_sha=saved.get('sha',''))
     atomic(folder/'candidate.json',json.dumps(candidate).encode())
-    update_status(game,'Update staged; applies after GTA IV exits')
+    update_status(game,'staged')
     return True
 
 def apply_game_update(game):
@@ -390,23 +453,24 @@ def apply_game_update(game):
     if not candidate_file.is_file():return False
     if game_running():return False
     if not update_opt_in(game):
-        candidate_file.unlink();payload.unlink(missing_ok=True);update_status(game,'Update cancelled: option Off');return False
+        candidate_file.unlink();payload.unlink(missing_ok=True);update_status(game,'cancelled');return False
     if candidate_file.is_symlink() or payload.is_symlink() or payload.stat().st_size>MAX_ARCHIVE:raise RuntimeError('Invalid staged payload.')
     candidate=json.loads(candidate_file.read_text())
     saved=json.loads((ROOT/'installed.json').read_text()) if (ROOT/'installed.json').is_file() else {}
     config=json.loads(CONFIG.read_text())
     if candidate.get('installed_sha','')!=saved.get('sha','') or candidate.get('channel')!=config.get('channel','beta'):
-        candidate_file.unlink();payload.unlink(missing_ok=True);update_status(game,'Staged update cancelled: installation/channel changed');return False
+        candidate_file.unlink();payload.unlink(missing_ok=True);update_status(game,'cancelled');return False
     manifest,files=validate_archive(payload.read_bytes(),candidate)
     if game_running():return False
     # apply_update checks the running process again and uses the existing
     # installer session lock, backups, settings preservation and rollback.
+    update_status(game,'applying')
     apply_update(manifest,files,candidate['channel'])
     candidate_file.unlink();payload.unlink(missing_ok=True)
-    update_status(game,'Update installed; ready for next launch')
+    update_status(game,'updated')
     return True
 
-def game_update_tick(game):
+def _game_update_tick(game):
     import fcntl
     ROOT.mkdir(parents=True,exist_ok=True,mode=0o700)
     with (ROOT/'update.lock').open('a') as lock:
@@ -420,6 +484,13 @@ def game_update_tick(game):
             stage_game_update(game)
         return apply_game_update(game)
 
+def game_update_tick(game):
+    try:return _game_update_tick(game)
+    except Exception:
+        update_status(game,'failed')
+        raise
+
+
 def watch_game(game):
     import time
     os.umask(0o077);game=Path(game).resolve()
@@ -428,7 +499,8 @@ def watch_game(game):
             if game_update_tick(game):return 0 # systemd restarts the new worker.
         except Exception as exc:
             # No credentials, API bodies or private file paths in status output.
-            update_status(game,'Check/apply deferred ('+type(exc).__name__+'); manual updater remains available')
+            try:update_status(game,'failed')
+            except Exception:print('QoL update failed; menu status could not be written.',file=sys.stderr)
         time.sleep(3)
 
 
@@ -457,4 +529,7 @@ if __name__=='__main__':
     try:sys.exit(watch_game(sys.argv[2]) if len(sys.argv)==3 and sys.argv[1]=='--watch-game' else main())
     except Exception as exc:
         message=str(exc) if isinstance(exc,RuntimeError) else 'The updater could not finish ('+type(exc).__name__+'). Check the connection and saved authorization; existing backups and logs remain on the Deck.'
-        dialog('error',message);sys.exit(1)
+        if len(sys.argv)==3 and sys.argv[1]=='--watch-game':
+            print('QoL update worker failed; retry service will restart.',file=sys.stderr)
+        else:dialog('error',message)
+        sys.exit(1)

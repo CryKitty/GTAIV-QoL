@@ -12,3 +12,8 @@
   updater-only test steps in `CHANGELOG.md`.
 - Do not merge PRs; Muse merges after review. Do not publish the cloud environment
   as part of a coding task.
+- `VERSION` identifies named releases, not individual PRs. Keep it unchanged
+  between named releases. CI generates the pause-menu build identity from the
+  Actions run number and source commit; preserve that per-build identity and the
+  updater's successful-install timestamp when changing installation/menu code.
+  Same-build checks and staging must not pretend a new build has been installed.

@@ -126,7 +126,15 @@ def line_type_menu(raw):
     capture=len(code);code.extend(bytes.fromhex('50 e800000000 58'))
     capture_anchor=len(code)-1
     code.extend(bytes.fromhex('89b0'));capture_fix=len(code);code.extend(b'\0'*4)
-    code.extend(bytes.fromhex('58 8975f0 85f6 c3'))
+    code.extend(bytes.fromhex('58 60'))
+    refresh_skips=[]
+    for check in ('85f6','833e1c','8b4618 85c0'):
+        code.extend(bytes.fromhex(check));code.extend(bytes.fromhex('72' if check=='833e1c' else '74'));refresh_skips.append(len(code));code.append(0)
+    code.extend(bytes.fromhex('e800000000 5a 81c2'));refresh_anchor=len(code)-3
+    refresh_fix=len(code);code.extend(b'\0'*4)
+    code.extend(bytes.fromhex('52 ffd0 83c404'))
+    for j in refresh_skips:code[j]=len(code)-j-1
+    code.extend(bytes.fromhex('61 8975f0 85f6 c3'))
     decorate=len(code);code.extend(bytes.fromhex('60 e800000000 58'))
     decorate_anchor=len(code)-1
     code.extend(bytes.fromhex('8b80'));decorate_fix=len(code);code.extend(b'\0'*4)
@@ -164,6 +172,10 @@ def line_type_menu(raw):
     height_numeric=len(code);code.extend(bytes.fromhex('817d1800004843 7405 e9'))
     j=len(code);code.extend(struct.pack('<i',old_numeric-(rva+j+4)))
     code.extend(bytes.fromhex('58 c744242400000000 6a6c 56 50 c3'))
+    refresh_thunk=len(code);code.extend(bytes.fromhex('6a00 e8'))
+    j=len(code);code.extend(struct.pack('<i',0xd90d0-(rva+j+4)))
+    code.extend(bytes.fromhex('83c404 c3'))
+    struct.pack_into('<i',code,refresh_fix,refresh_thunk-refresh_anchor)
     keys_at=len(code)
     for key_text in ['QOL_ESCAPE','QOL_MISSION','QOL_FRIEND','QOL_ENEMY','QOL_CUSTOM','QOL_UPDATES','QOL_CAMHEIGHT']:
         code.extend(key_text.encode().ljust(16,b'\0'))

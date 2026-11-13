@@ -56,6 +56,16 @@ class PackageUpdaterTests(unittest.TestCase):
             self.assertEqual(value,ui)
             self.assertIn('Ready — play',source)
 
+    def test_packaged_worker_carries_build_identity(self):
+        root=ROOT/'tools/steam-deck'
+        with patch.dict(os.environ,{'GITHUB_SHA':'a'*40,'GITHUB_RUN_NUMBER':'47'}):
+            source=p.render_updater(root).decode('utf-8')
+        import ast
+        values={n.targets[0].id:ast.literal_eval(n.value) for n in ast.parse(source).body
+                if isinstance(n,ast.Assign) and isinstance(n.targets[0],ast.Name)
+                and n.targets[0].id in ('BUILD_SHA','BUILD_NUMBER')}
+        self.assertEqual(values,{'BUILD_SHA':'a'*40,'BUILD_NUMBER':'47'})
+
     def test_packages_flat_versioned_payload(self):
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp);(root/'tools/steam-deck').mkdir(parents=True);(root/'build').mkdir()

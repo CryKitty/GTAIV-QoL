@@ -3,6 +3,7 @@
 #include <cwchar>
 #include "qol_settings_api.h"
 #include "qol_menu_labels.hpp"
+#include "update_menu.hpp"
 namespace qolsettings {
 struct Definition {const char* section;const char* key;int initial;int maximum;};
 constexpr Definition definitions[QOL_SETTING_COUNT]={
@@ -49,7 +50,7 @@ int32_t __cdecl Set(uint32_t id,int32_t value){
     ReleaseSRWLockExclusive(&writeLock);return ok?1:0;
 }
 void __cdecl MenuReady(uint32_t rows){menuRows.store(rows);}
-const QolSettingsApi api{sizeof(QolSettingsApi),1,Get,Set,MenuReady,nullptr};
+const QolSettingsApi api{sizeof(QolSettingsApi),1,Get,Set,MenuReady,nullptr,nullptr};
 
 // The verified menu host has one reserved, never-shown gameplay-voice row.
 // Its UI-only adapter maps that row to Road Line On/Off; the normal settings
@@ -74,10 +75,20 @@ int32_t __cdecl UiSet(uint32_t id,int32_t value){
 }
 void __cdecl UiReady(uint32_t rows){unsigned actual=0;for(unsigned id=0;id<14;++id)if(rows&(1u<<id))actual|=1u<<UiId(id);MenuReady(actual);}
 int32_t __cdecl UiLabel(const char* key,wchar_t* text,uint32_t capacity){
-    const auto label=qolmenu::label(key,Get(QOL_GPS_LINE)!=0);
+    const auto dynamic=key&&std::strcmp(key,"QOL_UPDATES")==0?qolupdatemenu::label(Get(QOL_CHECK_UPDATES)!=0):std::wstring{};
+    const auto label=dynamic.empty()?qolmenu::label(key,Get(QOL_GPS_LINE)!=0):dynamic.c_str();
     if(!label||!text)return 0;
     const auto length=std::wcslen(label);if(length>=capacity)return 0;
     std::memcpy(text,label,(length+1)*sizeof(wchar_t));return 1;
 }
-const QolSettingsApi uiApi{sizeof(QolSettingsApi),1,UiGet,UiSet,UiReady,UiLabel};
+using MenuRefresh=void(__cdecl*)();
+std::atomic<MenuRefresh> refreshMenu{nullptr};
+void __cdecl SetMenuRefresh(MenuRefresh callback){refreshMenu.store(callback);}
+void RefreshMenu(bool paused){
+    static DWORD checked=0;static std::wstring previous;
+    const auto now=GetTickCount();if(checked&&now-checked<250)return;checked=now;
+    const auto text=qolupdatemenu::label(Get(QOL_CHECK_UPDATES)!=0);
+    if(text!=previous){previous=text;if(paused)if(auto refresh=refreshMenu.load())refresh();}
+}
+const QolSettingsApi uiApi{sizeof(QolSettingsApi),1,UiGet,UiSet,UiReady,UiLabel,SetMenuRefresh};
 }

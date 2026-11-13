@@ -1,4 +1,5 @@
 #include "../src/compass.hpp"
+#include "../src/update_status_format.hpp"
 #include "../src/compass_outings.hpp"
 #include "../src/driving_camera_height.hpp"
 #include "../src/compass_notifications.hpp"
@@ -64,6 +65,29 @@ struct FakeGps {
     void configure(unsigned){}
 };
 int main(){
+    {
+        using namespace qolupdatemenu;
+        const auto receipt=parse("[Update]\nState=staged\n[Installed]\nSha="+std::string(40,'a')+"\nBuild=47\nUpdatedLocal=2026-11-13 16:00\n");
+        assert(receipt.valid&&receipt.state=="staged"&&receipt.build=="47");
+        assert(!parse("[Update]\nState=private response\n").valid);
+        assert(!parse("[Update]\nState=updated\n[Installed]\nSha=bad\n").valid);
+        assert(!validDate(L"2026-99-13 25:00"));
+        const char* states[]={"idle","checking","downloading","staged","applying","up_to_date","failed","updated","no_release","cancelled"};
+        const wchar_t* expected[]={L"Updated",L"Checking",L"Downloading/staging",L"Staged - exit",L"Applying",L"Up to date",L"Update failed",L"Updated",L"No published",L"cancelled"};
+        for(unsigned i=0;i<10;++i){
+            const auto label=format(L"0.1.0-beta.1",L"b999999",states[i],receipt.updated);
+            assert(label.size()<60&&label.find(expected[i])!=std::wstring::npos&&label.find(L"b999999")!=std::wstring::npos);
+        }
+        assert(format(L"0.1.0-beta.1",L"b47","updated",receipt.updated)!=format(L"0.1.0-beta.1",L"b48","updated",receipt.updated));
+        assert(format(L"0.1.0-beta.1",L"b47","up_to_date",receipt.updated).find(L"Updated 11/13 16:00")!=std::wstring::npos);
+        assert(pendingState("updated",true,false,0,0)=="checking");
+        assert(pendingState("checking",true,false,121,0)=="failed");
+        assert(pendingState("downloading",false,false,0,301)=="failed");
+        assert(pendingState("updated",false,false,0,86400)=="updated");
+        assert(pendingState("staged",false,false,0,86400)=="staged");
+        assert(pendingState("up_to_date",false,true,0,0)=="failed");
+    }
+
     {
         // Audit each POI class, including garage/car wash and station glyphs.
         const unsigned pois[]={21,22,24,29,30,46,47,48,49,50,51,52,56,57,58,59,60,61,62,65,66,67,68,70,71,73,75,79,81,82,83,84,85,86,87,88,89,90,91,94};

@@ -14,6 +14,7 @@ def render_updater(folder):
     folder=Path(folder);source=(folder/'qol-updater.py').read_text(encoding='utf-8')
     ui=folder/'progress_ui.py'
     if ui.is_file():source=source.replace("PROGRESS_UI = ''",'PROGRESS_UI = '+repr(ui.read_text(encoding='utf-8')))
+    source=source.replace("BUILD_SHA = ''",'BUILD_SHA = '+repr(os.environ.get('GITHUB_SHA',''))).replace("BUILD_NUMBER = ''",'BUILD_NUMBER = '+repr(os.environ.get('GITHUB_RUN_NUMBER','')))
     return source.encode()
 
 def launcher(source):
