@@ -120,3 +120,38 @@ visibility, captured preference/table bounds and lifecycle, all three colours,
 ambiguous/unknown fallbacks, moving vehicle candidates, real-goal priority and
 Enemy Off/On. Existing live endpoint, navigation and renderer suites still run.
 No measured in-game FPS improvement or completed Deck visual test is claimed.
+
+## 2026-11-13 follow-up: no uploaded capture available
+
+The user checked the private repository first: there is **no** issue titled
+“QoL diagnostics — 2026-11-13”. Only #2, #9 and #10 exist, all full at 2,500
+comments. Today's captures are **not there**. This investigation uses code and
+deterministic regression tests, not a recorded in-game reproduction. No log
+contents from the private repository are copied into this public repository.
+
+Code findings:
+
+- Moving helpers were moved/re-requested every 200 ms, even while native GPS was
+  still calculating. On hosts without the move native, the helper was removed
+  and recreated at that rate. A continuously moving target could starve its own
+  route. A pending job now gets up to 6 seconds to complete; after a matching
+  result it may refresh on the next 200 ms cadence. The visual endpoint remains
+  per-frame. Matching uses the requested helper coordinate, not a live entity
+  position that may already have moved beyond the acceptance corridor.
+- Chase now uses the same request/reuse/release adapter as escape and forward
+  jobs. Internal route calls do not become mission observations. A former fixed
+  target's cached road-node position is cleared for a moving target.
+- Wanted/escape unconditionally returned before enemy acquisition. A live enemy
+  now gets priority over automatic escape when there is no fixed primary goal.
+  Both automatic planners use the same native slot; simultaneous independent
+  enemy and escape calculations are not claimed. Escape resumes afterward.
+- Target discovery still checks visible hostile car/ped blips, including a ped
+  inside a car, excludes dead/police/player targets, and retains the existing
+  range/speed gates. Road Line + Enemy Line still overrides the legacy hidden
+  chase preference; the user's confirmed On settings are accepted.
+
+Separate diagnostics finding: daily destination creation/delivery has not been
+verified on the device. Current rotation/recovery tests pass, but missing issues
+alone cannot identify whether installation, credentials, connectivity, service
+execution or queue state prevented delivery. No uploader failure is established
+without that evidence; no speculative uploader change is included.

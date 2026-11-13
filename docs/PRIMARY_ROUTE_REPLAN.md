@@ -14,7 +14,7 @@ Native GPS has two buffers which can both end at the same goal. After an opt-in 
 
 ## Stability and scope
 
-- Keep the previous primary snapshot/line while the new leg is pending; publish only a validated forward native path, and retain the previous valid surface if replacement fitting temporarily misses. Pending lead-in GPS has a 1.5-second timeout; a forward leg is bounded to 15 seconds, and new attempts have a 10-second minimum backoff. Restoration retains the last valid line until a current-origin primary path is available; retries are at most once per 10 seconds.
+- Keep the previous primary snapshot/line while the new leg is pending; publish only a validated forward native path, and retain the previous valid surface if replacement fitting temporarily misses. Pending lead-in GPS has a 3-second timeout; a forward leg is bounded to 15 seconds, and new attempts have a 10-second minimum backoff. Restoration retains the last valid line until a current-origin primary path is available; retries are at most once per 10 seconds.
 - Turn Arrows uses the original primary route/cue algorithm, not the temporary line leg. Its existing wrong-way/U-turn cue policy is unchanged.
 - Police escape is intentionally unchanged. Primary forward jobs are deferred while wanted/escape owns the shared GPS planner; its wanted/search transitions, retry backoff and last-good escape geometry remain intact. Moving entity/chase targets are not changed.
 - Changing/clearing the target, disabling Road Line, pausing, losing control, leaving the car or ending the script removes only the owned helper and restores the original route when it still exists.
@@ -24,3 +24,40 @@ Native GPS has two buffers which can both end at the same goal. After an opt-in 
 Portable tests cover sub-1.5-second swerves, continuous 1.5 seconds while driving away past the old route origin, stationary/crawl/reverse motion, target/sample-gap resets, another floor, timer wrap, request backoff, ahead-node selection/rejection, backward native-path rejection even with a matching endpoint, GPS helper/primary ownership and resuming the unchanged original target. The two-buffer regression verifies opt-in new-origin preference and unchanged default selection. Native/rendering, coexistence and installer/updater suites remain.
 
 These are deterministic geometry/state/adapter tests, not an in-game route-finding or legal-U-turn guarantee. After merge/update, test a manual destination in a two-way street and a one-way block: drive opposite the line for under 1.5 seconds (no job), stop/crawl (no job), then maintain the opposite heading while moving for 1.5 seconds. The old line should stay visible until the forward leg is ready, lead ahead, then return to the original destination at the node. Check turn cues independently, a changed/cleared waypoint, Off/On, pause/control loss and wanted/escape transitions. Test a fixed mission coordinate without moving/removing its mission marker. Failed/slow native requests should retain the last valid line and back off instead of blinking/retrying every tick.
+
+## Follow-up timing and two-buffer acceptance
+
+Code trace (no in-game timing capture is available): the normal navigation tick
+can delay the first opposite sample by up to 200 ms. Observation remains 1,500 ms.
+Observation/pending work now polls every 50 ms; ordinary navigation remains at
+200 ms. Previously the next 200 ms tick imposed a minimum request wait, and
+endpoint-first buffer ranking could repeatedly select a backward old buffer,
+reject it, time out at 3 seconds, wait for restoration and then the 10-second
+failed-attempt backoff. Native calculation latency is unknown, not measured.
+
+Forward validation now runs on **each** consistently copied buffer before
+endpoint/current-origin ranking. A usable second buffer is published on the next
+50 ms navigation service tick and fitted in that same tick. Assuming game ticks
+arrive on schedule, the request starts within 1.75 s of continuous opposite
+movement (200 ms first sample + 1.5 s observation + up to 50 ms polling).
+A result arriving inside the existing 3 s request window is therefore committed
+or the request fails by at most **4.80 s**, including a final 50 ms poll. The
+successful-result latency is instead detection + native calculation + at most
+50 ms service delay; there is no separate 200 ms acceptance floor. Frame stalls
+add their own delay. There is **no finite guaranteed fresh-line worst case** if
+GTA returns no forward legal route. Failed requests retain the line/backoff.
+
+Reaching/passing the ahead node still restores the original destination;
+restoration waits at least 200 ms for a current-origin original-destination
+buffer, and retries it every 10 seconds while retaining the last valid ribbon.
+The 30-second general borrowed-window recovery does not gate acquisition of a
+forward result. Wanted/escape still defers fixed-primary wrong-way jobs.
+
+Road ribbons, independently of turn cues and GPS ownership, are displaced 2 m
+right of increasing route distance: `(dy, -dx) / length`. A symmetric 8 m tangent
+on the complete native route keeps the side stable as the visible window moves;
+no miter grows the displacement around corners. Surface fitting runs at the
+displaced XY and retains its existing level/streaming checks. This is a fixed
+right-side approximation: verified lane counts, street widths, one-way lane
+centres and divided-highway lane occupancy are not available from this reader.
+In-game checks must cover narrow roads, medians, sharp turns and elevated roads.

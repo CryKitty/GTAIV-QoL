@@ -359,8 +359,9 @@ bool supportedVersion(std::int64_t delta) {
 }
 
 // Read GPS route points from the game.
-bool readRoute(std::int64_t delta,Route& result,const roadnav::Vec3* expectedEnd=nullptr,const roadnav::Vec3* start=nullptr){
-    return roadnav::readGpsRoute(adjustedAddress(slotsVa,delta),readMemory,result,expectedEnd,start);
+bool readRoute(std::int64_t delta,Route& result,const roadnav::Vec3* expectedEnd=nullptr,const roadnav::Vec3* start=nullptr,const roadnav::Vec3* heading=nullptr){
+    return roadnav::readGpsRoute(adjustedAddress(slotsVa,delta),readMemory,result,expectedEnd,start,
+        [&](const std::vector<roadnav::Vec3>& points){return !heading||(start&&expectedEnd&&roadnav::forwardGpsRoute(points,*start,*heading,*expectedEnd));});
 }
 
 // Background diagnostic thread.
@@ -604,15 +605,15 @@ class RoadNavScript final : public ScriptThread {
     DWORD escapeRequestedAt_=0;
     unsigned escapeStars_=0;roadnav::Vec3 escapeCenter_{};
     roadnav::Vec3 chasePoint_{};
-    DWORD chaseRefreshAt_=0;
-    bool chaseEnabled_=true,guidanceEnemy_=true;
+    DWORD chaseRefreshAt_=0;Route chasePreviousNative_{};
+    bool chaseEnabled_=true,guidanceEnemy_=true,chasePending_=false;
     DWORD noRouteSince_=0;
     void clearChase(){
         if(chaseRoute_.IsValid()&&Scripting::DoesBlipExist(chaseRoute_)){compass_.requestNavigationRoute(chaseRoute_,false);Scripting::RemoveBlip(chaseRoute_);event("Chase guidance: temporary route removed");}
         if(escapeActive_&&primaryRouteBlip_.IsValid()&&Scripting::DoesBlipExist(primaryRouteBlip_))compass_.requestNavigationRoute(primaryRouteBlip_,true);
         escapeLine_={};gEscapeLineRenderer.clear();
         escapeShown_={};escapeOptions_.clear();escapePlanning_=false;escapeReplan_={};
-        chaseRoute_={};chaseTarget_=0;escapeActive_=false;compass_.setRouteHelper(0);
+        chaseRoute_={};chaseTarget_=0;chasePending_=false;chasePreviousNative_={};escapeActive_=false;compass_.setRouteHelper(0);
         escapeAnchored_=false;escapeStars_=0;escapeSuppressed_=nullptr;escapeSuppressedAt_=0;
     }
     struct EscapeGps {
@@ -667,11 +668,11 @@ class RoadNavScript final : public ScriptThread {
             }
             if(forwardWaiting_){
                 Route candidate;
-                if(now-forwardRequestedAt_>=200&&readRoute(delta,candidate,&forwardTarget_)&&
+                if(readRoute(delta,candidate,&forwardTarget_,&player,&heading)&&
                    roadnav::forwardGpsRoute(candidate.points,player,heading,forwardTarget_)){
                     forwardRoute_=std::move(candidate);forwardWaiting_=false;
                     event("Road line replan: forward native road leg committed; original waypoint unchanged");
-                }else if(now-forwardRequestedAt_>=3000){finishForwardRoute(now,true);event("Road line replan: no forward native path; original route retained");}
+                }else if(now-forwardRequestedAt_>=roadnav::primaryForwardWaitMs){finishForwardRoute(now,true);event("Road line replan: no forward native path; original route retained");}
             }
             return;
         }
@@ -775,7 +776,7 @@ class RoadNavScript final : public ScriptThread {
         char text[180];std::snprintf(text,sizeof(text),"Police escape: background planning; known cops=%u radius=%.1f (%s) retaining=%u",static_cast<unsigned>(police.size()),radius,estimated?"estimated":"game table",escapeShown_.points.empty()?0u:1u);event(text);
         return true;
     }
-    void updateChase(Scripting::Ped ped,roadnav::Vec3 player,bool waypoint,bool existingRoute){
+    void updateChase(Scripting::Ped ped,roadnav::Vec3 player,bool waypoint,bool existingRoute,const Route& native){
         auto mission=compass_.navigationMissionTarget();
         const bool owns=chaseRoute_.IsValid()&&Scripting::DoesBlipExist(chaseRoute_);
         const DWORD tick=GetTickCount();
@@ -798,23 +799,20 @@ class RoadNavScript final : public ScriptThread {
         guidanceEnemy_=compass_.navigationTargetEnemy(target);
         roadnav::Vec3 targetPoint{};if(!compass_.navigationChasePosition(target,targetPoint)){clearChase();return;}
         const DWORD now=GetTickCount();
+        const bool matched=existingRoute&&roadnav::routeDestinationMatches(native.points,chasePoint_)&&
+            !roadnav::sameGpsRoad(native.points,chasePreviousNative_.points);
         if(owns&&target.Get()==chaseTarget_){
-            if(now-chaseRefreshAt_<200||roadnav::distance2D(targetPoint,chasePoint_)<1)return;
-            EscapeGps api{compass_};
-            if(api.move(chaseRoute_,targetPoint)){
-                Scripting::SetRoute(chaseRoute_,true);chasePoint_=targetPoint;chaseRefreshAt_=now;return;
-            }
-            // Older hosts without SET_BLIP_COORDINATES use a replacement helper.
-            // The last fitted line/recent route remain visible during GPS refresh.
+            if(!roadnav::chaseRefreshDue(now-chaseRefreshAt_,chasePending_,matched)||roadnav::distance2D(targetPoint,chasePoint_)<1)return;
         }
-        clearChase();
-        using namespace Scripting;
-        // Coordinate blips have separate ownership; never request an entity blip
-        // that the engine might reuse from the mission's original marker.
-        AddBlipForCoord(targetPoint.x,targetPoint.y,targetPoint.z,&chaseRoute_);
-        if(chaseRoute_.Get()==target.Get()){chaseRoute_={};event("Chase guidance: refused reused mission blip");return;}
-        if(chaseRoute_.IsValid()&&DoesBlipExist(chaseRoute_)){
-            compass_.setRouteHelper(chaseRoute_.Get());ChangeBlipAlpha(chaseRoute_,255);ChangeBlipColour(chaseRoute_,guidanceEnemy_?9:5);ChangeBlipNameFromAscii(chaseRoute_,"Chase route");SetRoute(chaseRoute_,true);chaseTarget_=target.Get();chasePoint_=targetPoint;chaseRefreshAt_=now;
+        // Release the primary and reuse the helper through the same ownership
+        // adapter as escape/forward jobs. Do not retire a pending job each tick.
+        EscapeGps api{compass_};
+        auto next=policeescape::requestGps(chaseRoute_,primaryRouteBlip_,targetPoint,api);
+        if(!api.exists(next)){clearChase();return;}
+        chaseRoute_=next;chaseTarget_=target.Get();chasePoint_=targetPoint;chaseRefreshAt_=now;chasePending_=true;chasePreviousNative_=native;
+        Scripting::ChangeBlipColour(chaseRoute_,guidanceEnemy_?9:5);
+        Scripting::ChangeBlipNameFromAscii(chaseRoute_,"Chase route");
+        {
             char line[128];std::snprintf(line,sizeof(line),"Automatic guidance: %s blip=%u route=%u",guidanceEnemy_?"enemy":"mission",chaseTarget_,chaseRoute_.Get());event(line);
         }
     }
@@ -954,7 +952,7 @@ protected:
         const bool cutscene=NativeInvoke::Invoke<Scripting::NATIVE_HAS_CUTSCENE_LOADED,b8>()&&!NativeInvoke::Invoke<Scripting::NATIVE_HAS_CUTSCENE_FINISHED,b8>();
         if(cutscene||!Scripting::IsPlayerControlOn(playerIndex)){hide(true);return;}
         roadnav::Vec3 player{};Scripting::GetCharCoordinates(ped,&player.x,&player.y,&player.z);
-        if(!previousTick_ || now-previousTick_>=200){
+        if(!previousTick_ || now-previousTick_>=((primaryWrongWay_.observing||forwardRouteHelper_.IsValid())?roadnav::primaryReplanPollMs:200u)){
             previousTick_=now;
             auto module=reinterpret_cast<std::uintptr_t>(GetModuleHandleA(nullptr));
             const auto delta=static_cast<std::int64_t>(module)-static_cast<std::int64_t>(preferredBase);
@@ -982,6 +980,7 @@ protected:
             const bool primaryMoved=fixedPrimary&&primaryRecovery_.target==primary.Get()&&
                 (roadnav::distance2D(primaryPoint,primaryRecovery_.goal)>5||std::fabs(primaryPoint.z-primaryRecovery_.goal.z)>5);
             const bool primaryChanged=primary.Get()!=primaryRouteBlip_.Get();
+            if(!fixedPrimary)primaryRoadLocated_=false;
             if(primaryChanged||primaryMoved){
                 primaryRoadLocated_=fixedPrimary&&GetClosestCarNode(primaryPoint.x,primaryPoint.y,primaryPoint.z,&primaryRoadPoint_.x,&primaryRoadPoint_.y,&primaryRoadPoint_.z)!=0;
             }
@@ -998,10 +997,10 @@ protected:
                 }else primaryWarmAt_=0;
             }
             Route route;
-            const bool readPrimary=readRoute(delta,route,primaryLocated?(primaryRoadLocated_?&primaryRoadPoint_:&primaryPoint):chaseTarget_&&!escapeActive_?&chasePoint_:nullptr,primaryReplanned_&&!escapeActive_?&player:nullptr);
+            const bool readPrimary=readRoute(delta,route,chaseTarget_&&!escapeActive_&&!fixedPrimary?&chasePoint_:primaryLocated?(primaryRoadLocated_?&primaryRoadPoint_:&primaryPoint):nullptr,primaryReplanned_&&!escapeActive_?&player:nullptr);
             bool freshRoute=readPrimary&&!primaryMoved&&!(primaryChanged&&!primaryLocated)&&(!escapeActive_||primaryLocated)&&
                 (!chaseTarget_||escapeActive_||primaryLocated||roadnav::routeDestinationMatches(route.points,chasePoint_))&&
-                (!primaryLocated||roadnav::primaryDestinationMatches(route.points,primaryPoint,primaryRoadLocated_?&primaryRoadPoint_:nullptr));
+                (chaseTarget_&&!escapeActive_&&!fixedPrimary?roadnav::routeDestinationMatches(route.points,chasePoint_):!primaryLocated||roadnav::primaryDestinationMatches(route.points,primaryPoint,primaryRoadLocated_?&primaryRoadPoint_:nullptr));
             // An ahead-leg job borrows the buffer, never the primary snapshot
             // used by turn cues or restoration, even for nearby endpoints.
             if(forwardRouteHelper_.IsValid()||(forwardRestoreAt_&&
@@ -1034,8 +1033,13 @@ protected:
             Route escapeNative;
             const bool existingEscape=readRoute(delta,escapeNative,escapeActive_?&chasePoint_:nullptr);
             const bool wasPlanning=escapePlanning_;
-            if(!updateEscape(ped,player,existingEscape,escapeNative,haveReplanVehicle?(motionSpeed_>=2.5f?velocity:travelHeading):roadnav::Vec3{})&&!forwardRouteHelper_.IsValid())
-                updateChase(ped,player,waypoint,readPrimary);
+            // A live enemy owns the automatic guidance slot before police escape.
+            // Fixed player/mission destinations still retain their priority.
+            const bool enemyRequested=!fixedPrimary&&compass::chaseEnabled(chaseEnabled_,lineEnabled,qolclient::Enabled(QOL_LINE_ENEMY,true))&&
+                compass_.chaseTarget(player,ped,chaseTarget_).IsValid();
+            if(enemyRequested&&escapeActive_)clearChase();
+            if((enemyRequested||!updateEscape(ped,player,existingEscape,escapeNative,haveReplanVehicle?(motionSpeed_>=2.5f?velocity:travelHeading):roadnav::Vec3{}))&&!forwardRouteHelper_.IsValid())
+                updateChase(ped,player,waypoint,readPrimary,route);
             if(escapeActive_&&!escapePlanning_&&primaryLocated&&(wasPlanning||primaryChanged))restorePrimaryGps();
             if(chaseTarget_&&!escapeActive_&&!primaryLocated&&routeTarget!=chaseTarget_){
                 // The old unowned GPS buffer cannot become the new enemy route.
@@ -1073,6 +1077,7 @@ protected:
                     auto nextLine=roadnav::roadLine(forwardRoute_.points.size()>1?forwardRoute_.points:route.points,player,motionSpeed_,tracked);
                     const auto probe=[](float x,float y,float z){float ground=-10000;
                         NativeInvoke::Invoke<Scripting::NATIVE_GET_GROUND_Z_FOR_3D_COORD,Scripting::ScriptVoid>(x,y,z,&ground);return ground;};
+                    roadnav::offsetDrivingSide(nextLine,forwardRoute_.points.size()>1?forwardRoute_.points:route.points);
                     const auto stats=roadnav::fitRoadSurface(nextLine,player,line_,probe);
                     roadnav::stabilizeRoadSurface(nextLine,line_);
                     roadnav::Vec3 exact{};
@@ -1098,6 +1103,7 @@ protected:
                 auto nextEscape=roadnav::roadLine(escapeShown_.points,player,motionSpeed_);
                 const auto probe=[](float x,float y,float z){float ground=-10000;
                     NativeInvoke::Invoke<Scripting::NATIVE_GET_GROUND_Z_FOR_3D_COORD,Scripting::ScriptVoid>(x,y,z,&ground);return ground;};
+                roadnav::offsetDrivingSide(nextEscape,escapeShown_.points);
                 const auto surface=roadnav::fitRoadSurface(nextEscape,player,escapeLine_,probe,&line_);
                 roadnav::stabilizeRoadSurface(nextEscape,escapeLine_);
                 const bool retainSurface=roadnav::updateEscapeSurface(escapeLine_,std::move(nextEscape),escapeShown_.points.size()>1,escapePlanning_);

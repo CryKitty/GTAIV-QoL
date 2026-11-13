@@ -338,6 +338,7 @@ public:
     void refreshNavigationBlips(){const DWORD now=GetTickCount();if(!scanAt_||now-scanAt_>=500){scan();scanAt_=now;}reconcileCompassWaypoint();}
     Scripting::Blip navigationWaypoint(){
         refreshNavigationBlips();reconcileCompassWaypoint();
+        if(compassWaypoint_.IsValid()&&Scripting::DoesBlipExist(compassWaypoint_))return compassWaypoint_;
         for(auto blip:blips_)if(Scripting::DoesBlipExist(blip)&&Scripting::GetBlipSprite(blip)==Scripting::BLIP_WAYPOINT)return blip;
         return {};
     }
@@ -506,21 +507,22 @@ public:
         std::vector<compass::Marker> markers;
         unsigned displayFiltered=0,invalidPosition=0,rangeFiltered=0,alphaFiltered=0,textureIcons=0,fallbackIcons=0;
         for(auto blip:blips_){
-            if(blip.Get()==routeHelper_||blip.Get()==forwardRouteHelper_||!DoesBlipExist(blip))continue;
+            if(blip.Get()==routeHelper_||blip.Get()==forwardRouteHelper_||blip.Get()==compassWaypoint_.Get()||!DoesBlipExist(blip))continue;
             const auto display=NativeInvoke::Invoke<NATIVE_GET_BLIP_INFO_ID_DISPLAY,u32>(blip);
             if(!compass::radarDisplay(display)){++displayFiltered;continue;}
             const auto alpha=compass::readBlipAlpha<NativeCalls>(blip.Get());if(!alpha){++alphaFiltered;continue;}
             roadnav::Vec3 point{};if(!position(blip,point)){++invalidPosition;continue;}
             const unsigned sprite=static_cast<unsigned>(GetBlipSprite(blip));if(sprite>=128||sprite==BLIP_PLAYER||sprite==BLIP_NORTH)continue;
             const float distance=roadnav::distance2D(playerPoint,point);
+            const bool selected=blip.Get()==compassWaypointSource_&&compassWaypoint_.IsValid();
             const bool outingVenue=social_&&compass::socialVenue(sprite);
-            if(!compass::markerInRange(distance,range,IsBlipShortRange(blip)!=0&&!outingVenue,sprite)){++rangeFiltered;continue;}
+            if(!selected&&!compass::markerInRange(distance,range,IsBlipShortRange(blip)!=0&&!outingVenue,sprite)){++rangeFiltered;continue;}
             ColourIndex col=0;GetBlipColour(blip,&col);
             const auto type=GetBlipInfoIdType(blip);
             const bool entity=type==BLIP_TYPE_CAR||type==BLIP_TYPE_CHAR||type==BLIP_TYPE_OBJECT||type==BLIP_TYPE_PICKUP;
             const bool enemy=enemyMarker(blip,col,sprite);
-            if(compass::hideAmbientMissionMarker(mission,entity,enemy,outingVenue,sprite))continue;
-            const int priority=sprite==BLIP_WAYPOINT?3:(sprite<=BLIP_OBJECTIVE_5?2:0);
+            if(!selected&&compass::hideAmbientMissionMarker(mission,entity,enemy,outingVenue,sprite))continue;
+            const int priority=selected||sprite==BLIP_WAYPOINT?3:(sprite<=BLIP_OBJECTIVE_5?2:0);
             const bool police=policeMarker(blip);
             const bool objective=!outingVenue&&!police&&awareness::objectiveLabel(mission,enemy,entity,sprite,blip.Get()==missionTarget.Get(),haveMissionPoint?roadnav::distance2D(point,missionPoint):100000.0f);
             if(police)col=enemy?9:3;else if(friendMarker(blip))col=8;else if(enemy)col=9;else if(objective&&sprite!=BLIP_WAYPOINT)col=5;
@@ -567,15 +569,16 @@ public:
         float hoverLabelY=Layout::focusLabelY;
         bool pinnedObjective=false;
         if(havePinned){
-            auto label=awareness_.briefFor(pinned.Get());
-            const bool objective=haveMissionPoint&&awareness::objectiveLabel(mission,false,false,BLIP_WAYPOINT,pinned.Get()==missionTarget.Get(),roadnav::distance2D(pinnedPoint,missionPoint));
+            const unsigned labelTarget=pinned.Get()==compassWaypoint_.Get()&&DoesBlipExist(asBlip(compassWaypointSource_))?compassWaypointSource_:pinned.Get();
+            auto label=awareness_.briefFor(labelTarget);
+            const bool objective=haveMissionPoint&&(pinned.Get()!=compassWaypoint_.Get()||labelTarget==missionTarget.Get())&&awareness::objectiveLabel(mission,false,false,BLIP_WAYPOINT,labelTarget==missionTarget.Get(),roadnav::distance2D(pinnedPoint,missionPoint));
             pinnedObjective=objective;
             if(label.empty()&&objective)label=awareness_.briefFor(missionTarget.Get());
             if(label.empty()&&objective)label=missionBrief;
             float y=compass::waypointLabelY(caption.visible());
             if(!label.empty()){const auto lines=awareness::briefLines(label);
                 for(const auto& line:lines){text(mid,y,line.c_str(),.22f,235,.85f,1.10f);y+=.024f;}
-            }else{textStyle(.22f,235,.85f,1.10f);NativeInvoke::Invoke<NATIVE_DISPLAY_TEXT_WITH_BLIP_NAME,ScriptVoid>(mid,y,"STRING",pinned.Get());y+=.024f;}
+            }else{textStyle(.22f,235,.85f,1.10f);NativeInvoke::Invoke<NATIVE_DISPLAY_TEXT_WITH_BLIP_NAME,ScriptVoid>(mid,y,"STRING",labelTarget);y+=.024f;}
             const auto distance=compass::waypointMiles(roadnav::distance2D(playerPoint,pinnedPoint));
             text(mid,y,distance.c_str(),.22f,215,1.0f,1.10f);hoverLabelY=y+.032f;
         }
@@ -601,7 +604,7 @@ public:
             }else {++fallbackIcons;const auto rgb=compass::markerColour(marker.colour);textStyle(.672f*scale,marker.alpha);SetTextColour(static_cast<u8>(rgb[0]),static_cast<u8>(rgb[1]),static_cast<u8>(rgb[2]),static_cast<u8>(marker.alpha));DisplayTextWithLiteralString(x,iconY-.011f,"STRING",compass::fallbackSymbol(marker.sprite));}
             const bool holding=hold>0&&marker.handle==waypointHold_.target;
             if(holding){caption=compass::caption("Setting waypoint",x);noticeFrame.holdX=x;noticeFrame.holdY=iconY;noticeFrame.holdRadius=height*.62f;noticeFrame.holdProgress=hold;}
-            if(compass::hoverReadout(marker.handle,havePinned?pinned.Get():0,centered,holding,
+            if(compass::hoverReadout(marker.handle,havePinned?(pinned.Get()==compassWaypoint_.Get()?compassWaypointSource_:pinned.Get()):0,centered,holding,
                 pinnedObjective&&marker.handle==missionTarget.Get())){
                 float distanceY=havePinned?hoverLabelY+.024f:Layout::distanceY;
                 auto objectiveText=marker.enemy?std::string{}:awareness_.briefFor(marker.handle);

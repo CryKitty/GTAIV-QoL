@@ -3,6 +3,19 @@
 #include <cstdint>
 
 namespace roadnav {
+inline constexpr unsigned primaryReplanPollMs=50;
+inline constexpr unsigned primaryForwardWaitMs=3000;
+// A completed helper request can refresh at 200ms; pending native jobs must
+// finish (or exhaust the cold-start window) before moving their destination.
+inline bool sameGpsRoad(const std::vector<Vec3>& a,const std::vector<Vec3>& b){
+    if(a.size()!=b.size())return false;
+    for(std::size_t i=0;i<a.size();++i)if(a[i].x!=b[i].x||a[i].y!=b[i].y||a[i].z!=b[i].z)return false;
+    return true;
+}
+inline bool chaseRefreshDue(unsigned elapsed,bool pending,bool matched){
+    return elapsed>=200&&(!pending||matched||elapsed>=6000);
+}
+
 // Extend only the first road tangent behind its old calculation origin. A
 // driver can cover >30m during debounce; clamping at that origin would cancel
 // the trigger before the debounce elapses simply because the old GPS plan is stale.

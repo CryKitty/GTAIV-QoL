@@ -17,4 +17,11 @@ class CompassDistanceWiring(unittest.TestCase):
         source = (Path(__file__).resolve().parents[1] / 'vendor/roadnav/src/compass_hud.hpp').read_text()
         self.assertIn('pinnedObjective=objective;', source)
         self.assertIn('pinnedObjective&&marker.handle==missionTarget.Get()', source)
-        self.assertIn('compass::hoverReadout(marker.handle,havePinned?pinned.Get():0,centered,holding,', source)
+        self.assertIn('compass::hoverReadout(marker.handle,havePinned?(pinned.Get()==compassWaypoint_.Get()?compassWaypointSource_:pinned.Get()):0,centered,holding,', source)
+
+    def test_compass_pin_keeps_source_icon_and_name(self):
+        source = (Path(__file__).resolve().parents[1] / 'vendor/roadnav/src/compass_hud.hpp').read_text()
+        self.assertIn('blip.Get()==compassWaypoint_.Get()||!DoesBlipExist(blip)', source)
+        self.assertIn('const bool selected=blip.Get()==compassWaypointSource_', source)
+        self.assertIn('auto label=awareness_.briefFor(labelTarget)', source)
+        self.assertIn('(mid,y,"STRING",labelTarget)', source)
