@@ -53,7 +53,7 @@ class RecoveryTests(unittest.TestCase):
                     if route=='/issues':return {'number':12,'state':'open','locked':False,'comments':0}
                     posts.append(payload);remote.append({'body':payload['body']});raise TimeoutError('simulated lost reply')
                 if route=='':return {'private':True}
-                if route=='/issues/12':return {'state':'open','locked':False,'comments':0}
+                if route=='/issues/12':return {'number':12,'state':'open','locked':False,'comments':0}
                 return remote if '/comments' in route else []
             ns=self.fixture(root,api);config={'issue':9,'token':'fixture'}
             ns['drain'](config);self.assertEqual(path.read_bytes(),raw)
