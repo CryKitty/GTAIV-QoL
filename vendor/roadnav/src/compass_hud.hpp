@@ -545,7 +545,7 @@ public:
         const auto tint=wantedBackground_.update(wantednative::sample(player,wanted),true,now);
         // Low-alpha dark tints sit behind the strip; labels/readouts below it
         // retain their existing clear backing/outline and remain unobscured.
-        if(tint.a)rect(mid,.058f,.43f,.064f,tint.r,tint.g,tint.b,tint.a);
+        if(tint.a)rect(mid,.054f,.43f,.060f,tint.r,tint.g,tint.b,tint.a);
         // The top line is the health/armour meter.
         for(unsigned tick=0;tick<24;++tick){
             const float bearing=compass::wrap(static_cast<float>(tick)*15+rotation.z);if(std::fabs(bearing)>90)continue;
