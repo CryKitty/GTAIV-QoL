@@ -19,6 +19,9 @@ inline float rearTaxiFov(float authored,float desired,bool rear,float distance){
     return std::clamp(desired+(authored-40),40.0f,120.0f);
 }
 enum class RouteKind {Blue,Custom,Mission,Enemy,Escape,Friend};
+inline RouteKind destinationRouteKind(bool enemy,bool friendly,bool waypoint){
+    return enemy?RouteKind::Enemy:waypoint?RouteKind::Custom:friendly?RouteKind::Friend:RouteKind::Mission;
+}
 struct LineTypes {
     bool escape=true,mission=true,friendLine=true,enemy=true,custom=true;
     bool visible(bool master,RouteKind kind)const{

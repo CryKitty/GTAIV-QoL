@@ -9,6 +9,7 @@
 #define NOMINMAX
 #endif
 
+#include "../../../src/primary_gps_recovery.hpp"
 #include <windows.h>
 #include <array>
 #include <cstdint>
@@ -578,6 +579,7 @@ class RoadNavScript final : public ScriptThread {
     roadnav::NavigationCues cues_{};
     roadnav::RoadLine line_{},escapeLine_{};
     Scripting::Blip primaryRouteBlip_{},forwardRouteHelper_{};DWORD primaryWarmAt_=0;
+    roadnav::PrimaryGpsRecovery primaryRecovery_{};roadnav::Vec3 primaryRoadPoint_{};bool primaryRoadLocated_=false;
     roadnav::PrimaryWrongWay primaryWrongWay_{};
     Route forwardRoute_{};roadnav::Vec3 forwardTarget_{},forwardHeading_{},forwardGoal_{};
     DWORD forwardRequestedAt_=0,forwardRestoreAt_=0;bool forwardWaiting_=false,primaryReplanned_=false;
@@ -604,7 +606,7 @@ class RoadNavScript final : public ScriptThread {
     roadnav::Vec3 chasePoint_{};
     DWORD chaseRefreshAt_=0;
     bool chaseEnabled_=true,guidanceEnemy_=true;
-    DWORD noRouteSince_=0,missionRetryAt_=0;unsigned missionRetryTarget_=0;
+    DWORD noRouteSince_=0;
     void clearChase(){
         if(chaseRoute_.IsValid()&&Scripting::DoesBlipExist(chaseRoute_)){compass_.requestNavigationRoute(chaseRoute_,false);Scripting::RemoveBlip(chaseRoute_);event("Chase guidance: temporary route removed");}
         if(escapeActive_&&primaryRouteBlip_.IsValid()&&Scripting::DoesBlipExist(primaryRouteBlip_))compass_.requestNavigationRoute(primaryRouteBlip_,true);
@@ -708,7 +710,7 @@ class RoadNavScript final : public ScriptThread {
         const auto index=ConvertIntToPlayerIndex(GetPlayerId());u32 stars=0;StoreWantedLevel(index,&stars);
         if(!stars){if(escapeActive_||escapeReplan_.observed){event("Police escape: dropped; wanted level cleared");clearChase();}escapeAnchored_=false;escapeStars_=0;return false;}
         if(stars>6)return true; // A bad sample must not discard committed guidance.
-        if(primaryWarmAt_&&GetTickCount()-primaryWarmAt_<1500)return true;
+        if(primaryWarmAt_&&GetTickCount()-primaryWarmAt_<policeescape::routeWait(static_cast<unsigned>(recentRoute_.points.size())))return true;
         primaryWarmAt_=0;
         float radius=0;roadnav::Vec3 center{};
         const auto signals=wantednative::sample(index,stars);
@@ -773,7 +775,7 @@ class RoadNavScript final : public ScriptThread {
         char text[180];std::snprintf(text,sizeof(text),"Police escape: background planning; known cops=%u radius=%.1f (%s) retaining=%u",static_cast<unsigned>(police.size()),radius,estimated?"estimated":"game table",escapeShown_.points.empty()?0u:1u);event(text);
         return true;
     }
-    void updateChase(Scripting::Ped ped,roadnav::Vec3 player,bool waypoint,bool existingRoute,const roadnav::Vec3* endpoint){
+    void updateChase(Scripting::Ped ped,roadnav::Vec3 player,bool waypoint,bool existingRoute){
         auto mission=compass_.navigationMissionTarget();
         const bool owns=chaseRoute_.IsValid()&&Scripting::DoesBlipExist(chaseRoute_);
         const DWORD tick=GetTickCount();
@@ -781,19 +783,10 @@ class RoadNavScript final : public ScriptThread {
         if(waypoint){if(owns){clearChase();auto manual=compass_.navigationWaypoint();if(manual.IsValid())Scripting::SetRoute(manual,true);}return;}
         const bool movingMission=mission.IsValid()&&(Scripting::GetBlipInfoIdType(mission)==Scripting::BLIP_TYPE_CAR||Scripting::GetBlipInfoIdType(mission)==Scripting::BLIP_TYPE_CHAR);
         if(mission.IsValid()&&!movingMission){
-            roadnav::Vec3 missionPoint{};
-            if(!compass_.navigationTargetPosition(mission,missionPoint))return;
-            // Restore the mission-owned route itself. A coordinate helper can
-            // replace native GPS ownership and must never stand in for it.
-            bool restored=false;if(owns){clearChase();restored=true;}
-            const bool matches=existingRoute&&endpoint&&roadnav::distance2D(*endpoint,missionPoint)<65;
-            if(matches&&!restored){missionRetryTarget_=0;return;}
-            if(!restored&&(compass_.missionRouteAge(mission.Get())<12000||(missionRetryTarget_==mission.Get()&&!awareness::routeRequestDue(tick,missionRetryAt_))))return;
-            Scripting::SetRoute(mission,true);missionRetryAt_=tick;missionRetryTarget_=mission.Get();
-            event("Mission guidance: requested GPS on original mission marker; no helper created");
+            // Fixed objectives recover in the primary path, including while wanted.
+            if(owns)clearChase();
             return;
         }
-        missionRetryTarget_=0;
         // A residual native GPS buffer is not an authoritative destination.
         // Manual waypoints and live fixed mission goals were handled above.
         const bool chaseEnabled=compass::chaseEnabled(chaseEnabled_,qolclient::Enabled(QOL_GPS_LINE,true),qolclient::Enabled(QOL_LINE_ENEMY,true));
@@ -985,7 +978,13 @@ protected:
             auto primary=waypoint?blip:missionDestination;
             roadnav::Vec3 primaryPoint{};
             const bool primaryLocated=primary.IsValid()&&compass_.navigationTargetPosition(primary,primaryPoint);
+            const bool fixedPrimary=primaryLocated&&(waypoint||(GetBlipInfoIdType(primary)!=BLIP_TYPE_CAR&&GetBlipInfoIdType(primary)!=BLIP_TYPE_CHAR));
+            const bool primaryMoved=fixedPrimary&&primaryRecovery_.target==primary.Get()&&
+                (roadnav::distance2D(primaryPoint,primaryRecovery_.goal)>5||std::fabs(primaryPoint.z-primaryRecovery_.goal.z)>5);
             const bool primaryChanged=primary.Get()!=primaryRouteBlip_.Get();
+            if(primaryChanged||primaryMoved){
+                primaryRoadLocated_=fixedPrimary&&GetClosestCarNode(primaryPoint.x,primaryPoint.y,primaryPoint.z,&primaryRoadPoint_.x,&primaryRoadPoint_.y,&primaryRoadPoint_.z)!=0;
+            }
             if(primaryChanged)finishForwardRoute(now);
             primaryRouteBlip_=primary;
             if(primaryChanged){forwardRestoreAt_=0;primaryWrongWay_={};primaryReplanned_=false;
@@ -994,18 +993,30 @@ protected:
                     // Let the new player/mission request acquire GPS first.
                     // The already committed escape route remains on screen.
                     if(escapeActive_){escapePlanning_=false;escapeReplan_.pending=true;event("Police escape: recalc queued; primary GPS changed, last route retained");}
-                    primaryWarmAt_=now;if(escapeActive_)restorePrimaryGps();else SetRoute(primary,true);
+                    primaryWarmAt_=now;
+                    if(!fixedPrimary){if(escapeActive_)restorePrimaryGps();else compass_.requestNavigationRoute(primary,true);}
                 }else primaryWarmAt_=0;
             }
             Route route;
-            const bool readPrimary=readRoute(delta,route,primaryLocated?&primaryPoint:chaseTarget_&&!escapeActive_?&chasePoint_:nullptr,primaryReplanned_&&!escapeActive_?&player:nullptr);
+            const bool readPrimary=readRoute(delta,route,primaryLocated?(primaryRoadLocated_?&primaryRoadPoint_:&primaryPoint):chaseTarget_&&!escapeActive_?&chasePoint_:nullptr,primaryReplanned_&&!escapeActive_?&player:nullptr);
             bool freshRoute=readPrimary&&!(primaryChanged&&!primaryLocated)&&(!escapeActive_||primaryLocated)&&
                 (!chaseTarget_||escapeActive_||primaryLocated||roadnav::routeDestinationMatches(route.points,chasePoint_))&&
-                (!primaryLocated||(!route.points.empty()&&roadnav::distance2D(route.points.back(),primaryPoint)<=65));
+                (!primaryLocated||roadnav::primaryDestinationMatches(route.points,primaryPoint,primaryRoadLocated_?&primaryRoadPoint_:nullptr));
             // An ahead-leg job borrows the buffer, never the primary snapshot
             // used by turn cues or restoration, even for nearby endpoints.
             if(forwardRouteHelper_.IsValid()||(forwardRestoreAt_&&
                (now-forwardRestoreAt_<200||!roadnav::primaryOriginMatches(route.points,player))))freshRoute=false;
+            const bool retainedPrimary=escapeActive_&&recentTarget_==primary.Get()&&
+                roadnav::primaryDestinationMatches(recentRoute_.points,primaryPoint,primaryRoadLocated_?&primaryRoadPoint_:nullptr);
+            if(primaryRecovery_.due(now,fixedPrimary?primary.Get():0,primaryPoint,freshRoute||retainedPrimary,
+                                    forwardRouteHelper_.IsValid()||forwardRestoreAt_||escapePlanning_)){
+                if(!primaryRoadLocated_)primaryRoadLocated_=GetClosestCarNode(primaryPoint.x,primaryPoint.y,primaryPoint.z,&primaryRoadPoint_.x,&primaryRoadPoint_.y,&primaryRoadPoint_.z)!=0;
+                compass_.requestNavigationRoute(primary,false);
+                if(escapeActive_){escapeReplan_.pending=true;restorePrimaryGps();}
+                else compass_.requestNavigationRoute(primary,true);
+                primaryWarmAt_=now;
+                char status[180];std::snprintf(status,sizeof(status),"Mission/waypoint GPS recovery: target=%u retry=%u road-node=%u last-points=%u",primary.Get(),primaryRecovery_.failures,primaryRoadLocated_?1u:0u,static_cast<unsigned>(recentRoute_.points.size()));event(status);
+            }
             if(freshRoute&&primaryWarmAt_)primaryWarmAt_=0;
             unsigned routeTarget=primaryLocated?primary.Get():(escapeActive_?0:chaseTarget_);
             // Capture the primary path before the escape planner borrows GTA's
@@ -1024,7 +1035,7 @@ protected:
             const bool existingEscape=readRoute(delta,escapeNative,escapeActive_?&chasePoint_:nullptr);
             const bool wasPlanning=escapePlanning_;
             if(!updateEscape(ped,player,existingEscape,escapeNative,haveReplanVehicle?(motionSpeed_>=2.5f?velocity:travelHeading):roadnav::Vec3{})&&!forwardRouteHelper_.IsValid())
-                updateChase(ped,player,waypoint,readPrimary,route.points.empty()?nullptr:&route.points.back());
+                updateChase(ped,player,waypoint,readPrimary);
             if(escapeActive_&&!escapePlanning_&&primaryLocated&&(wasPlanning||primaryChanged))restorePrimaryGps();
             if(chaseTarget_&&!escapeActive_&&!primaryLocated&&routeTarget!=chaseTarget_){
                 // The old unowned GPS buffer cannot become the new enemy route.
@@ -1069,7 +1080,7 @@ protected:
                     if(now-lastCueLog_>5000){char status[160];std::snprintf(status,sizeof(status),"Road surface: sampled=%u reused=%u missing=%u points=%u",stats.sampled,stats.reused,stats.missing,static_cast<unsigned>(nextLine.points.size()));event(status);}
                     if(nextLine.visible()||(!tracked&&!primaryWrongWay_.retaining(now)&&!forwardRouteHelper_.IsValid()&&!forwardRestoreAt_))line_=std::move(nextLine);
                 }
-                if(!route.points.empty())routeKind_=awareness::activeRoute(compass_.routeKind(route.points.back()),chaseRoute_.IsValid()&&guidanceEnemy_,waypoint);
+                if(!route.points.empty())routeKind_=awareness::activeRoute(primaryLocated?compass_.navigationRouteKind(primary):compass_.routeKind(route.points.back()),!primaryLocated&&chaseRoute_.IsValid()&&guidanceEnemy_,waypoint);
                 if(waypoint && !route.points.empty()){
                     cachedEnd_=route.points.back();cachedWaypoint_=waypointPoint;cachedAt_=now;haveArrival_=true;
                 }

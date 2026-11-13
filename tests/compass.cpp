@@ -133,6 +133,15 @@ int main(){
     assert(!compass::hoverReadout(42,42,true,false)); // pinned waypoint has its own persistent rows
     assert(compass::hoverReadout(7,42,true,false)); // other icons still hover
     assert(!compass::hoverReadout(7,42,false,false));
+    assert(!compass::hoverReadout(7,42,true,false,true)); // separate original objective blip represented by pin
+    assert(!compass::hoverReadout(7,42,false,true,true)); // holding still has ring/caption, no duplicate distance
+    assert(compass::hoverReadout(8,42,true,false,false)); // unrelated objective/icon remains hoverable
+    assert(compass::hoverReadout(7,0,true,false,false)); // without persistent pin, objective still hovers
+    assert(awareness::destinationRouteKind(false,false,false)==awareness::RouteKind::Mission);
+    assert(awareness::destinationRouteKind(false,false,true)==awareness::RouteKind::Custom);
+    assert(awareness::destinationRouteKind(true,false,false)==awareness::RouteKind::Enemy);
+    assert(awareness::destinationRouteKind(false,true,false)==awareness::RouteKind::Friend);
+
 
     {
         // A newly created contact/date sprite is discovered without radar-table

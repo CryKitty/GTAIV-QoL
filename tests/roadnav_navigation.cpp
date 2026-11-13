@@ -5,6 +5,8 @@
 #include "../vendor/roadnav/src/tracked_destination.hpp"
 #include "../vendor/roadnav/src/road_projection.hpp"
 #include "../src/police_escape.hpp"
+#include "../src/primary_gps_recovery.hpp"
+#include "../src/navigation_awareness.hpp"
 #include <cassert>
 #include <cstdio>
 using namespace roadnav;
@@ -20,6 +22,38 @@ int main(){
         assert(displayed.points.back().x>0&&!displayed.endsAtDestination);
         assert(!updateEscapeSurface(displayed,{},false,false)); // explicit committed-route clear
         assert(!displayed.visible());
+    }
+
+    {
+        PrimaryGpsRecovery recovery;
+        const Vec3 objective{300,100,0},roadNode{300,0,0};
+        assert(recovery.due(0,42,objective,false,false)); // fixed marker requests GPS without a chase tick
+        assert(!recovery.due(5999,42,objective,false,false)); // give native GPS its full cold-start window
+        assert(recovery.due(6000,42,objective,false,false)); // failed initial request is retried
+        assert(!recovery.due(15999,42,objective,false,false));
+        assert(!recovery.due(16000,42,objective,false,true)); // escape candidate/wrong-way job owns buffer
+        assert(recovery.due(16200,42,objective,false,false)); // recover as soon as borrower releases
+        const std::vector<Vec3> road{{0,0,0},roadNode};
+        assert(!primaryDestinationMatches(road,objective)); // marker itself is off the drivable road
+        assert(primaryDestinationMatches(road,objective,&roadNode)); // native destination's real road node
+        assert(!primaryDestinationMatches({{0,0,0},{300,0,40}},objective,&roadNode)); // another level
+        assert(!primaryDestinationMatches({{0,0,0},{0,300,0}},objective,&roadNode)); // stale escape goal
+        assert(!recovery.due(16400,42,objective,true,false));
+        assert(recovery.failures==0);
+        auto ribbon=roadLine(road,{},20);
+        fitRoadSurface(ribbon,{},RoadLine{},[](float,float,float){return 0.0f;});
+        pinDestination(ribbon,objective);
+        const auto kind=awareness::destinationRouteKind(false,false,false);
+        awareness::LineTypes types;types.enemy=false;types.custom=false;
+        assert(types.visible(true,kind)&&ribbon.visible()); // nearby enemy/custom Off cannot hide the objective
+        assert(roadLineDestination(ribbon).x==objective.x&&roadLineDestination(ribbon).y==objective.y);
+        types.mission=false;assert(!types.visible(true,kind)); // Mission Off still deliberately hides it
+        assert(recovery.due(16600,43,{350,100,0},false,false)); // new objective has no inherited backoff
+        assert(recovery.due(16700,43,{370,100,0},false,false)); // same marker moved to a new fixed goal
+        assert(!recovery.due(16800,0,{},false,false)); // no live destination: no request
+        assert(recovery.due(0xfffffff0u,44,objective,false,false));
+        assert(!recovery.due(0x100u,44,objective,false,false)); // unsigned tick wrap
+        assert(recovery.due(0x1760u,44,objective,false,false));
     }
 
     {
@@ -181,6 +215,23 @@ int main(){
             std::memcpy(memory.data()+base,points,sizeof(points));std::memcpy(memory.data()+base+0xd60,&count,4);std::memcpy(memory.data()+base+0xd64,&state,4);
         };
         const auto read=[&](std::uintptr_t at,void* out,std::size_t size){if(at>memory.size()||size>memory.size()-at)return false;std::memcpy(out,memory.data()+at,size);return true;};
+        {
+            // Native buffer -> objective validation -> fitted visible mission line.
+            // The escape buffer is populated too, but cannot supply this goal.
+            const Vec3 objective{300,100,0},node{300,0,0};
+            PrimaryGpsRecovery recovery;
+            assert(!recovery.due(0,42,objective,false,true)); // escape job is still computing
+            assert(recovery.due(200,42,objective,false,false)); // independent primary handoff while wanted
+            fill(0,{0,300,0});fill(1,node);
+            NativeGpsRoute mission;
+            assert(readGpsRoute(0,read,mission,&node)&&mission.slot==1);
+            assert(primaryDestinationMatches(mission.points,objective,&node));
+            assert(!recovery.due(400,42,objective,true,false));
+            auto line=roadLine(mission.points,{},20);
+            fitRoadSurface(line,{},RoadLine{},[](float,float,float){return 0.0f;});
+            pinDestination(line,objective);
+            assert(line.visible()&&roadLineDestination(line).y==objective.y);
+        }
         fill(0,{0,300,0});fill(1,{300,0,0});NativeGpsRoute route;const Vec3 target{300,0,0};
         assert(readGpsRoute(0,read,route,&target)&&route.slot==1&&route.points.back().x==300);
         fill(0,target);fill(1,{0,300,0});assert(readGpsRoute(0,read,route,&target)&&route.slot==0);

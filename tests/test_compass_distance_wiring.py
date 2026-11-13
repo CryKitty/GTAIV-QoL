@@ -12,3 +12,9 @@ class CompassDistanceWiring(unittest.TestCase):
         self.assertNotIn('3.2808399', source)
         self.assertNotIn('"ft"', source)
         self.assertNotIn('"m"', source)
+
+    def test_original_objective_uses_persistent_deduplication(self):
+        source = (Path(__file__).resolve().parents[1] / 'vendor/roadnav/src/compass_hud.hpp').read_text()
+        self.assertIn('pinnedObjective=objective;', source)
+        self.assertIn('pinnedObjective&&marker.handle==missionTarget.Get()', source)
+        self.assertIn('compass::hoverReadout(marker.handle,havePinned?pinned.Get():0,centered,holding,', source)

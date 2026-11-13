@@ -12,7 +12,7 @@ inline std::string waypointMiles(float metres){
 }
 // Persistent waypoint rows reserve space below temporary hold/arrival captions.
 inline float waypointLabelY(bool caption){return .087f+(caption?.048f:0);}
-inline bool hoverReadout(unsigned handle,unsigned waypoint,bool focused,bool holding){return handle!=waypoint&&(focused||holding);}
+inline bool hoverReadout(unsigned handle,unsigned waypoint,bool focused,bool holding,bool representedObjective=false){return handle!=waypoint&&!representedObjective&&(focused||holding);}
 
 // The same hold is available on foot and in vehicles; phone and combat retain
 // their input priority. Steering, throttle and other D-pad directions are untouched.
