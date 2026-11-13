@@ -216,6 +216,10 @@ int main(){
     // The experiment is opt-in: disabled and forward-aligned sections preserve
     // the baseline. Side-on sections roll as a whole without sinking below road.
     const auto flatSection=roadLineSection(std::vector<Vec3>{{0,0,0},{0,20,0}},0,1);
+    RoadLineViewHeading steadyView;
+    assert(steadyView.update({0,1,0},0).x==0);
+    for(unsigned frame=1;frame<100;++frame){const auto stable=steadyView.update({frame%2?.001f:-.001f,1,0},frame*16);assert(stable.x==0);}
+    const auto bigTurn=steadyView.update({1,0,0},1600);assert(bigTurn.x==1&&bigTurn.y==0); // deliberate turn immediate
     const RoadLineViewBend viewBend{1,75,1};
     const auto disabled=roadLineViewSection(flatSection,{0,1,0},{1,0,0},{10,0,2},{},{});
     for(unsigned n=0;n<2;++n)assert(disabled[n].x==flatSection[n].x&&disabled[n].z==flatSection[n].z);

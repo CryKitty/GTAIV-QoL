@@ -8,6 +8,23 @@ inline Vec3 roadLineGroundAnchor(const RoadLine& line,Vec3 player){
     if(!line.points.empty())player.z=sampleAt(line.points,nearestDistanceAlong(line.points,player)).position.z-roadSurfaceClearance;
     return player;
 }
+// Dampen only tiny viewing-angle noise in decorative cross-section tilt.
+// Projection and route geometry remain live; substantial turns snap immediately.
+struct RoadLineViewHeading {
+    Vec3 value{};std::uint32_t at=0;bool initialized=false;
+    Vec3 update(Vec3 next,std::uint32_t now){
+        const float length=std::hypot(next.x,next.y);if(length<.01f)return next;
+        next={next.x/length,next.y/length,0};
+        const float dot=value.x*next.x+value.y*next.y;
+        if(!initialized||dot<.9961947f){value=next;initialized=true;at=now;return value;} // >5 degrees
+        const float cross=value.x*next.y-value.y*next.x;
+        const float elapsed=static_cast<float>(std::min(now-at,200u));at=now;
+        if(std::fabs(cross)<.002618f)return value; // 0.15 degree deadband
+        const float blend=elapsed/(150+elapsed);
+        value={value.x+(next.x-value.x)*blend,value.y+(next.y-value.y)*blend,0};
+        const float norm=std::hypot(value.x,value.y);value.x/=norm;value.y/=norm;return value;
+    }
+};
 inline float roadLineLookAhead(float speed){
     const float v=std::isfinite(speed)?std::clamp(speed,0.0f,80.0f):0;
     return std::clamp(35+5*v+.025f*v*v,35.0f,300.0f);

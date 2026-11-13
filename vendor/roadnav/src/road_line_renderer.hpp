@@ -15,7 +15,7 @@ struct LineFrame {RoadLine line{};CameraFrame camera{};DWORD at=0;Vec3 player{};
 template<class Depth=RoadSceneDepth,class Camera=RoadSceneCamera>
 class RoadLineRendererWithScene final:public ID3DDeviceHook {
     SRWLOCK lock_=SRWLOCK_INIT;LineFrame frame_{};void(*log_)(const char*)=nullptr;bool logged_=false;
-    Depth sceneDepth_;Camera sceneCamera_;IDirect3DPixelShader9* occlusion_=nullptr;bool missingLogged_=false;
+    Depth sceneDepth_;Camera sceneCamera_;RoadLineViewHeading viewHeading_{};IDirect3DPixelShader9* occlusion_=nullptr;bool missingLogged_=false;
     std::atomic<bool> invalidateScene_{false};
     DWORD reportAt_=0;unsigned drawFrames_=0,emptyFrames_=0,outsideFrames_=0,depthMissingFrames_=0,authoredFrames_=0;
     void report(const char* status,const LineFrame& frame,unsigned vertices=0){
@@ -46,7 +46,7 @@ public:
     void OnRender(ID3DDevice* device)override{
         // Scene providers are render-thread-owned. Script/toggle callbacks only
         // request invalidation; never race discovery or cached viewport reads.
-        if(invalidateScene_.exchange(false)){sceneDepth_.invalidate();sceneCamera_.invalidate();missingLogged_=false;}
+        if(invalidateScene_.exchange(false)){sceneDepth_.invalidate();sceneCamera_.invalidate();viewHeading_={};missingLogged_=false;}
         AcquireSRWLockShared(&lock_);const auto f=frame_;ReleaseSRWLockShared(&lock_);
         if(!f.line.visible()){report("no route geometry",f);return;}
         if(GetTickCount()-f.at>1200){report("expired script snapshot",f);return;}
@@ -80,7 +80,7 @@ public:
         const auto bankAnchor=roadLineGroundAnchor(f.line,f.player);
         const auto lift=roadLineLift(f.line.points,f.line.bank,bankAnchor);
         const float yaw=f.camera.rotation.z*.01745329252f;
-        const Vec3 forward=rendered.valid?rendered.forward():Vec3{-std::sin(yaw),std::cos(yaw),0};
+        const Vec3 forward=viewHeading_.update(rendered.valid?rendered.forward():Vec3{-std::sin(yaw),std::cos(yaw),0},GetTickCount());
         const Vec3 geometryCamera=rendered.valid?rendered.eye():f.camera.position;
         const bool joined=f.line.edges.empty()||f.line.edges.size()>=f.line.points.size();
         const auto rgb=awareness::routeColour(f.kind,f.colours,GetTickCount());bool drew=false;unsigned submitted=0;

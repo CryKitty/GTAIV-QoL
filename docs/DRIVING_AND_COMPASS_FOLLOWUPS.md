@@ -125,7 +125,10 @@ independent movement paths:
   is rejected; perspective/position/direction gates remain. See the pinned
   [FusionFix viewport layout](https://github.com/ThirteenAG/GTAIV.EFLC.FusionFix/blob/cad0970e2c82712d86c849974b62d078331ddd88/source/comvars.ixx).
   If neither is valid, the existing authored-camera fallback remains. No stale
-  matrix is frozen and no projection/camera smoothing adds lag.
+  matrix is frozen and no projection/game-camera smoothing adds lag. Only the
+  decorative viewing-angle tilt gets a 0.15 degree deadband and 150 ms small-angle
+  response; changes above 5 degrees apply immediately. Route points, actual
+  camera movement and projection are not filtered by this decorative control.
 - The PR #10 right normal already uses the full route's symmetric tangent;
   the lane transition adds spatial/temporal classification smoothing rather
   than alternating left/right or scaling by the moving visible endpoint.
