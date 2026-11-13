@@ -569,7 +569,7 @@ def main():
                 if not backup.exists():
                     backup.write_text(source); backup.chmod(0o700)
                 tmp = uploader.with_suffix('.qol-tmp')
-                tmp.write_text(updated); tmp.chmod(0o700); tmp.replace(uploader)
+                tmp.write_text(updated, encoding='utf-8'); tmp.chmod(0o700); tmp.replace(uploader)
             migrate_upload_destination(config_path,config)
             # Read metadata only; no game binary or audio samples are uploaded.
             # A failed optional inventory must not interrupt installation or existing logs.
