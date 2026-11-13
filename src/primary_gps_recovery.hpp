@@ -7,15 +7,15 @@ namespace roadnav {
 struct PrimaryGpsRecovery {
     unsigned target=0,failures=0;
     Vec3 goal{};
-    std::uint32_t requestedAt=0;
+    std::uint32_t requestedAt=0,borrowedAt=0;
     bool attempted=false;
     bool due(std::uint32_t now,unsigned nextTarget,Vec3 nextGoal,bool usable,bool borrowed){
         if(nextTarget!=target||distance2D(nextGoal,goal)>5||std::fabs(nextGoal.z-goal.z)>5){
             *this={};target=nextTarget;goal=nextGoal;
         }
         if(!target)return false;
-        if(usable){failures=0;return false;}
-        if(borrowed)return false;
+        if(usable){failures=0;borrowedAt=0;return false;}
+        if(borrowed){if(!borrowedAt)borrowedAt=now;if(now-borrowedAt<30000u)return false;}else borrowedAt=0;
         const unsigned wait=std::min(10000u,6000u*(1u<<std::min(failures,1u)));
         if(attempted&&now-requestedAt<wait)return false;
         if(attempted)failures=std::min(failures+1,2u);
