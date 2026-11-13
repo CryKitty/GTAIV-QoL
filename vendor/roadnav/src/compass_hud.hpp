@@ -550,7 +550,7 @@ public:
         const float hold=waypointHold_.progress(now);
         auto caption=feedback_.draw(now);
         if(hold>0)caption=compass::caption("Setting waypoint",feedbackAnchor_);
-        const auto pinned=navigationWaypoint();roadnav::Vec3 pinnedPoint{};
+        auto pinned=navigationWaypoint();roadnav::Vec3 pinnedPoint{};
         const bool havePinned=pinned.IsValid()&&navigationTargetPosition(pinned,pinnedPoint);
         float hoverLabelY=Layout::focusLabelY;
         if(havePinned){
