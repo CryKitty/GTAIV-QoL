@@ -2,7 +2,6 @@
 #include "road_line.hpp"
 #include <utility>
 namespace roadnav {
-inline constexpr float roadSurfaceClearance=.24f;
 struct RoadSurfaceStats {unsigned sampled=0,reused=0,missing=0;};
 // GPS supplies only the horizontal path. Probe a shallow corridor above the
 // last connected surface; never return to GPS height after a failed query.
@@ -57,6 +56,25 @@ template<class Probe> RoadSurfaceStats fitRoadSurface(RoadLine& line,Vec3 player
     if(line.bank.size()!=line.points.size())line.bank=roadLineBank(line.points);
     return stats;
 }
+// Remove only sub-12cm cross-track GPS noise on a matching tangent/floor.
+// Projection preserves forward progress. New corners, roads and levels commit
+// immediately; this is a spatial deadband, never a delayed replan queue.
+inline void stabilizeRoadPath(RoadLine& line,const RoadLine& previous){
+    const auto fresh=line.points;
+    for(std::size_t n=0;n<fresh.size();++n){const auto point=fresh[n];float best=.12f;Vec3 matched=point;
+        const auto before=fresh[n?n-1:n],after=fresh[std::min(n+1,fresh.size()-1)];
+        const float tx=after.x-before.x,ty=after.y-before.y,tlen=std::hypot(tx,ty);
+        for(std::size_t i=1;i<previous.points.size();++i){const auto a=previous.points[i-1],b=previous.points[i];
+            const float dx=b.x-a.x,dy=b.y-a.y,length=std::hypot(dx,dy);
+            if(length<.01f||tlen<.01f||(tx*dx+ty*dy)/(tlen*length)<.995f)continue;
+            const float t=((point.x-a.x)*dx+(point.y-a.y)*dy)/(length*length);if(t<0||t>1)continue;
+            const Vec3 projected{a.x+dx*t,a.y+dy*t,a.z+(b.z-a.z)*t};const float distance=distance2D(point,projected);
+            if(distance<best&&std::fabs(point.z-projected.z)<2){best=distance;matched.x=projected.x;matched.y=projected.y;}
+        }
+        line.points[n]=matched;
+    }
+    line.ahead=routeLength2D(line.points);line.bank=roadLineBank(line.points);
+}
 // Retain the same road height at overlapping world positions. Small collision
 // query noise should not bounce a stationary ribbon; distinct levels stay apart.
 inline void stabilizeRoadSurface(RoadLine& line,const RoadLine& previous){
@@ -70,8 +88,8 @@ inline void stabilizeRoadSurface(RoadLine& line,const RoadLine& previous){
             best=distance;oldHeight=closest.z;found=true;oldEdges={closest.z,closest.z};
             if(i<previous.edges.size())for(unsigned side=0;side<2;++side)oldEdges[side]=previous.edges[i-1][side]+(previous.edges[i][side]-previous.edges[i-1][side])*t;
         }
-        if(found){point.z=oldHeight+std::clamp((point.z-oldHeight)*.2f,-.04f,.04f);
-            if(n<line.edges.size())for(unsigned side=0;side<2;++side)if(std::fabs(line.edges[n][side]-oldEdges[side])<.35f)line.edges[n][side]=oldEdges[side]+std::clamp((line.edges[n][side]-oldEdges[side])*.2f,-.04f,.04f);
+        if(found){point.z=std::fabs(point.z-oldHeight)<=.08f?oldHeight:oldHeight+std::clamp((point.z-oldHeight)*.2f,-.04f,.04f);
+            if(n<line.edges.size())for(unsigned side=0;side<2;++side)if(std::fabs(line.edges[n][side]-oldEdges[side])<.35f)line.edges[n][side]=std::fabs(line.edges[n][side]-oldEdges[side])<=.08f?oldEdges[side]:oldEdges[side]+std::clamp((line.edges[n][side]-oldEdges[side])*.2f,-.04f,.04f);
         }
     }
 }

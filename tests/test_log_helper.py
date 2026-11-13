@@ -46,6 +46,11 @@ class HelperTests(unittest.TestCase):
         self.assertIn(b'TaxiRearFOV=80',helper.merge_preferences(b'[Camera]\nTaxiFovSliderVersion=1\nTaxiRearFOV=80\n',fresh))
         self.assertIn(b'CutscenePercent=800',helper.merge_preferences(b'[VoiceVolume]\nOutputMixVersion=1\nCutscenePercent=800\n',fresh))
 
+    def test_driving_camera_height_choice_survives_update(self):
+        fresh=b'[Camera]\nDrivingHeightCm=0\n'
+        self.assertIn(b'DrivingHeightCm=125',helper.merge_preferences(b'[Camera]\nDrivingHeightCm=125\n',fresh))
+        self.assertIn(b'DrivingHeightCm=0',helper.merge_preferences(b'[Camera]\nDrivingHeightCm=999\n',fresh))
+
     def test_upgrade_and_idempotence(self):
         for source in (FIXTURE, FIXTURE.replace("'RoadNav-arrow.log')", "'RoadNav-arrow.log', 'GTAIV-QoL.log')")):
             result = helper.extend(source)

@@ -10,6 +10,21 @@ struct RoadProjection {
         for(int axis=0;axis<3;++axis){float length=0;for(int i=0;i<3;++i)length+=view[i][axis]*view[i][axis];if(std::fabs(length-1)>.05f)return false;}
         return std::fabs(view[3][3]-1)<.001f&&std::fabs(projection[3][3])<.001f&&std::fabs(projection[2][3])>.9f&&std::fabs(projection[2][3])<1.1f&&projection[0][0]>.1f&&projection[1][1]>.1f;
     }
+    Vec3 eye()const{
+        Vec3 result{};float* axes[]={&result.x,&result.y,&result.z};
+        for(unsigned i=0;i<3;++i)for(unsigned j=0;j<3;++j)*axes[i]-=view[3][j]*view[i][j];
+        return result;
+    }
+    Vec3 forward()const{
+        const float sign=projection[2][3]>0?1.0f:-1.0f;
+        return {sign*view[0][2],sign*view[1][2],sign*view[2][2]};
+    }
+    bool fromInverseView(const float (&inverse)[4][4]){
+        for(const auto& row:inverse)for(float value:row)if(!std::isfinite(value))return false;
+        for(int i=0;i<3;++i)for(int j=0;j<3;++j)view[i][j]=inverse[j][i];
+        for(int j=0;j<3;++j){view[3][j]=0;for(int i=0;i<3;++i)view[3][j]-=inverse[3][i]*view[i][j];view[j][3]=0;}
+        view[3][3]=inverse[3][3];return usable();
+    }
     bool matchesCamera(const CameraFrame& camera)const{
         if(!usable())return false;
         Vec3 eye{};float* axes[]={&eye.x,&eye.y,&eye.z};

@@ -6,6 +6,7 @@
 #include "../vendor/roadnav/src/road_projection.hpp"
 #include "../src/police_escape.hpp"
 #include "../src/primary_gps_recovery.hpp"
+#include "../src/road_lane_offset.hpp"
 #include "../src/primary_route_replan.hpp"
 #include "../src/escape_gps_request.hpp"
 #include "../src/navigation_awareness.hpp"
@@ -14,6 +15,39 @@
 #include <cstdio>
 using namespace roadnav;
 int main(){
+    {
+        const Vec3 point{0,40,0},north{0,1,0};
+        RoadLaneSegment road{{0,0,0},{0,200,0},1,0,0};
+        assert(roadLaneCount(road,point,north)==1);
+        road.backward=1;assert(roadLaneCount(road,point,north)==2);
+        road.forward=2;road.backward=0;assert(roadLaneCount(road,point,north)==2); // two-lane one-way
+        assert(roadLaneCount(road,{20,40,0},north)==0); // unrelated parallel street
+        assert(roadLaneCount(road,{0,40,15},north)==0); // another deck
+        assert(roadLaneCount(road,point,{1,0,0})==0); // crossing road
+        road.forward=-1;assert(roadLaneCount(road,point,north)==0);
+        road.forward=1065353216;assert(roadLaneCount(road,point,north)==0); // reject float/ABI-looking counts
+        LaneOffsetSample state;state.wide=true;state.amount=1;
+        state.observe(false);state.observe(true);assert(state.wide); // isolated count noise cannot flip side
+        state.observe(false);state.observe(false);assert(!state.wide);
+        float before=state.amount;
+        for(unsigned now=200;now<=1600;now+=200){const float after=state.advance(now);assert(after<=before&&before-after<=.134f);before=after;}
+        assert(before==0);
+        const std::vector<Vec3> route{{0,0,0},{0,180,0}};
+        auto center=roadLine(route,{},20);RoadLaneOffset narrow,wide,transition;
+        const auto zero=narrow.amounts(center,route,0,[](Vec3,Vec3){return 1;});
+        const auto two=wide.amounts(center,route,0,[](Vec3,Vec3){return 2;});
+        auto old=center,filtered=center;offsetDrivingSide(old,route);offsetDrivingSide(filtered,route,two);
+        for(std::size_t i=0;i<center.points.size();++i){assert(zero[i]==0&&two[i]==2);assert(distance2D(old.points[i],filtered.points[i])<.001f);}
+        filtered=center;offsetDrivingSide(filtered,route,zero);
+        for(std::size_t i=0;i<center.points.size();++i)assert(distance2D(center.points[i],filtered.points[i])<.001f);
+        const auto amounts=transition.amounts(center,route,0,[](Vec3 p,Vec3){return p.y<60?1:2;});
+        bool blended=false;
+        for(std::size_t i=0;i<amounts.size();++i){assert(amounts[i]>=0&&amounts[i]<=2);blended=blended||(amounts[i]>0&&amounts[i]<2);
+            if(i)assert(std::fabs(amounts[i]-amounts[i-1])<.4f);}
+        assert(blended);
+        const auto stable=transition.amounts(center,route,200,[](Vec3,Vec3){return 0;});assert(amounts==stable); // cached dropout cannot swing the line
+    }
+
     {
         assert(compass::enemyOwnsAutomaticGps(false,true,true,true)); // wanted must not veto acquisition
         assert(!compass::enemyOwnsAutomaticGps(true,true,true,true)); // fixed goal retains priority
@@ -182,6 +216,10 @@ int main(){
     // The experiment is opt-in: disabled and forward-aligned sections preserve
     // the baseline. Side-on sections roll as a whole without sinking below road.
     const auto flatSection=roadLineSection(std::vector<Vec3>{{0,0,0},{0,20,0}},0,1);
+    RoadLineViewHeading steadyView;
+    assert(steadyView.update({0,1,0},0).x==0);
+    for(unsigned frame=1;frame<100;++frame){const auto stable=steadyView.update({frame%2?.001f:-.001f,1,0},frame*16);assert(stable.x==0);}
+    const auto bigTurn=steadyView.update({1,0,0},1600);assert(bigTurn.x==1&&bigTurn.y==0); // deliberate turn immediate
     const RoadLineViewBend viewBend{1,75,1};
     const auto disabled=roadLineViewSection(flatSection,{0,1,0},{1,0,0},{10,0,2},{},{});
     for(unsigned n=0;n<2;++n)assert(disabled[n].x==flatSection[n].x&&disabled[n].z==flatSection[n].z);
@@ -383,6 +421,21 @@ int main(){
     assert(flat.points.size()==4);for(const auto& p:flat.points)assert(std::fabs(p.z-roadSurfaceClearance)<.001f);
     auto noisy=flat;for(auto& point:noisy.points)point.z+=.1f;
     stabilizeRoadSurface(noisy,flat);for(const auto& point:noisy.points)assert(std::fabs(point.z-(roadSurfaceClearance+.02f))<.001f);
+    for(unsigned frame=0;frame<100;++frame){auto noise=flat;
+        for(auto& point:noise.points)point.z+=(frame%2?.04f:-.04f);
+        stabilizeRoadSurface(noise,flat);for(std::size_t i=0;i<flat.points.size();++i)assert(noise.points[i].z==flat.points[i].z);
+    }
+    auto pathNoise=flat;for(auto& point:pathNoise.points)point.x+=.04f;
+    stabilizeRoadPath(pathNoise,flat);for(auto point:pathNoise.points)assert(std::fabs(point.x)<.001f);
+    auto newRoad=flat;for(auto& point:newRoad.points)point.x+=2;
+    stabilizeRoadPath(newRoad,flat);for(auto point:newRoad.points)assert(point.x==2); // replan commits immediately
+    const auto anchorA=roadLineGroundAnchor(flat,{0,5,1}),anchorB=roadLineGroundAnchor(flat,{0,5,3});
+    assert(anchorA.z==anchorB.z); // body bounce cannot change decorative bank height
+    float inverse[4][4]{};for(int i=0;i<4;++i)inverse[i][i]=1;inverse[3][0]=1;
+    RoadProjection recovered;for(int i=0;i<4;++i)for(int j=0;j<4;++j)recovered.projection[i][j]=projection.projection[i][j];
+    recovered.projection[3][3]=0;
+    assert(recovered.fromInverseView(inverse)&&recovered.matchesCamera(mainCamera));
+    assert(recovered.eye().x==1&&recovered.forward().z==1);
     auto differentLevel=flat;for(auto& point:differentLevel.points)point.z+=3;
     stabilizeRoadSurface(differentLevel,flat);for(const auto& point:differentLevel.points)assert(std::fabs(point.z-(3+roadSurfaceClearance))<.001f);
     RoadLine hill;for(int i=4;i<35;++i)hill.points.push_back({0,static_cast<float>(i),100});

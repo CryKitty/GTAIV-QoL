@@ -58,6 +58,11 @@ inline bool inRange(float distance,float range){return std::isfinite(distance)&&
 // matching radar behaviour. Only short-range POIs use the local radar radius.
 // BLIP_DATE (heart) is the shared romance/date sprite in the supported SDK.
 inline bool dateMarker(unsigned sprite){return sprite==54;}
+inline bool characterSprite(unsigned sprite){
+    return dateMarker(sprite)||sprite==23||(sprite>=25&&sprite<=28)||
+        (sprite>=31&&sprite<=45)||(sprite>=53&&sprite<=55)||sprite==63||sprite==64||
+        sprite==69||sprite==72||sprite==74||sprite==76||sprite==79||sprite==91||sprite==92;
+}
 inline const char* fallbackSymbol(unsigned sprite){return dateMarker(sprite)?"<3":sprite==8?"X":sprite<=5?"*":".";}
 inline bool markerInRange(float distance,float range,bool shortRange,unsigned sprite=0){
     return std::isfinite(distance)&&distance>=0&&(!shortRange||dateMarker(sprite)||inRange(distance,range));
@@ -158,13 +163,14 @@ inline bool enemyColour(unsigned colour){
     const unsigned r=(colour>>16)&255,g=(colour>>8)&255,b=colour&255;
     return r>=140&&r>g*1.5f&&r>b*1.5f;
 }
-struct Marker {std::uint32_t handle=0;unsigned sprite=0;float bearing=0,distance=0;unsigned colour=0,alpha=255;int priority=0;bool enemy=false;bool missionDestination=false;};
+struct Marker {std::uint32_t handle=0;unsigned sprite=0;float bearing=0,distance=0;unsigned colour=0,alpha=255;int priority=0;bool enemy=false;bool missionDestination=false;bool character=false;};
 struct Placement {Marker marker;float x=0;bool rear=false;};
 inline std::vector<Placement> layout(std::vector<Marker> markers){
     std::stable_sort(markers.begin(),markers.end(),[](const Marker& a,const Marker& b){
-        // An initiated date/contact must not be occluded by a nearer shop at
+        // A person/date/contact must not be occluded by a nearer shop at
         // the same bearing (or by every rearward POI clamped to the strip edge).
-        if(dateMarker(a.sprite)!=dateMarker(b.sprite))return dateMarker(a.sprite);
+        const bool aPerson=a.character||characterSprite(a.sprite),bPerson=b.character||characterSprite(b.sprite);
+        if(aPerson!=bPerson)return aPerson;
         if(a.distance!=b.distance)return a.distance<b.distance;
         if(a.priority!=b.priority)return a.priority>b.priority;
         return std::fabs(a.bearing)<std::fabs(b.bearing);

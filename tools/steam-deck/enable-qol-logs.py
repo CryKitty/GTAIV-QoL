@@ -296,7 +296,7 @@ def extend(source):
 
 
 def merge_preferences(previous, fresh):
-    limits = {('Updates', 'CheckForUpdates'): (0, 1), ('Camera', 'TaxiRearFOV'): (0, 120), ('RoadGPSLine', 'Enabled'): (0, 1), ('RoadNav', 'Enabled'): (0, 1), ('RoadNav', 'ChaseGuidance'): (0, 1), ('RoadNav', 'DestinationColours'): (0, 1), ('DefaultMapZoom', 'Enabled'): (0, 1),
+    limits = {('Camera', 'DrivingHeightCm'): (0, 200), ('Updates', 'CheckForUpdates'): (0, 1), ('Camera', 'TaxiRearFOV'): (0, 120), ('RoadGPSLine', 'Enabled'): (0, 1), ('RoadNav', 'Enabled'): (0, 1), ('RoadNav', 'ChaseGuidance'): (0, 1), ('RoadNav', 'DestinationColours'): (0, 1), ('DefaultMapZoom', 'Enabled'): (0, 1),
               ('RoadGPSLine', 'ShowPoliceEscape'): (0, 1),
               ('RoadGPSLine', 'ShowMission'): (0, 1),
               ('RoadGPSLine', 'ShowFriend'): (0, 1),

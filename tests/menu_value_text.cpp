@@ -44,6 +44,10 @@ int main(){
     wchar_t text[8]{};
     for(int value:{40,70,85,99,100,119,120}){selected=value;wcscpy_s(text,L"1");menuvalue::Update(0,text);assert(std::wcstol(text,nullptr,10)==value);}
     for(int value:{-1,0,39,121}){selected=value;wcscpy_s(text,L"stock");menuvalue::Update(0,text);assert(wcscmp(text,L"stock")==0);}
+    strcpy_s(option.label,"QOL_CAMHEIGHT");
+    for(int height:{0,5,125,200}){selected=height;menuvalue::Update(0,text);assert(std::wcstol(text,nullptr,10)==height&&std::wcsstr(text,L" cm"));}
+    selected=201;wcscpy_s(text,L"stock");menuvalue::Update(0,text);assert(wcscmp(text,L"stock")==0);
+    strcpy_s(option.label,"QOL_TAXI");
     selected=85;
     for(int invalid:{-1,73}){screen=invalid;menuvalue::Update(0,text);assert(wcscmp(text,L"stock")==0);}screen=0;
     menuvalue::Update(1,text);menuvalue::Update(22,text);assert(wcscmp(text,L"stock")==0);

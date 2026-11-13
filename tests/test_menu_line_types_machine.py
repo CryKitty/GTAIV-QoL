@@ -31,10 +31,10 @@ class LineTypeMenuTests(unittest.TestCase):
    u.mem_write(0x808000-0x38+i*4,struct.pack('<I',0x80b000+i*0x100))
   return u
  def test_all_rows_keys_labels_and_original_stack_contracts_after_rebase(self):
-  keys=['QOL_ESCAPE','QOL_MISSION','QOL_FRIEND','QOL_ENEMY','QOL_CUSTOM','QOL_UPDATES']
-  labels=['Police Escape Line','Mission Line','Friend Line','Enemy Line','Custom Line','Check for QoL Updates']
+  keys=['QOL_ESCAPE','QOL_MISSION','QOL_FRIEND','QOL_ENEMY','QOL_CUSTOM','QOL_UPDATES','QOL_CAMHEIGHT']
+  labels=['Police Escape Line','Mission Line','Friend Line','Enemy Line','Custom Line','Check for QoL Updates','Driving Camera Height (cm)']
   for base in [0x10000000,0x30000000]:
-   for row in range(13):
+   for row in range(14):
     u=self.machine(base,row);site=base+0xd7c9a
     u.emu_start(site,site+5,count=100)
     key=u.reg_read(UC_X86_REG_ESI)
@@ -58,14 +58,24 @@ class LineTypeMenuTests(unittest.TestCase):
     u.hook_add(unicorn.UC_HOOK_CODE,stop);u.emu_start(base+0xd7ce1,base+0xd7cea,count=100)
     self.assertEqual(observed,[base+0xd7ce6,label,17]);self.assertEqual(u.reg_read(UC_X86_REG_ECX),0x12345678)
     self.assertEqual(u.reg_read(UC_X86_REG_EDI),row)
+ def test_height_slider_range_screen_and_numeric_display_after_rebase(self):
+  for base in [0x10000000,0x30000000]:
+   for row,expected in [(3,(0,120,1)),(5,(0,1600,20)),(13,(0,200,5))]:
+    for site in [0xd7d2e,0xd7d9a]:
+     u=self.machine(base,row);u.emu_start(base+site,base+site+8,count=100)
+     self.assertEqual(u.reg_read(UC_X86_REG_ESP),0x804000)
+     self.assertEqual(struct.unpack('<fff',u.mem_read(0x804008,12)),expected)
+    u=self.machine(base,row);u.reg_write(UC_X86_REG_ESI,77);u.mem_write(0x808018,struct.pack('<f',expected[1]))
+    u.emu_start(base+0xd8586,base+0xd8592,count=100)
+    self.assertEqual(struct.unpack('<II',u.mem_read(0x803ff8,8)),(77,108 if row!=5 else 101))
  def test_extra_rows_use_toggle_path_not_sliders(self):
   base=0x10000000
-  for row in range(13):
+  for row in range(14):
    u=self.machine(base,row);reached=[]
    def stop(machine,address,size,unused):
     if address in [base+0xd7cfc,base+0xd7dd3]:reached.append(address);machine.emu_stop()
    u.hook_add(unicorn.UC_HOOK_CODE,stop);u.emu_start(base+0xd7cea,base+0xd7dd4,count=20)
-   self.assertEqual(reached,[base+0xd7cfc if row in [3,5] else base+0xd7dd3])
+   self.assertEqual(reached,[base+0xd7cfc if row in [3,5,13] else base+0xd7dd3])
  def test_append_only_section_keeps_loader_and_relocations_in_place(self):
   old=menu.base_navigation_menu(self.original);new=self.image
   pe=struct.unpack_from('<I',old,0x3c)[0];optional=pe+24
@@ -74,16 +84,16 @@ class LineTypeMenuTests(unittest.TestCase):
   self.assertEqual(new[table:table+count*40],old[table:table+count*40])
   self.assertEqual(new[optional+96:optional+224],old[optional+96:optional+224]) # all directories incl relocations/exports
   allowed=set(range(pe+6,pe+8))|set(range(optional+4,optional+12))|set(range(optional+56,optional+60))|set(range(optional+64,optional+68))|set(range(table+count*40,table+(count+2)*40))
-  for site,length in [(0xd709a,5),(0xd70bc,6),(0xd70e1,9),(0xd7229,10),(0xd6fc8,5),(0xd8268,5),(0xdf570,6)]:allowed.update(range(site,site+length))
+  for site,length in [(0xd709a,5),(0xd70bc,6),(0xd70e1,9),(0xd7229,10),(0xd6fc8,5),(0xd8268,5),(0xdf570,6),(0xd70ea,18),(0xd712e,8),(0xd719a,8),(0xd7986,12)]:allowed.update(range(site,site+length))
   self.assertTrue(all(i in allowed for i,(a,b) in enumerate(zip(old,new)) if a!=b))
   self.assertEqual(new[0xd7229],0xe9)
  def test_registration_order_nests_all_children_immediately_beneath_master(self):
   for base in [0x10000000,0x30000000]:
    u=self.machine(base,0);order=[0]
-   for _ in range(13):
-    u.emu_start(base+0xd7e29,base+(0xd7c80 if len(order)<13 else 0xd7e33),count=100)
+   for _ in range(14):
+    u.emu_start(base+0xd7e29,base+(0xd7c80 if len(order)<14 else 0xd7e33),count=100)
     row=u.reg_read(UC_X86_REG_EDI);order.append(row)
-   self.assertEqual(order,[0,1,2,3,4,7,8,9,10,11,5,6,12,13])
+   self.assertEqual(order,[0,1,2,3,13,4,7,8,9,10,11,5,6,12,14])
  def test_optional_label_bridge_and_old_core_fallback_preserve_x86_contract(self):
   for base in [0x10000000,0x30000000]:
    for api_size,handled in [(20,False),(24,False),(24,True)]:
@@ -120,7 +130,7 @@ class LineTypeMenuTests(unittest.TestCase):
 
  def test_master_setter_refreshes_cached_labels_without_changing_callback_ids(self):
   for base in [0x10000000,0x30000000]:
-   for row in range(13):
+   for row in range(14):
     for value in [0,1]:
      u=self.machine(base,row)
      u.mem_write(0x809100,struct.pack('<3I',0,0x80c000,row))

@@ -53,7 +53,7 @@ buffer, and retries it every 10 seconds while retaining the last valid ribbon.
 The 30-second general borrowed-window recovery does not gate acquisition of a
 forward result. Wanted/escape still defers fixed-primary wrong-way jobs.
 
-Road ribbons, independently of turn cues and GPS ownership, are displaced 2 m
+Road ribbons, independently of turn cues and GPS ownership, are displaced up to 2 m
 right of increasing route distance: `(dy, -dx) / length`. A symmetric 8 m tangent
 on the complete native route keeps the side stable as the visible window moves;
 no miter grows the displacement around corners. Surface fitting runs at the
@@ -61,3 +61,8 @@ displaced XY and retains its existing level/streaming checks. This is a fixed
 right-side approximation: verified lane counts, street widths, one-way lane
 centres and divided-highway lane occupancy are not available from this reader.
 In-game checks must cover narrow roads, medians, sharp turns and elevated roads.
+
+The post-PR #11 follow-up gates that offset by native lane counts, with centred
+single-lane/unknown results and blended transitions. See
+[driving and compass follow-ups](DRIVING_AND_COMPASS_FOLLOWUPS.md) for the current
+behaviour, source references, stability policy and acceptance limits.

@@ -1,4 +1,6 @@
 #include "../src/compass.hpp"
+#include "../src/compass_outings.hpp"
+#include "../src/driving_camera_height.hpp"
 #include "../src/compass_notifications.hpp"
 #include "../src/compass_overlay.hpp"
 #include "../src/compass_waypoint.hpp"
@@ -62,6 +64,54 @@ struct FakeGps {
     void configure(unsigned){}
 };
 int main(){
+    {
+        using namespace qolcamera;DrivingHeight height;
+        assert(height.update(true,0,false)==HeightCommand::None&&!height.owned); // neutral is untouched
+        assert(height.update(true,100,true)==HeightCommand::None&&!height.owned); // script-owned offset
+        assert(height.update(true,100,false)==HeightCommand::Apply&&height.meters()==1);
+        assert(height.update(true,100,true)==HeightCommand::None); // no accumulating per-frame Z writes
+        assert(height.update(true,125,true)==HeightCommand::Apply&&height.meters()==1.25f);
+        assert(height.update(false,125,true)==HeightCommand::Release); // pause/cutscene/control loss/on foot
+        assert(height.update(false,125,false)==HeightCommand::None);
+        assert(height.update(true,200,false)==HeightCommand::Apply&&height.meters()==2);
+        assert(height.update(true,0,true)==HeightCommand::Release);
+    }
+
+    {
+        // Reuse the date-heart overlap mechanism for contacts and live peds.
+        for(unsigned sprite:{27u,34u,42u,54u,63u,74u}){
+            const auto placed=compass::layout({{1,21,0,10,0,255,0},{2,sprite,0,4000,0,255,0}});
+            assert(placed.size()==1&&placed.front().marker.handle==2);
+        }
+        const auto ped=compass::layout({{1,21,170,10,0,255,0},{2,0,170,4000,0,255,0,false,false,true}});
+        assert(ped.size()==1&&ped.front().marker.handle==2); // rear-edge overlap too
+        const auto shops=compass::layout({{1,21,0,10,0,255,0},{2,22,0,100,0,255,3}});
+        assert(shops.size()==1&&shops.front().marker.handle==1); // ordinary POI order unchanged
+        const auto people=compass::layout({{1,34,0,10,0,255,0},{2,54,0,100,0,255,0}});
+        assert(people.front().marker.handle==1); // one people-first ordering, then existing distance rules
+    }
+    {
+        bool strip=true;
+        const auto active=[&](const char* name){return strip&&std::strcmp(name,"dwaynestrip")==0;};
+        auto venues=compass::outingVenues(active);
+        assert(venues.friendActivity&&!venues.dating&&venues.contains(66));
+        for(unsigned unrelated:{21u,22u,34u,47u,49u,52u,70u,71u})assert(!venues.contains(unrelated));
+        for(unsigned display:{2u,3u,4u,5u})assert(compass::outingDisplay(display,venues.contains(66)));
+        assert(!compass::outingDisplay(0,true)&&!compass::outingDisplay(1,true));
+        assert(!compass::outingDisplay(5,venues.contains(47))); // no indiscriminate venue promotion
+        assert(!compass::hideAmbientMissionMarker(true,false,false,venues.contains(66),66));
+        assert(compass::hideAmbientMissionMarker(true,false,false,venues.contains(47),47));
+        assert(compass::markerInRange(8000,100,!venues.contains(66),66));
+        strip=false;venues=compass::outingVenues(active);
+        assert(!venues.friendActivity&&!venues.contains(66)&&!compass::outingDisplay(5,venues.contains(66)));
+        const auto date=compass::outingVenues([](const char* name){return std::strcmp(name,"go_on_date")==0;});
+        assert(date.dating&&date.contains(66)&&date.contains(47));
+        const auto food=compass::outingVenues([](const char* name){return std::strcmp(name,"dwayneeat")==0;});
+        assert(food.contains(21)&&food.contains(22)&&food.contains(57)&&!food.contains(66));
+        const auto resident=compass::outingVenues([](const char* name){return std::strcmp(name,"pdbhangoutmgr")==0;});
+        assert(!resident.friendActivity&&!resident.contains(66));
+    }
+
     {
         wantedcompass::Background bg;
         auto red=bg.update({true,2,false,false},true,0),blue=bg.update({true,2,false,false},true,400);
