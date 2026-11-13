@@ -4,6 +4,7 @@
 #include "../vendor/roadnav/src/road_surface.hpp"
 #include "../vendor/roadnav/src/tracked_destination.hpp"
 #include "../vendor/roadnav/src/road_projection.hpp"
+#include "../src/police_escape.hpp"
 #include <cassert>
 #include <cstdio>
 using namespace roadnav;
@@ -18,6 +19,30 @@ int main(){
         assert(!updateEscapeSurface(displayed,std::move(replacement),true,true));
         assert(displayed.points.back().x>0&&!displayed.endsAtDestination);
         assert(!updateEscapeSurface(displayed,{},false,false)); // explicit committed-route clear
+        assert(!displayed.visible());
+    }
+
+    {
+        // A wanted pursuit renews at the endpoint without clearing committed geometry.
+        const std::vector<Vec3> old{{0,0,0},{300,0,0}};
+        auto displayed=roadLine(old,{200,0,0},20);
+        const auto saved=displayed.points;
+        const Vec3 player{300,0,0},heading{1,0,0};
+        assert(policeescape::replanDue(false,true,0,0,0));
+        policeescape::ReplanState state;
+        state.observe(2,false,{},150,true,heading);state.begin(0);
+        assert(updateEscapeSurface(displayed,roadLine(old,player,20),true,true));
+        assert(displayed.points.back().x==saved.back().x);
+        state.failed(2500);
+        assert(updateEscapeSurface(displayed,{},true,false));
+        assert(displayed.points.back().x==saved.back().x&&!state.ready(7499));
+        assert(state.ready(7500));state.begin(7500);
+        const std::vector<Vec3> next{player,{700,0,0}};
+        assert(policeescape::usableReplacement(next,player,{},150,heading,20));
+        state.committed();
+        assert(!updateEscapeSurface(displayed,roadLine(next,player,20),true,false));
+        assert(displayed.visible()&&displayed.points.back().x>player.x);
+        assert(!updateEscapeSurface(displayed,{},false,false)); // wanted cleared
         assert(!displayed.visible());
     }
 

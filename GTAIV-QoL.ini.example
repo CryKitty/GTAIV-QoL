@@ -41,7 +41,7 @@ Enabled = 1
 ; Used only if the live FusionFix radar range is unavailable.
 FallbackRadiusMeters = 300
 ; 0 = feet, 1 = metres.
-MetricDistances = 0
+; All compass distances use miles. Legacy MetricDistances is ignored.
 
 [Camera]
 TaxiFovSliderVersion = 1

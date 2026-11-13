@@ -591,7 +591,7 @@ class RoadNavScript final : public ScriptThread {
     Scripting::Blip chaseRoute_{};
     unsigned chaseTarget_=0;
     bool escapeActive_=false,escapeAnchored_=false;
-    Route escapeShown_{},escapeBest_{};
+    Route escapeShown_{};
     std::vector<policeescape::Candidate> escapeOptions_;
     std::size_t escapeOption_=0;bool escapePlanning_=false;
     float escapeCommittedRisk_=0;
@@ -599,7 +599,6 @@ class RoadNavScript final : public ScriptThread {
     roadnav::RoadLineViewBend viewBend_{};
     int loggedLineMode_=-1;
     const char* escapeSuppressed_=nullptr;DWORD escapeSuppressedAt_=0;
-    float escapeBestScore_=0;roadnav::Vec3 escapeBestPoint_{};
     DWORD escapeRequestedAt_=0;
     unsigned escapeStars_=0;roadnav::Vec3 escapeCenter_{};
     roadnav::Vec3 chasePoint_{};
@@ -610,7 +609,7 @@ class RoadNavScript final : public ScriptThread {
         if(chaseRoute_.IsValid()&&Scripting::DoesBlipExist(chaseRoute_)){compass_.requestNavigationRoute(chaseRoute_,false);Scripting::RemoveBlip(chaseRoute_);event("Chase guidance: temporary route removed");}
         if(escapeActive_&&primaryRouteBlip_.IsValid()&&Scripting::DoesBlipExist(primaryRouteBlip_))compass_.requestNavigationRoute(primaryRouteBlip_,true);
         escapeLine_={};gEscapeLineRenderer.clear();
-        escapeShown_={};escapeBest_={};escapeOptions_.clear();escapePlanning_=false;escapeReplan_={};
+        escapeShown_={};escapeOptions_.clear();escapePlanning_=false;escapeReplan_={};
         chaseRoute_={};chaseTarget_=0;escapeActive_=false;compass_.setRouteHelper(0);
         escapeAnchored_=false;escapeStars_=0;escapeSuppressed_=nullptr;escapeSuppressedAt_=0;
     }
@@ -722,7 +721,7 @@ class RoadNavScript final : public ScriptThread {
         escapeStars_=stars;const DWORD now=GetTickCount();
         const bool searching=signals.known?signals.flashing:NativeInvoke::Invoke<NATIVE_WANTED_STARS_ARE_FLASHING,b8>()!=0;
         if(const auto reason=escapeReplan_.observe(stars,searching,escapeCenter_,radius,inSight,travel)){
-            escapePlanning_=false;escapeBest_={};escapeOptions_.clear();
+            // Let the outstanding native request finish; validate against the latest boundary below.
             char text[160];std::snprintf(text,sizeof(text),"Police escape: recalc queued; reason=%s retaining=%u",reason,escapeShown_.points.empty()?0u:1u);event(text);
         }
         const auto police=compass_.knownPolice(player);
@@ -732,45 +731,33 @@ class RoadNavScript final : public ScriptThread {
             const bool ready=now-escapeRequestedAt_>=200&&existingRoute&&policeescape::matches(native.points,chasePoint_);
             if(!ready&&now-escapeRequestedAt_<policeescape::routeWait(static_cast<unsigned>(escapeShown_.points.size())))return true;
             if(!ready){char text[180];std::snprintf(text,sizeof(text),"Police escape: GPS request timed out; elapsed=%lu slot=%d state=%d points=%u endpoint-error=%.1fm retaining=%u",now-escapeRequestedAt_,native.slot,native.state,static_cast<unsigned>(native.points.size()),policeescape::endpointError(native.points,chasePoint_),escapeShown_.points.empty()?0u:1u);event(text);}
-            if(ready&&policeescape::exits(native.points,escapeCenter_,radius)&&policeescape::followsHeading(native.points,player,escapeReplan_.heading)){
-                const float score=policeescape::pathScore(native.points,player,police);
-                if(score<escapeBestScore_){escapeBestScore_=score;escapeBest_=native;escapeBestPoint_=chasePoint_;}
-                if(policeescape::needsForwardRoute(escapeShown_.points,player,motionSpeed_)||!policeescape::exits(escapeShown_.points,escapeCenter_,radius)){
-                    escapeShown_=native;
-                    event("Police escape: usable replacement published immediately while candidate comparison continues");
-                }
-            }
-            // A police sighting can move the search area while GPS computes.
-            // Do not spend the whole candidate cycle on obsolete inside points.
-            if(!policeescape::outside(chasePoint_,escapeCenter_,radius)){
-                escapePlanning_=false;escapeReplan_.pending=true;chaseRefreshAt_=0;
-                event("Police escape: search boundary moved; restarting obsolete requests");return true;
+            if(ready&&policeescape::usableReplacement(native.points,player,escapeCenter_,radius,travel,motionSpeed_)){
+                // The candidates are already ranked using real node travel costs.
+                // Publish the first usable native road, rather than driving past
+                // it while waiting for every alternative to finish.
+                escapePlanning_=false;escapeShown_=native;chaseRefreshAt_=now;
+                escapeReplan_.committed();
+                escapeCommittedRisk_=policeescape::pathRisk(escapeShown_.points,player,police);
+                event("Police escape: forward replacement committed; wanted guidance continues");
+                return true;
             }
             ++escapeOption_;
             if(escapeOption_<escapeOptions_.size()){
                 if(requestEscape(escapeOptions_[escapeOption_].point))return true;
             }
             escapePlanning_=false;chaseRefreshAt_=now;
-            if(policeescape::exits(escapeBest_.points,escapeCenter_,radius)){
-                escapeReplan_.committed();escapeShown_=escapeBest_;escapeCommittedRisk_=policeescape::pathRisk(escapeShown_.points,player,police);
-                if(roadnav::distance2D(chasePoint_,escapeBestPoint_)>10&&!requestEscape(escapeBestPoint_)){
-                    escapeReplan_.failed(now);event("Police escape: committed helper unavailable; retry backed off, last route retained");
-                }
-                char text[160];std::snprintf(text,sizeof(text),"Police escape: route committed; known cops=%u score=%.1f outside-margin=%.1fm",static_cast<unsigned>(police.size()),escapeBestScore_,roadnav::distance2D(escapeShown_.points.back(),escapeCenter_)-radius);event(text);
-            }else {
-                escapeReplan_.failed(now);
-                event("Police escape: all candidates failed; retry backed off, last route retained");
-            }
+            escapeReplan_.failed(now);
+            event("Police escape: all candidates failed; retry backed off, last route retained");
             return true;
         }
         if(!escapeReplan_.pending&&escapeActive_&&existingRoute&&policeescape::matches(native.points,chasePoint_)&&policeescape::exits(native.points,escapeCenter_,radius)&&!policeescape::onPath(escapeShown_.points,player))escapeShown_=native;
         const bool helperValid=chaseRoute_.IsValid()&&DoesBlipExist(chaseRoute_);
         const bool validTarget=escapeActive_&&helperValid&&policeescape::exits(escapeShown_.points,escapeCenter_,radius)&&policeescape::remaining(escapeShown_.points,player)>policeescape::refreshLead(motionSpeed_);
         const bool onRoute=policeescape::onPath(escapeShown_.points,player);
-        if(!escapeReplan_.pending&&!policeescape::replanDue(validTarget,onRoute,now-chaseRefreshAt_,escapeCommittedRisk_,policeescape::pathRisk(escapeShown_.points,player,police)))return true;
+        if(!escapeReplan_.pending&&!policeescape::replanDue(validTarget,onRoute,now-chaseRefreshAt_,escapeCommittedRisk_,policeescape::pathRisk(escapeShown_.points,player,police),inSight,motionSpeed_))return true;
         if(!escapeReplan_.ready(now))return true;
-        const bool pursuitReset=escapeReplan_.pending;
-        if(!pursuitReset)escapeReplan_.heading=travel;
+        // A retry must use current travel, not the direction before the failure.
+        escapeReplan_.heading=travel;
         const float headingLength=std::hypot(escapeReplan_.heading.x,escapeReplan_.heading.y);
         if(!std::isfinite(headingLength)||headingLength<.5f){escapeReplan_.failed(now);event("Police escape: heading unavailable; retaining route");return true;}
         escapeReplan_.begin(now);
@@ -778,15 +765,9 @@ class RoadNavScript final : public ScriptThread {
         const float heading=std::atan2(escapeReplan_.heading.y,escapeReplan_.heading.x);
         const auto snap=[](roadnav::Vec3 sample,roadnav::Vec3& node){return GetClosestCarNode(sample.x,sample.y,sample.z,&node.x,&node.y,&node.z)!=0;};
         const auto cost=[](roadnav::Vec3 a,roadnav::Vec3 b){return NativeInvoke::Invoke<NATIVE_CALCULATE_TRAVEL_DISTANCE_BETWEEN_NODES,float>(a.x,a.y,a.z,b.x,b.y,b.z);};
-        escapeOptions_=policeescape::candidates(player,escapeCenter_,radius,heading,snap,cost,police,true);
+        escapeOptions_=policeescape::candidates(player,escapeCenter_,radius,heading,snap,cost,police,true,policeescape::planningLead(motionSpeed_));
         if(escapeOptions_.size()>4)escapeOptions_.resize(4);
         if(escapeOptions_.empty()){escapeReplan_.failed(now);event("Police escape: no replacement reachable; retry backed off, keeping displayed route");return true;}
-        // A small hysteresis credit keeps an adequate current route stable.
-        escapeBest_={};escapeBestScore_=std::numeric_limits<float>::max();
-        if(!pursuitReset&&validTarget&&onRoute&&!escapeShown_.points.empty()&&policeescape::followsHeading(escapeShown_.points,player,escapeReplan_.heading)){
-            escapeBest_=escapeShown_;escapeBestPoint_=escapeShown_.points.back();
-            escapeBestScore_=std::max(0.0f,policeescape::pathScore(escapeShown_.points,player,police)*.82f-40);
-        }
         escapeOption_=0;escapePlanning_=requestEscape(escapeOptions_.front().point);
         if(!escapePlanning_){escapeReplan_.failed(now);event("Police escape: helper request failed; retry backed off, last route retained");}
         char text[180];std::snprintf(text,sizeof(text),"Police escape: background planning; known cops=%u radius=%.1f (%s) retaining=%u",static_cast<unsigned>(police.size()),radius,estimated?"estimated":"game table",escapeShown_.points.empty()?0u:1u);event(text);

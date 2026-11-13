@@ -104,7 +104,6 @@ class CompassHud {
     bool hidden_=false,initialized_=false,scanLogged_=false,startupComplete_=false;
     std::uintptr_t blipTable_=0;
     float fallbackRange_=300;
-    bool metric_=false;
     void (*log_)(const char*)=nullptr;
     template<class T> static bool read(std::uintptr_t address,T& value){
         SIZE_T bytes=0;return ReadProcessMemory(GetCurrentProcess(),reinterpret_cast<void*>(address),&value,sizeof(value),&bytes)&&bytes==sizeof(value);
@@ -151,7 +150,7 @@ class CompassHud {
         if(slash){strcpy_s(slash+1,MAX_PATH-static_cast<std::size_t>(slash+1-path),"GTAIV-QoL.ini");
             const int range=GetPrivateProfileIntA("Compass","FallbackRadiusMeters",300,path);
             fallbackRange_=static_cast<float>(std::clamp(range,50,1000));
-            metric_=GetPrivateProfileIntA("Compass","MetricDistances",0,path)!=0;}
+            }
         discoverNames();dictionary_=Scripting::GetTxd("blips");
         if(log_)log_(dictionary_.IsValid()?"Compass: borrowed game blips texture dictionary found":"Compass: blips dictionary unavailable; fallback symbols active");
         initialized_=true;
@@ -604,8 +603,8 @@ public:
                     textStyle(.22f,235,.85f,1.10f);
                     NativeInvoke::Invoke<NATIVE_DISPLAY_TEXT_WITH_BLIP_NAME,ScriptVoid>(mid,hoverLabelY,"STRING",marker.handle);
                 }
-                char distance[32];const float number=metric_?marker.distance:marker.distance*3.2808399f;
-                std::snprintf(distance,sizeof(distance),"%.0f %s",number,metric_?"m":"ft");text(mid,distanceY,distance,.22f,215,1.0f,1.10f);}
+                const auto distance=compass::waypointMiles(marker.distance);
+                text(mid,distanceY,distance.c_str(),.22f,215,1.0f,1.10f);}
         }
         rect(mid,Layout::lineY-.002f,.0015f,.006f,235,237,225,195);
         if(!startupComplete_&&log_)log_("Compass: reading health and armour");
