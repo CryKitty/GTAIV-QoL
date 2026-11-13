@@ -38,6 +38,10 @@ int main(){
         assert(primaryDestinationMatches(road,objective,&roadNode)); // native destination's real road node
         assert(!primaryDestinationMatches({{0,0,0},{300,0,40}},objective,&roadNode)); // another level
         assert(!primaryDestinationMatches({{0,0,0},{0,300,0}},objective,&roadNode)); // stale escape goal
+        assert(keepPrimaryGpsRoute(road,{100,0,0},objective,&roadNode));
+        assert(!keepPrimaryGpsRoute(road,{100,40,0},objective,&roadNode)); // departed road, no indefinite stale ribbon
+        assert(!keepPrimaryGpsRoute(road,{100,0,0},{0,300,0})); // destination changed
+        assert(!keepPrimaryGpsRoute({}, {},objective,&roadNode));
         assert(!recovery.due(16400,42,objective,true,false));
         assert(recovery.failures==0);
         auto ribbon=roadLine(road,{},20);

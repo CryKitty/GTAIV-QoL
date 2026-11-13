@@ -93,7 +93,11 @@ escape GPS could take over. Primary acquisition now gets the existing cold/warm
 GPS window (6/2.5 seconds), ends early on a valid route, and retries after 6 then
 10 seconds if the native road never arrives. Active escape/forward jobs finish
 before a recovery retry borrows the planner. A new or moved goal resets recovery.
-Existing primary snapshots and escape snapshots remain separate.
+Existing primary snapshots and escape snapshots remain separate. During recovery,
+a validated primary path no longer expires after two seconds if it still matches
+the live fixed destination and the player remains on its road (within 12 metres
+horizontally/four vertically). Changing destinations or departing that road does
+not grant indefinite stale-route retention.
 
 The route reader also accepts a native road ending at the destination's closest
 drivable node, rather than rejecting every off-road objective over 65 metres

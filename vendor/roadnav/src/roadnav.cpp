@@ -999,7 +999,7 @@ protected:
             }
             Route route;
             const bool readPrimary=readRoute(delta,route,primaryLocated?(primaryRoadLocated_?&primaryRoadPoint_:&primaryPoint):chaseTarget_&&!escapeActive_?&chasePoint_:nullptr,primaryReplanned_&&!escapeActive_?&player:nullptr);
-            bool freshRoute=readPrimary&&!(primaryChanged&&!primaryLocated)&&(!escapeActive_||primaryLocated)&&
+            bool freshRoute=readPrimary&&!primaryMoved&&!(primaryChanged&&!primaryLocated)&&(!escapeActive_||primaryLocated)&&
                 (!chaseTarget_||escapeActive_||primaryLocated||roadnav::routeDestinationMatches(route.points,chasePoint_))&&
                 (!primaryLocated||roadnav::primaryDestinationMatches(route.points,primaryPoint,primaryRoadLocated_?&primaryRoadPoint_:nullptr));
             // An ahead-leg job borrows the buffer, never the primary snapshot
@@ -1046,7 +1046,8 @@ protected:
             // two-second cache expiry; target changes still invalidate it.
             bool routeAvailable=freshRoute;
             if(!freshRoute&&routeTarget==recentTarget_&&!recentRoute_.points.empty()&&
-               (escapeActive_||primaryWrongWay_.retaining(now)||forwardRouteHelper_.IsValid()||forwardRestoreAt_||roadnav::keepRoadLineRoute(recentRoute_.points,player,chaseTarget_&&!escapeActive_?0:now-recentRouteAt_))){
+               (escapeActive_||primaryWrongWay_.retaining(now)||forwardRouteHelper_.IsValid()||forwardRestoreAt_||
+                (fixedPrimary&&primaryRecovery_.attempted&&roadnav::keepPrimaryGpsRoute(recentRoute_.points,player,primaryPoint,primaryRoadLocated_?&primaryRoadPoint_:nullptr))||roadnav::keepRoadLineRoute(recentRoute_.points,player,chaseTarget_&&!escapeActive_?0:now-recentRouteAt_))){
                 route=recentRoute_;routeAvailable=true;
             }
             if(lineEnabled&&now-lastCueLog_>5000){char status[180];std::snprintf(status,sizeof(status),"Road line routes: primary=%u points=%u escape=%u planning=%u escape-points=%u",routeTarget,static_cast<unsigned>(route.points.size()),escapeActive_?1u:0u,escapePlanning_?1u:0u,static_cast<unsigned>(escapeShown_.points.size()));event(status);}

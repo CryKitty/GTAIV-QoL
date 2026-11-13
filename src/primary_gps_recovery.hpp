@@ -27,4 +27,10 @@ inline bool primaryDestinationMatches(const std::vector<Vec3>& path,Vec3 goal,co
     const auto near=[&](Vec3 point){return distance2D(path.back(),point)<=65&&std::fabs(path.back().z-point.z)<=15;};
     return near(goal)||(roadNode&&near(*roadNode));
 }
+inline bool keepPrimaryGpsRoute(const std::vector<Vec3>& path,Vec3 player,Vec3 goal,const Vec3* roadNode=nullptr){
+    if(!primaryDestinationMatches(path,goal,roadNode))return false;
+    const auto nearest=sampleAt(path,nearestDistanceAlong(path,player)).position;
+    return distance2D(player,nearest)<=12&&std::fabs(player.z-nearest.z)<=4;
+}
+
 }
