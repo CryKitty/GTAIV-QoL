@@ -4,6 +4,9 @@
 #include <cassert>
 #include <cstring>
 #include <cstdio>
+#include <string>
+static std::string lastLog;
+static void CaptureLog(const char* text){lastLog=text;}
 #include "../vendor/roadnav/src/minimap_layout.hpp"
 int main(){
     auto* image=static_cast<unsigned char*>(VirtualAlloc(nullptr,0x10000,MEM_COMMIT|MEM_RESERVE,PAGE_EXECUTE_READWRITE));assert(image);
@@ -68,6 +71,17 @@ int main(){
     }
     table[31]=static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(radar));
     radar[0x11]=0;mask.enable(nullptr,base);mask.release();assert(radar[0x11]==0);radar[0x11]=1; // user/game-hidden stays hidden
+    // Menu setting dispatch runs while ScriptHook ticks are suspended. Off
+    // synchronously restores geometry; a previously admitted On tick cannot
+    // reacquire the mask. No second pause/unpause or visibility query is needed.
+    for(unsigned cycle=0;cycle<3;++cycle){
+        image[0x5400]=0;assert(mask.preference(true,100+cycle,nullptr)==0);
+        mask.enable(nullptr,base);assert(mask.active());image[0x5400]=1;
+        assert(mask.preference(false,200+cycle,CaptureLog)==0&&!mask.active());
+        assert(info[8].pos.x==.1f&&!minimaplayout::displaced(*reinterpret_cast<minimaplayout::Point*>(radar+0x18)));
+        assert(lastLog.find("mask=1->0")!=std::string::npos&&lastLog.find("source=pause-setting")!=std::string::npos&&lastLog.find("layout-hidden=0 live-hidden=0 restore-pending=0")!=std::string::npos);
+        image[0x5400]=0;mask.enable(nullptr,base);assert(!mask.active()); // stale On work rejected
+    }
     // Alternate CE resolution: the generic table signature is absent, but
     // the native's decoded indexed HUD load and display call identify both.
     std::memset(image+0x1080,0xcc,sizeof(componentCode));

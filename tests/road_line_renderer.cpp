@@ -42,6 +42,7 @@ unsigned colouredPixels(IDirect3DDevice9* device,bool brightness=false){
     copy->UnlockRect();copy->Release();back->Release();return count;
 }
 void draw(Renderer& renderer,IDirect3DDevice9* device,roadnav::LineFrame frame){
+    frame.at=GetTickCount(); // Each submission models a fresh game tick; GPU readback time is not route age.
     drawn=false;assert(SUCCEEDED(device->Clear(0,nullptr,D3DCLEAR_TARGET,0xff000000,1,0)));
     const awareness::LineTypes types{qolsettings::api.Get(QOL_LINE_ESCAPE)!=0,qolsettings::api.Get(QOL_LINE_MISSION)!=0,
         qolsettings::api.Get(QOL_LINE_FRIEND)!=0,qolsettings::api.Get(QOL_LINE_ENEMY)!=0,qolsettings::api.Get(QOL_LINE_CUSTOM)!=0};

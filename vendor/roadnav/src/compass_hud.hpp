@@ -529,6 +529,7 @@ public:
         return result;
     }
     bool policeCircle(unsigned player,unsigned stars,roadnav::Vec3& center,float& radius){return awareness_.policeCircle(player,stars,center,radius);}
+    unsigned preference(bool enabled,DWORD event){return minimap_.preference(enabled,event,log_);}
     void releaseRadar(){minimap_.release();hidden_=false;focused_=0;if(noticeRenderer_)noticeRenderer_->clear();}
     void stop(){
         drivingCameraHeightTick(true);CompassInput::stop();

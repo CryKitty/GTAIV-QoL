@@ -18,5 +18,19 @@ class CompassHudRestore(unittest.TestCase):
         self.assertNotIn('PRINT_HELP', observer)
         self.assertNotIn('CLEAR_HELP', observer)
 
+    def test_pause_setting_dispatch_does_not_wait_for_script_tick(self):
+        settings = (ROOT / 'src/qol_settings.hpp').read_text()
+        layout = (ROOT / 'vendor/roadnav/src/minimap_layout.hpp').read_text()
+        bridge = (ROOT / 'vendor/roadnav/src/roadnav.cpp').read_text()
+        self.assertIn('id==QOL_COMPASS', settings)
+        self.assertIn('QoLCompass_SetEnabled', settings)
+        self.assertIn('mask-after=%u', settings)
+        self.assertIn('Compass mask transition: event=%lu', layout)
+        self.assertIn('if(!enabled_)release();', layout)
+        self.assertIn('if(!enabled_)return;', layout)
+        exported = bridge.split('unsigned __cdecl QoLCompass_SetEnabled', 1)[1]
+        self.assertNotIn('Scripting::', exported)
+        self.assertIn('compassPreference(enabled!=0,event)', exported)
+
 if __name__ == '__main__':
     unittest.main()

@@ -11,12 +11,14 @@
 #include <cstring>
 #include <cstdio>
 #include <utility>
+#include <mutex>
 
 // No native visibility changes and no Radar Off preference overrides. Keep all
 // visibility answers intact; displace only HUD_RADAR's own layout geometry.
 class MinimapLayout {
     std::uintptr_t info_=0,components_=0,frontend_=0,target_=0;
-    bool installed_=false,attempted_=false;
+    bool installed_=false,attempted_=false,enabled_=true;
+    mutable std::recursive_mutex mutex_;
     const char* status_="not initialized";
     std::atomic<unsigned> queries_{0};
     struct Saved {std::uintptr_t address=0;minimaplayout::Point point{};};
@@ -24,7 +26,18 @@ class MinimapLayout {
     MinimapRing ring_;
     template<class T> static bool read(std::uintptr_t address,T& value){SIZE_T count=0;return address>=0x10000&&ReadProcessMemory(GetCurrentProcess(),reinterpret_cast<const void*>(address),&value,sizeof(value),&count)&&count==sizeof(value);}
     template<class T> static bool write(std::uintptr_t address,const T& value){SIZE_T count=0;return WriteProcessMemory(GetCurrentProcess(),reinterpret_cast<void*>(address),&value,sizeof(value),&count)&&count==sizeof(value);}
-    static void restore(Saved& saved){minimaplayout::Point current{};if(saved.address&&read(saved.address,current)&&minimaplayout::displaced(current))write(saved.address,saved.point);saved={};}
+    static void restore(Saved& saved){
+        if(!saved.address)return;
+        minimaplayout::Point current{};
+        if(!read(saved.address,current))return;
+        if(minimaplayout::displaced(current)&&!write(saved.address,saved.point))return;
+        saved={}; // Retain failed restores for the next Off tick instead of forgetting them.
+    }
+    int layoutHidden()const{minimaplayout::Point point{};return info_&&read(info_+8*sizeof(minimaplayout::Info)+offsetof(minimaplayout::Info,pos),point)?(minimaplayout::displaced(point)?1:0):-1;}
+    int liveHidden()const{
+        minimaplayout::Info info{};std::uint32_t component=0;minimaplayout::Point point{};
+        return read(info_+8*sizeof(info),info)&&minimaplayout::radar(info)&&read(components_+info.slot*4,component)&&read(static_cast<std::uintptr_t>(component)+0x18,point)?(minimaplayout::displaced(point)?1:0):-1;
+    }
     static void move(std::uintptr_t address,Saved& saved){
         if(saved.address&&saved.address!=address)restore(saved);
         minimaplayout::Point current{};if(!read(address,current)||!minimaplayout::valid(current))return;
@@ -60,22 +73,32 @@ class MinimapLayout {
     }
 
 public:
-    bool active()const{return installed_;}
+    bool active()const{std::lock_guard<std::recursive_mutex> guard(mutex_);return installed_;}
     std::uintptr_t frontendAddress()const{return frontend_;}
     unsigned count()const{return queries_.load(std::memory_order_relaxed);}
-    const char* status()const{return status_;}
+    const char* status()const{std::lock_guard<std::recursive_mutex> guard(mutex_);return status_;}
     const char* ringStatus()const{return ring_.status();}
     unsigned ringHidden()const{return ring_.hidden();}
     unsigned ringSelections()const{return ring_.selections();}
     unsigned fillCalls()const{return ring_.fillCalls();}
     unsigned fillHidden()const{return ring_.fillHidden();}
     void release(){
+        std::lock_guard<std::recursive_mutex> guard(mutex_);
         ring_.release();
         if(installed_)recoverCurrent();
         installed_=false;
         restore(live_);restore(layout_);attempted_=false;status_="released";
     }
+    unsigned preference(bool enabled,DWORD event,void(*log)(const char*)){
+        std::lock_guard<std::recursive_mutex> guard(mutex_);
+        const bool before=installed_;enabled_=enabled;
+        if(!enabled_)release(); // Pure geometry/hook cleanup: no game natives.
+        if(log){char text[300];std::snprintf(text,sizeof(text),"Compass mask transition: event=%lu thread=%lu enabled=%u mask=%u->%u geometry-updates=%u layout-hidden=%d live-hidden=%d restore-pending=%u source=pause-setting",event,GetCurrentThreadId(),enabled?1u:0u,before?1u:0u,installed_?1u:0u,count(),layoutHidden(),liveHidden(),(layout_.address?1u:0u)+(live_.address?1u:0u));log(text);}
+        return installed_?1u:0u;
+    }
     void enable(void(*log)(const char*),std::uintptr_t testImage=0,std::uintptr_t testWanted=0){
+        std::lock_guard<std::recursive_mutex> guard(mutex_);
+        if(!enabled_)return; // Reject a tick which read On before the menu changed it.
         if(installed_){update();return;}
         if(attempted_)return;attempted_=true;
         const auto base=testImage?testImage:reinterpret_cast<std::uintptr_t>(GetModuleHandleA(nullptr));

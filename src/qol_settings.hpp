@@ -56,6 +56,15 @@ int32_t __cdecl Set(uint32_t id,int32_t value){
     const bool ok=WritePrivateProfileStringA(definitions[id].section,definitions[id].key,text,path)!=0;
     if(ok)values[id].store(value);
     ReleaseSRWLockExclusive(&writeLock);
+    if(ok&&id==QOL_COMPASS){
+        using Notify=unsigned (__cdecl*)(unsigned,unsigned);
+        const auto module=GetModuleHandleA("GTAIV-QoL-Pause.asi");
+        const auto notify=module?reinterpret_cast<Notify>(GetProcAddress(module,"QoLCompass_SetEnabled")):nullptr;
+        const auto at=GetTickCount();
+        char message[180];sprintf_s(message,"Compass setting: event=%lu enabled=%d thread=%lu delivery=%s",at,value,GetCurrentThreadId(),notify?"begin":"companion unavailable");LogSetting(message);
+        const auto mask=notify?notify(value?1u:0u,at):~0u;
+        sprintf_s(message,"Compass setting: event=%lu enabled=%d mask-after=%u delivery=%s",at,value,mask,notify?"finished":"unavailable");LogSetting(message);
+    }
     if(ok&&id==QOL_DRIVING_CAMERA_HEIGHT){char message[128];sprintf_s(message,"Driving camera preset selected: preset=%d cm=%d",qolcamera::heightPreset(value),value);LogSetting(message);}
     return ok?1:0;
 }
