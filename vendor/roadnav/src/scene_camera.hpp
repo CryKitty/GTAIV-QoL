@@ -27,7 +27,7 @@ class RoadSceneCamera {
         if(log_)log_(viewport_?"Road GPS Line: rendered camera located":"Road GPS Line: rendered camera unavailable; authored camera fallback");
     }
 public:
-    explicit RoadSceneCamera(void(*log)(const char*)):log_(log){}
+    explicit RoadSceneCamera(void(*log)(const char*),std::uintptr_t testViewport=0):viewport_(testViewport),log_(log){}
     void invalidate(){viewport_=0;gameplay_=0;retry_.reset();}
     roadnav::RoadProjection acquire(const roadnav::CameraFrame& camera){
         if(!viewport_&&retry_.due(GetTickCount()))discover();

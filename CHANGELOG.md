@@ -1,3 +1,11 @@
+GTAIV-QoL beta — driving-camera render-path trial (Deck read-back proof pending)
+
+- Replaces the legacy camera-offset flag with a height adjustment to the normal vehicle-follow camera's freshly computed view transform. The game still controls follow motion, rotation and zoom. Low adds nothing, Medium requests +45 cm and High +120 cm in world height; the adjustment is made per camera copy without accumulating frame after frame. No extra camera is created and no follow-camera mode is forced.
+- Keeps the safe seating, live-child and scripted-camera guards. Raw draw-camera output stays numeric and never goes to a dereferencing native. Pause, cutscenes, loss of control, entry/exit, stale state and other camera owners stop positive adjustments. Unknown hook layouts fail closed rather than patching a guessed address.
+- Adds once-per-second driving read-back from the actual gameplay viewport, comparing the original camera-copy height, the adjusted copy and the rendered eye. A successful setter flag is no longer called proof: High must show about 1.20 m in rendered-dz with verified=1, Medium about 0.45 m, and Low about zero. Missing or disagreeing viewport data stays unverified. Deck verification remains outstanding until those captures exist.
+- The temporary Low sample in b78 followed recorded menu selections to Low and then back to High; no automatic preset clobber was found. Saved presets, the updater, fades and road stabilizers remain. VERSION stays for named releases. No file edits or new controls are needed.
+- After independent approval/merge and successful main CI, update normally and cold-load. In Pause → QoL start Low, drive a repeatable stretch past a fixed roofline/landmark, then repeat at Medium and High and cycle while moving. Check entry/exit and pause/resume, and the no-route/no-wanted vehicle-entry repro plus a wanted carjack. Exit normally for automatic diagnostics. Acceptance requires Low/Medium/High rendered read-back on the same vehicle; an unverified log is a failed proof, not a confirmed fix.
+
 GTAIV-QoL beta — safer compass HUD masking and radar restoration
 
 - Turning Compass HUD Off restores the radar position even if the game replaced its radar component while the compass was active. Repeated On/Off cycles preserve the game’s own radar visibility and opacity choices.

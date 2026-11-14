@@ -1,3 +1,4 @@
+#include "../src/driving_camera_matrix.hpp"
 #include "../src/runtime_stages.hpp"
 #include "../src/compass.hpp"
 #include "../src/world_load_gate.hpp"
@@ -133,6 +134,28 @@ int main(){
         assert(!awareness::attacker(true,true,false,20,false)); // remembered damage and order cannot resurrect an idle attacker
     }
 
+    {
+        using namespace qolcamera;
+        Matrix baseline{};for(unsigned i=0;i<4;++i)baseline.v[i*5]=1;baseline.v[14]=10;
+        RenderRequest request;request.at=100;request.driving=request.allowed=true;request.player[2]=9;
+        for(unsigned cm:{0u,45u,120u}){
+            request.cm=cm;auto next=baseline;const bool changed=prepareHeight(next,request,100);
+            assert(changed==(cm!=0)&&std::fabs(next.v[14]-10-cm*.01f)<.0001f);
+            MatrixSample sample{baseline,next,request,100,0,changed,123};
+            const float eye[]={0,0,next.v[14]};const auto proof=renderedEvidence(sample,eye,100,true);
+            assert(proof.verified&&std::fabs(proof.renderDelta-cm*.01f)<.0001f);
+            float unchanged[]={0,0,10};if(cm)assert(!renderedEvidence(sample,unchanged,100,true).verified);
+            assert(!renderedEvidence(sample,eye,201,true).verified&&!renderedEvidence(sample,eye,100,false).verified);
+            const auto restored=copyBaseline(next,sample,123);assert(std::fabs(restored.v[14]-10)<.0001f);
+        }
+        request.cm=120;request.allowed=false;auto next=baseline;assert(!prepareHeight(next,request,100)&&next.v[14]==10);
+        MatrixSample denied{baseline,baseline,request,100};const float eye[]={0,0,10};assert(!renderedEvidence(denied,eye,100,true).verified);
+        request.allowed=true;request.driving=false;assert(!prepareHeight(next,request,100));request.driving=true;
+        assert(!prepareHeight(next,request,301));
+        request.player[0]=100;assert(!prepareHeight(next,request,100));
+        request.player[0]=0;next.v[0]=0;assert(!prepareHeight(next,request,100));
+        request.at=0xfffffff0u;next=baseline;assert(prepareHeight(next,request,0x10u));
+    }
     {
         using namespace qolcamera;
         for(int cm=0;cm<=200;++cm){

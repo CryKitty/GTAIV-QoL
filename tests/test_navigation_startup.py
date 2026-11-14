@@ -51,15 +51,17 @@ class NavigationStartupTests(unittest.TestCase):
         source=(ROOT/'vendor/roadnav/src/compass_hud.hpp').read_text()
         camera=source.split('void drivingCameraHeightTick(bool stopping=false){',1)[1].split('void clearCompassWaypoint',1)[0]
         self.assertLess(camera.index('heightEntry_.seated('),camera.index('GetGameCamChild('))
-        self.assertLess(camera.index('DoesCamExist(gameplay)'),camera.index('heightEntry_.observed('))
-        self.assertLess(camera.index('heightEntry_.observed('),camera.index('resolveHeightNatives();'))
+        self.assertLess(camera.index('DoesCamExist(gameplay)'),camera.index('if(heightEntry_.observed(gameplayValid?gameplay.Get():0))'))
+        self.assertLess(camera.index('if(heightEntry_.observed(gameplayValid?gameplay.Get():0))'),camera.index('resolveHeightNatives();'))
         self.assertNotIn('IsCamInterpolating()',camera)
         self.assertIn('NATIVE_IS_SPECIFIC_CAM_INTERPOLATING',source)
         self.assertIn('cameraInterpolating<HeightQuery>(heightInterpolation_,gameplay)',camera)
         self.assertIn('qolcamera::cameraAccessReady(state)',camera)
         self.assertIn('qolcamera::probeDrivingCamera',camera)
-        self.assertIn('qolcamera::applySafeHeight',camera)
-        for operation in ('Child','ChildExists','Interpolation','Script','ScriptClassify','OffsetRead','OffsetWrite'):
+        self.assertIn('render.allowed=desired>0&&qolcamera::cameraAccessReady(state)',camera)
+        self.assertIn('drivingrender::publish(render)',camera)
+        self.assertNotIn('heightOffset_',camera)
+        for operation in ('Child','ChildExists','Interpolation','Script','ScriptClassify','OffsetRead'):
             self.assertIn('Stage::'+operation+'Begin',camera)
             self.assertIn('Stage::'+operation+'End',camera)
         self.assertLess(camera.index('if(stopping)'),camera.index('GetPlayerChar('))
@@ -80,5 +82,18 @@ class NavigationStartupTests(unittest.TestCase):
         self.assertLess(camera.index('qolcamera::cameraAccessReady(state)'),camera.index('Stage::ProbesReady'))
         self.assertLess(camera.index('Stage::ProbesReady'),camera.index('qolclient::LoadStage(7)'))
         self.assertLess(camera.index('qolclient::LoadStage(7)'),camera.index('qolcamera::probeDrivingCamera'))
+
+    def test_rendered_height_replaces_legacy_offset_write(self):
+        source=(ROOT/'vendor/roadnav/src/compass_hud.hpp').read_text()
+        camera=source.split('void drivingCameraHeightTick(bool stopping=false){',1)[1].split('void clearCompassWaypoint',1)[0]
+        self.assertNotIn('NATIVE_SET_FOLLOW_VEHICLE_CAM_OFFSET',source)
+        self.assertIn('if(render.driving&&desired)',camera)
+        self.assertIn('drivingrender::disable()',camera)
+        self.assertIn('!active&&drivingrender::installed',camera)
+        render=(ROOT/'vendor/roadnav/src/driving_camera_render.hpp').read_text()
+        self.assertIn('originals[0](dest,edx,source);updated(dest,source,caller)',render)
+        self.assertIn('caller==returns[i]',render)
+        self.assertIn('projection=camera_.acquire(reference)',render)
+        self.assertIn('renderedEvidence(s,xyz,now,projection.valid)',render)
 
 if __name__=='__main__':unittest.main()

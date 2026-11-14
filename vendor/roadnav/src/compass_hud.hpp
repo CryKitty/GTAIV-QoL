@@ -7,6 +7,7 @@
 #include <unordered_set>
 #include <mutex>
 #include "navigation_awareness.hpp"
+#include "driving_camera_render.hpp"
 #include "../../minhook/include/MinHook.h"
 
 #include "minimap_layout.hpp"
@@ -24,7 +25,7 @@ static_assert(Scripting::BLIP_GARAGE==79&&Scripting::BLIP_LAWYER==80&&Scripting:
     Scripting::BLIP_UNITED_LIBERTY_PAPER==92&&Scripting::BLIP_BOSS==93,"Compass people/POI IDs follow the bundled SDK");
 class CompassHud {
     using RadarNative=void (__cdecl*)(GameTypes::scrNativeCallContext*);
-    MinimapLayout minimap_;qolcamera::DrivingHeight drivingHeight_{};
+    MinimapLayout minimap_;
     PhoneNotifications messages_;
     compass::NoticeRenderer* noticeRenderer_=nullptr;
     compass::WaypointHold waypointHold_{};
@@ -263,10 +264,10 @@ class CompassHud {
         Scripting::DisplayTextWithLiteralString(x,y,"STRING",value);
     }
 
-    RadarNative heightOffset_=nullptr,heightActive_=nullptr,heightScript_=nullptr,heightInterpolation_=nullptr;
+    RadarNative heightActive_=nullptr,heightScript_=nullptr,heightInterpolation_=nullptr;
     DWORD heightResolveAt_=0;bool heightResolveTried_=false;unsigned heightNativeState_=~0u;
     void resolveHeightNatives(){
-        if(heightOffset_&&heightActive_&&heightScript_&&heightInterpolation_)return;
+        if(heightActive_&&heightScript_&&heightInterpolation_)return;
         const DWORD now=GetTickCount();if(heightResolveTried_&&now-heightResolveAt_<1000)return;
         heightResolveTried_=true;heightResolveAt_=now;
         using Lookup=void* (__cdecl*)(unsigned);using Names=void* (__cdecl*)(const char*);
@@ -274,22 +275,19 @@ class CompassHud {
         const auto lookup=module?reinterpret_cast<Lookup>(GetProcAddress(module,"?GetNativeAddressFromHash@Game@@SAPAXI@Z")):nullptr;
         const auto names=module?reinterpret_cast<Names>(GetProcAddress(module,"?GetNativeAddress@Game@@SAPAXPBD@Z")):nullptr;
         const auto native=[&](unsigned hash,const char* name){auto fn=lookup?lookup(hash):nullptr;if(!fn&&names)fn=names(name);return reinterpret_cast<RadarNative>(fn);};
-        heightOffset_=native(Scripting::NATIVE_SET_FOLLOW_VEHICLE_CAM_OFFSET,"SET_FOLLOW_VEHICLE_CAM_OFFSET");
         heightActive_=native(Scripting::NATIVE_IS_FOLLOW_VEHICLE_CAM_OFFSET_ACTIVE,"IS_FOLLOW_VEHICLE_CAM_OFFSET_ACTIVE");
         heightScript_=native(Scripting::NATIVE_GET_SCRIPT_DRAW_CAM,"GET_SCRIPT_DRAW_CAM");
         heightInterpolation_=native(Scripting::NATIVE_IS_SPECIFIC_CAM_INTERPOLATING,"IS_SPECIFIC_CAM_INTERPOLATING");
-        const unsigned available=(heightOffset_?1u:0u)|(heightActive_?2u:0u)|(heightScript_?4u:0u)|(heightInterpolation_?8u:0u);
-        if(log_&&available!=heightNativeState_){char message[120];std::snprintf(message,sizeof(message),"Driving camera native resolution: set=%u active=%u draw=%u specific=%u",heightOffset_?1u:0u,heightActive_?1u:0u,heightScript_?1u:0u,heightInterpolation_?1u:0u);log_(message);heightNativeState_=available;}
+        const unsigned available=(heightActive_?2u:0u)|(heightScript_?4u:0u)|(heightInterpolation_?8u:0u);
+        if(log_&&available!=heightNativeState_){char message[120];std::snprintf(message,sizeof(message),"Driving camera native resolution: legacy-active=%u draw=%u specific=%u",heightActive_?1u:0u,heightScript_?1u:0u,heightInterpolation_?1u:0u);log_(message);heightNativeState_=available;}
     }
     struct HeightQuery:NativeContext {HeightQuery(){*static_cast<u32*>(m_pReturn)=0;}};
     qolcamera::CameraEntry heightEntry_;
     int heightLoggedCm_=-1;unsigned heightLoggedGate_=~0u;DWORD heightLogAt_=0;
-    unsigned heightApplies_=0,heightReleases_=0;
     void drivingCameraHeightTick(bool stopping=false){
         using namespace Scripting;using qolsafety::Stage;
         const int desired=stopping?0:qolclient::Get(QOL_DRIVING_CAMERA_HEIGHT,0);
-        if(stopping){heightEntry_.reset();return;} // No camera work during teardown.
-        if(!desired&&!drivingHeight_.owned){heightEntry_.reset();return;} // Default is untouched.
+        if(stopping){drivingrender::disable();heightEntry_.reset();return;} // No camera work during teardown.
         qolcamera::DrivingState state;
         bool active=false,seated=false,entering=false,gameplayValid=false;
         Ped ped{};Vehicle car{};Ped driver{};Camera gameplay{};
@@ -302,7 +300,16 @@ class CompassHud {
         if(state.driver){seated=IsCharSittingInCar(ped,car)!=0;entering=IsCharGettingInToACar(ped)!=0;}
         const bool normal=state.gate(1)==qolcamera::HeightGate::Ready;
         state.cameraReady=false;
-        if(heightEntry_.seated(GetTickCount(),car.Get(),normal,seated,entering)){
+        qolcamera::RenderRequest render;render.at=GetTickCount();render.cm=static_cast<unsigned>(desired);render.vehicle=car.Get();
+        render.driving=heightEntry_.seated(render.at,car.Get(),normal,seated,entering);
+        if(render.driving){
+            GetCharCoordinates(ped,&render.player[0],&render.player[1],&render.player[2]);
+            drivingrender::install(log_);
+        }
+        // Low is pass-through: no camera native probes/writes, but passive
+        // matrix/viewport readback can still establish its actual baseline.
+        if(!desired)heightEntry_.observed(0);
+        if(render.driving&&desired){
             qolclient::SafetyStage(Stage::ChildBegin);GetGameCamChild(&gameplay);qolclient::SafetyStage(Stage::ChildEnd,gameplay.Get());
             if(qolcamera::cameraHandle(gameplay.Get())){
                 qolclient::SafetyStage(Stage::ChildExistsBegin);gameplayValid=DoesCamExist(gameplay)!=0;qolclient::SafetyStage(Stage::ChildExistsEnd,gameplayValid?1u:0u);
@@ -310,7 +317,7 @@ class CompassHud {
             if(heightEntry_.observed(gameplayValid?gameplay.Get():0)){
                 state.cameraReady=true;
                 qolclient::LoadStage(5);resolveHeightNatives();qolclient::LoadStage(6);
-                state.natives=heightOffset_&&heightActive_&&heightScript_&&heightInterpolation_;
+                state.natives=heightActive_&&heightScript_&&heightInterpolation_;
                 if(state.natives&&qolcamera::cameraAccessReady(state)){
                     // This is the current admission, not the last throttled state
                     // sample: all subsequent probes share the write gate.
@@ -336,24 +343,14 @@ class CompassHud {
                 }
             }
         }
-        auto command=qolcamera::HeightCommand::None;
-        // Defer both apply AND release across camera destruction/transition.
-        // Retain ownership until the next validated driving frame can release.
-        {
-            command=qolcamera::applySafeHeight(drivingHeight_,state,desired,active,[&](bool enabled,float x,float y,float z){
-                qolclient::SafetyStage(Stage::OffsetWriteBegin,enabled?1u:0u);
-                NativeContext call;call.Push(enabled);call.Push(x);call.Push(y);call.Push(z);heightOffset_(&call);
-                qolclient::SafetyStage(Stage::OffsetWriteEnd,enabled?1u:0u);
-            });
-        }
-        if(command==qolcamera::HeightCommand::Apply)++heightApplies_;
-        if(command==qolcamera::HeightCommand::Release)++heightReleases_;
+        render.child=gameplay.Get();
+        render.allowed=desired>0&&qolcamera::cameraAccessReady(state)&&!active&&drivingrender::installed;
+        drivingrender::publish(render);
         const auto gate=static_cast<unsigned>(state.gate(desired));const DWORD now=GetTickCount();
-        if(log_&&(desired!=heightLoggedCm_||gate!=heightLoggedGate_||command==qolcamera::HeightCommand::Release||(desired&&now-heightLogAt_>=5000))){
-            char message[288];std::snprintf(message,sizeof(message),"Driving camera state: preset=%d cm=%d gate=%u driver=%u scripted=%u active=%u owned=%u command=%u apply=%u release=%u natives=%u seated=%u entering=%u gameplay-valid=%u ready=%u",
-                qolcamera::heightPreset(desired),desired,gate,state.driver?1u:0u,state.scriptCamera?1u:0u,active?1u:0u,drivingHeight_.owned?1u:0u,
-                static_cast<unsigned>(command),heightApplies_,heightReleases_,state.natives?1u:0u,seated?1u:0u,entering?1u:0u,gameplayValid?1u:0u,state.cameraReady?1u:0u);log_(message);
-            heightLoggedCm_=desired;heightLoggedGate_=gate;heightLogAt_=now;heightApplies_=heightReleases_=0;
+        if(log_&&(desired!=heightLoggedCm_||gate!=heightLoggedGate_||now-heightLogAt_>=5000)){
+            char message[280];std::snprintf(message,sizeof(message),"Driving camera render request: preset=%d cm=%d gate=%u driver=%u scripted=%u legacy-offset-active=%u seated=%u entering=%u gameplay-valid=%u ready=%u copy-hook=%u allowed=%u (effect requires rendered readback)",
+                qolcamera::heightPreset(desired),desired,gate,state.driver?1u:0u,state.scriptCamera?1u:0u,active?1u:0u,seated?1u:0u,entering?1u:0u,gameplayValid?1u:0u,state.cameraReady?1u:0u,drivingrender::installed?1u:0u,render.allowed?1u:0u);log_(message);
+            heightLoggedCm_=desired;heightLoggedGate_=gate;heightLogAt_=now;
         }
     }
 
@@ -408,8 +405,8 @@ public:
     }
     explicit CompassHud(void (*log)(const char*)=nullptr,compass::NoticeRenderer* noticeRenderer=nullptr):noticeRenderer_(noticeRenderer),log_(log){}
     void start(){
-        heightOffset_=heightActive_=heightScript_=nullptr;heightResolveAt_=0;heightResolveTried_=false;heightNativeState_=~0u;
-        heightLoggedCm_=-1;heightLoggedGate_=~0u;heightLogAt_=0;heightApplies_=heightReleases_=0;
+        heightActive_=heightScript_=heightInterpolation_=nullptr;heightResolveAt_=0;heightResolveTried_=false;heightNativeState_=~0u;
+        heightLoggedCm_=-1;heightLoggedGate_=~0u;heightLogAt_=0;
         if(log_){char message[120];const int cm=qolclient::Get(QOL_DRIVING_CAMERA_HEIGHT,0);std::snprintf(message,sizeof(message),"Driving camera loaded: preset=%d cm=%d",qolcamera::heightPreset(cm),cm);log_(message);}
         char path[MAX_PATH]{};GetModuleFileNameA(nullptr,path,MAX_PATH);
         char* slash=std::strrchr(path,'\\');if(slash){slash[1]=0;strcat_s(path,"GTAIV-QoL.ini");}
