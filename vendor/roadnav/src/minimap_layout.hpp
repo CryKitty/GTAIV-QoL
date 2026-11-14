@@ -11,12 +11,14 @@
 #include <cstring>
 #include <cstdio>
 #include <utility>
+#include <mutex>
 
 // No native visibility changes and no Radar Off preference overrides. Keep all
 // visibility answers intact; displace only HUD_RADAR's own layout geometry.
 class MinimapLayout {
     std::uintptr_t info_=0,components_=0,frontend_=0,target_=0;
-    bool installed_=false,attempted_=false;
+    bool installed_=false,attempted_=false,enabled_=true;
+    mutable std::recursive_mutex mutex_;
     const char* status_="not initialized";
     std::atomic<unsigned> queries_{0};
     struct Saved {std::uintptr_t address=0;minimaplayout::Point point{};};
@@ -60,22 +62,32 @@ class MinimapLayout {
     }
 
 public:
-    bool active()const{return installed_;}
+    bool active()const{std::lock_guard<std::recursive_mutex> guard(mutex_);return installed_;}
     std::uintptr_t frontendAddress()const{return frontend_;}
     unsigned count()const{return queries_.load(std::memory_order_relaxed);}
-    const char* status()const{return status_;}
+    const char* status()const{std::lock_guard<std::recursive_mutex> guard(mutex_);return status_;}
     const char* ringStatus()const{return ring_.status();}
     unsigned ringHidden()const{return ring_.hidden();}
     unsigned ringSelections()const{return ring_.selections();}
     unsigned fillCalls()const{return ring_.fillCalls();}
     unsigned fillHidden()const{return ring_.fillHidden();}
     void release(){
+        std::lock_guard<std::recursive_mutex> guard(mutex_);
         ring_.release();
         if(installed_)recoverCurrent();
         installed_=false;
         restore(live_);restore(layout_);attempted_=false;status_="released";
     }
+    unsigned preference(bool enabled,DWORD event,void(*log)(const char*)){
+        std::lock_guard<std::recursive_mutex> guard(mutex_);
+        const bool before=installed_;enabled_=enabled;
+        if(!enabled_)release(); // Pure geometry/hook cleanup: no game natives.
+        if(log){char text[220];std::snprintf(text,sizeof(text),"Compass mask transition: event=%lu thread=%lu enabled=%u mask=%u->%u geometry-updates=%u source=pause-setting",event,GetCurrentThreadId(),enabled?1u:0u,before?1u:0u,installed_?1u:0u,count());log(text);}
+        return installed_?1u:0u;
+    }
     void enable(void(*log)(const char*),std::uintptr_t testImage=0,std::uintptr_t testWanted=0){
+        std::lock_guard<std::recursive_mutex> guard(mutex_);
+        if(!enabled_)return; // Reject a tick which read On before the menu changed it.
         if(installed_){update();return;}
         if(attempted_)return;attempted_=true;
         const auto base=testImage?testImage:reinterpret_cast<std::uintptr_t>(GetModuleHandleA(nullptr));

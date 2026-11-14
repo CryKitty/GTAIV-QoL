@@ -932,6 +932,8 @@ class RoadNavScript final : public ScriptThread {
         attached_=true;event("Turn chevron renderer attached to D3DHook");
     }
     worldload::Gate worldGate_;bool firstRuntime_=true;
+public:
+    unsigned compassPreference(bool enabled,DWORD event){return compass_.preference(enabled,event);}
 protected:
     void OnStart() override{
         worldGate_.reset();firstRuntime_=true;qolclient::UpdateSession(false);
@@ -1256,4 +1258,10 @@ extern "C" void InitializeBundledRoadNav(HMODULE module) {
     reg(&gRoadNavScript,module);
     HANDLE thread=CreateThread(nullptr,0,worker,nullptr,0,nullptr);
     if(thread)CloseHandle(thread);
+}
+
+// Menu frontend may run while ScriptHook ticks are suspended. Restore existing
+// HUD geometry directly; this export never initializes the world or uses natives.
+extern "C" __declspec(dllexport) unsigned __cdecl QoLCompass_SetEnabled(unsigned enabled,unsigned event){
+    return gRoadNavScript.compassPreference(enabled!=0,event);
 }
