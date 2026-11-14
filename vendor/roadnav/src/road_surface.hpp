@@ -64,6 +64,7 @@ inline void stabilizeRoadBends(RoadLine& line,const RoadLine& previous,const std
     float shift=0;bool aligned=false;
     for(std::size_t n=0;n<matched.size();++n)if(matched[n]){shift=offsets[n];aligned=true;break;}
     if(!aligned)return;
+    std::vector<RoadBend> retained;
     for(auto bend:previous.bends){bend.station+=shift;unsigned count=0;bool same=true;
         for(std::size_t n=0;n<line.points.size();++n)if(std::fabs(line.stations[n]-bend.station)<bend.radius){
             ++count;if(!matched[n]||std::fabs(offsets[n]-shift)>.12f){same=false;break;}
@@ -72,8 +73,9 @@ inline void stabilizeRoadBends(RoadLine& line,const RoadLine& previous,const std
         line.bends.erase(std::remove_if(line.bends.begin(),line.bends.end(),[&](const RoadBend& next){
             return next.strength*bend.strength>0&&std::fabs(next.station-bend.station)<bend.radius;
         }),line.bends.end());
-        line.bends.push_back(bend);
+        retained.push_back(bend);
     }
+    line.bends.insert(line.bends.end(),retained.begin(),retained.end());
 }
 // Remove only sub-12cm cross-track GPS noise on a matching tangent/floor.
 // Projection preserves forward progress. New corners, roads and levels commit

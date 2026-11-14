@@ -69,6 +69,10 @@ int main(){
         bool raised=false;for(float value:croppedLift)raised=raised||std::fabs(value)>.01f;assert(raised);
         auto transferred=roadLine({{5,40,10},{200,40,10}},{8,40,11},10);
         stabilizeRoadPath(transferred,past);assert(transferred.bends.empty()); // distinct floor is immediate
+        RoadLine overlapping;for(int i=0;i<=100;++i){overlapping.points.push_back({0,static_cast<float>(i),0});overlapping.stations.push_back(static_cast<float>(i));}
+        overlapping.bends={{25,40,.5f,{0,25,0}},{45,40,.5f,{0,45,0}}};
+        auto retained=overlapping;stabilizeRoadPath(retained,overlapping);
+        assert(retained.bends.size()==2); // adjacent same-side profiles cannot erase each other
         auto truncated=previous;
         fitRoadSurface(truncated,{0,34.5f,1},{},[](float,float y,float){return y<43?0.0f:-10000.0f;});
         assert(truncated.stations.size()==truncated.points.size());
