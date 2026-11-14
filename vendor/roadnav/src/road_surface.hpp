@@ -40,7 +40,7 @@ template<class Probe> RoadSurfaceStats fitRoadSurface(RoadLine& line,Vec3 player
             if(unsupported>6)break;
         }
         // Unstreamed collision ends only the distant tail, not the whole path.
-        if(unsupported>6){line.points.resize(i);line.endsAtDestination=false;break;}
+        if(unsupported>6){line.points.resize(i);if(line.stations.size()>i)line.stations.resize(i);line.endsAtDestination=false;break;}
         point.z=surface+roadSurfaceClearance;
         const auto section=roadLineSection(line.points,i,.8568f);
         std::array<float,2> edges{{surface+roadSurfaceClearance,surface+roadSurfaceClearance}};
@@ -56,11 +56,34 @@ template<class Probe> RoadSurfaceStats fitRoadSurface(RoadLine& line,Vec3 player
     if(line.bank.size()!=line.points.size())line.bank=roadLineBank(line.points);
     return stats;
 }
+// Keep a bend's world anchor when GPS merely crops its already-travelled
+// head. Reuse requires matching forward geometry over its entire visible
+// footprint; a changed corner/level or state transfer commits immediately.
+inline void stabilizeRoadBends(RoadLine& line,const RoadLine& previous,const std::vector<float>& offsets,const std::vector<bool>& matched){
+    if(line.stations.size()!=line.points.size()||previous.stations.size()!=previous.points.size())return;
+    float shift=0;bool aligned=false;
+    for(std::size_t n=0;n<matched.size();++n)if(matched[n]){shift=offsets[n];aligned=true;break;}
+    if(!aligned)return;
+    std::vector<RoadBend> retained;
+    for(auto bend:previous.bends){bend.station+=shift;unsigned count=0;bool same=true;
+        for(std::size_t n=0;n<line.points.size();++n)if(std::fabs(line.stations[n]-bend.station)<bend.radius){
+            ++count;if(!matched[n]||std::fabs(offsets[n]-shift)>.12f){same=false;break;}
+        }
+        if(!same||count<2)continue;
+        line.bends.erase(std::remove_if(line.bends.begin(),line.bends.end(),[&](const RoadBend& next){
+            return next.strength*bend.strength>0&&std::fabs(next.station-bend.station)<bend.radius;
+        }),line.bends.end());
+        retained.push_back(bend);
+    }
+    line.bends.insert(line.bends.end(),retained.begin(),retained.end());
+}
 // Remove only sub-12cm cross-track GPS noise on a matching tangent/floor.
 // Projection preserves forward progress. New corners, roads and levels commit
 // immediately; this is a spatial deadband, never a delayed replan queue.
 inline void stabilizeRoadPath(RoadLine& line,const RoadLine& previous){
     const auto fresh=line.points;
+    const bool stations=line.stations.size()==fresh.size()&&previous.stations.size()==previous.points.size();
+    std::vector<float> offsets(fresh.size());std::vector<bool> matchedStations(fresh.size());
     for(std::size_t n=0;n<fresh.size();++n){const auto point=fresh[n];float best=.12f;Vec3 matched=point;
         const auto before=fresh[n?n-1:n],after=fresh[std::min(n+1,fresh.size()-1)];
         const float tx=after.x-before.x,ty=after.y-before.y,tlen=std::hypot(tx,ty);
@@ -69,11 +92,14 @@ inline void stabilizeRoadPath(RoadLine& line,const RoadLine& previous){
             if(length<.01f||tlen<.01f||(tx*dx+ty*dy)/(tlen*length)<.995f)continue;
             const float t=((point.x-a.x)*dx+(point.y-a.y)*dy)/(length*length);if(t<0||t>1)continue;
             const Vec3 projected{a.x+dx*t,a.y+dy*t,a.z+(b.z-a.z)*t};const float distance=distance2D(point,projected);
-            if(distance<best&&std::fabs(point.z-projected.z)<2){best=distance;matched.x=projected.x;matched.y=projected.y;}
+            if(distance<best&&std::fabs(point.z-projected.z)<2){best=distance;matched.x=projected.x;matched.y=projected.y;
+                if(stations){offsets[n]=line.stations[n]-(previous.stations[i-1]+(previous.stations[i]-previous.stations[i-1])*t);matchedStations[n]=true;}
+            }
         }
         line.points[n]=matched;
     }
     line.ahead=routeLength2D(line.points);line.bank=roadLineBank(line.points);
+    stabilizeRoadBends(line,previous,offsets,matchedStations);
 }
 // Retain the same road height at overlapping world positions. Small collision
 // query noise should not bounce a stationary ribbon; distinct levels stay apart.

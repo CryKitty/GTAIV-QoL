@@ -1207,10 +1207,10 @@ protected:
             }
             roadnav::clipRoadLineRange(displayedLine,player,compass_.radarRange());
             auto displayedEscape=escapeLine_;roadnav::clipRoadLineRange(displayedEscape,player,compass_.radarRange());
-            if(primaryShown)gRoadLineRenderer.submit({displayedLine,frame,now,player,routeKind_,colours,nearClip,farClip,1,viewBend_});else gRoadLineRenderer.clear();
+            if(primaryShown)gRoadLineRenderer.submit({displayedLine,frame,now,player,routeKind_,colours,nearClip,farClip,1,viewBend_,motionSpeed_});else gRoadLineRenderer.clear();
             // A narrower red/blue escape ribbon leaves the primary route visible
             // on shared roads, then separates naturally at the escape turn.
-            if(types.visible(lineEnabled,awareness::RouteKind::Escape))gEscapeLineRenderer.submit({displayedEscape,frame,now,player,awareness::RouteKind::Escape,true,nearClip,farClip,!primaryShown||line_.points.empty()?1.0f:.48f,viewBend_});else gEscapeLineRenderer.clear();
+            if(types.visible(lineEnabled,awareness::RouteKind::Escape))gEscapeLineRenderer.submit({displayedEscape,frame,now,player,awareness::RouteKind::Escape,true,nearClip,farClip,!primaryShown||line_.points.empty()?1.0f:.48f,viewBend_,motionSpeed_});else gEscapeLineRenderer.clear();
         }
     }
 };

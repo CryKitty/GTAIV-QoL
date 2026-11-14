@@ -15,6 +15,94 @@
 using namespace roadnav;
 int main(){
     {
+        // A fixed bend must not change shape when the visible near slice moves.
+        // This reproduces the previous crop-dependent bank/lift movement.
+        const std::vector<Vec3> route{{0,-200,0},{0,40,0},{200,40,0}};
+        float oldMin=100,oldMax=-100,newMin=100,newMax=-100;
+        RoadLine previous;
+        for(unsigned frame=0;frame<70;++frame){
+            const Vec3 player{0,static_cast<float>(frame)*.5f,1};
+            auto line=roadLine(route,player,static_cast<float>(frame%30));
+            stabilizeRoadPath(line,previous);
+            fitRoadSurface(line,player,previous,[](float,float,float){return 0.0f;});
+            stabilizeRoadSurface(line,previous);
+            const auto anchor=roadLineGroundAnchor(line,player);
+            const auto old=roadLineLift(line.points,line.bank,anchor),stable=roadLineLift(line,anchor);
+            assert(line.stations.size()==line.points.size()&&!line.bends.empty());
+            bool found=false;
+            for(std::size_t i=0;i<line.points.size();++i)if(distance2D(line.points[i],{0,40,0})<.001f){
+                oldMin=std::min(oldMin,old[i]);oldMax=std::max(oldMax,old[i]);
+                newMin=std::min(newMin,stable[i]);newMax=std::max(newMax,stable[i]);found=true;
+            }
+            assert(found);previous=line;
+        }
+        assert(oldMax-oldMin>.05f); // regression is observable in the old renderer
+        assert(newMax-newMin<.001f); // fixed world corner, same height throughout
+        auto changed=roadLine({{0,-200,0},{0,40,0},{-200,40,0}},{0,20,1},0);
+        stabilizeRoadPath(changed,previous);
+        fitRoadSurface(changed,{0,20,1},previous,[](float,float,float){return 0.0f;});
+        const auto lift=roadLineLift(changed,roadLineGroundAnchor(changed,{0,20,1}));
+        for(float value:lift)assert(value>=0); // opposite replan commits immediately
+        auto clipped=previous;clipRoadLineRange(clipped,{0,34.5f,1},20);
+        assert(clipped.stations.size()==clipped.points.size());
+        const auto full=roadLineLift(previous,{}),part=roadLineLift(clipped,{});
+        for(std::size_t i=0;i+1<clipped.points.size();++i)assert(std::fabs(part[i]-full[i])<.001f);
+        // Long straight legs stay exact outside the local corner window,
+        // independent of the native segment's changing start/end distance.
+        for(float origin:{-200.0f,-80.0f,-20.0f}){
+            const std::vector<Vec3> path{{0,origin,0},{0,40,0},{200,40,0}};
+            for(float along:{20.0f,50.0f,100.0f}){
+                const auto point=smoothRoadPoint(path,2,along/200);
+                assert(std::fabs(point.x-along)<.001f&&point.y==40);
+            }
+        }
+        auto cropped=roadLine({{5,40,0},{200,40,0}},{8,40,1},10);
+        assert(cropped.bends.empty()); // GPS discarded the corner behind us
+        auto past=roadLine(route,{0,39,1},10);
+        fitRoadSurface(past,{0,39,1},{},[](float,float,float){return 0.0f;});
+        // A broad existing lift can extend onto the straight exit leg.
+        past.bends.front().radius=60;
+        stabilizeRoadPath(cropped,past);
+        assert(!cropped.bends.empty()); // same forward corridor retains its world profile
+        fitRoadSurface(cropped,{8,40,1},past,[](float,float,float){return 0.0f;});
+        const auto croppedLift=roadLineLift(cropped,roadLineGroundAnchor(cropped,{8,40,1}));
+        bool raised=false;for(float value:croppedLift)raised=raised||std::fabs(value)>.01f;assert(raised);
+        auto transferred=roadLine({{5,40,10},{200,40,10}},{8,40,11},10);
+        stabilizeRoadPath(transferred,past);assert(transferred.bends.empty()); // distinct floor is immediate
+        RoadLine overlapping;for(int i=0;i<=100;++i){overlapping.points.push_back({0,static_cast<float>(i),0});overlapping.stations.push_back(static_cast<float>(i));}
+        overlapping.bends={{25,40,.5f,{0,25,0}},{45,40,.5f,{0,45,0}}};
+        auto retained=overlapping;stabilizeRoadPath(retained,overlapping);
+        assert(retained.bends.size()==2); // adjacent same-side profiles cannot erase each other
+        auto truncated=previous;
+        fitRoadSurface(truncated,{0,34.5f,1},{},[](float,float y,float){return y<43?0.0f:-10000.0f;});
+        assert(truncated.stations.size()==truncated.points.size());
+    }
+    {
+        assert(destinationOpacity(12,0)==0&&destinationOpacity(28,0)==1);
+        assert(destinationOpacity(20,0)==.5f);
+        assert(destinationOpacity(0,50)==0&&destinationOpacity(44.5f,50)==1);
+        float last=1;
+        for(int distance=50;distance>=0;--distance){const float opacity=destinationOpacity(static_cast<float>(distance),35);
+            assert(opacity<=last&&opacity>=0);last=opacity;
+        }
+        DestinationMarkerFade marker;
+        const Vec3 target{0,50,0},player{};
+        assert(marker.update(true,target,player,0,100).opacity==1);
+        assert(marker.update(false,{},player,0,200).opacity==1);
+        const auto halfway=marker.update(false,{},player,0,350);
+        assert(halfway.opacity==.5f&&halfway.position.y==50);
+        assert(marker.update(false,{},player,0,500).opacity==0&&!marker.held);
+        marker.update(true,target,player,0,600);
+        assert(marker.update(true,{50,0,0},player,0,601).position.x==50); // new goal is immediate
+        marker.clear();assert(marker.update(false,{},player,0,602).opacity==0); // toggles do not ghost
+        marker.update(true,target,player,0,700);
+        assert(marker.update(false,{},target,0,710).opacity==0); // arrived during GPS removal
+        marker.clear();marker.update(true,target,player,0,0xfffffff0u);
+        marker.update(false,{},player,0,0xfffffffau);
+        assert(marker.update(false,{},player,0,294u).opacity==0); // clock wrap
+    }
+
+    {
         // Centred geometry cannot inherit station-wise alternating lane offsets.
         // Changing GPS origin, speed, direction and native point density must
         // leave every point on a straight native road, before and after fitting.

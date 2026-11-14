@@ -4,7 +4,8 @@
 
 namespace roadnav {
 inline constexpr float roadSurfaceClearance=.24f;
-struct RoadLine {std::vector<Vec3> points;std::vector<float> bank;std::vector<std::array<float,2>> edges;float ahead=0;bool endsAtDestination=false;Vec3 destination{};bool destinationPinned=false;bool visible()const{return points.size()>1;}};
+struct RoadBend {float station=0,radius=0,strength=0;Vec3 center{};};
+struct RoadLine {std::vector<float> stations;std::vector<RoadBend> bends;std::vector<Vec3> points;std::vector<float> bank;std::vector<std::array<float,2>> edges;float ahead=0;bool endsAtDestination=false;Vec3 destination{};bool destinationPinned=false;bool visible()const{return points.size()>1;}};
 inline Vec3 roadLineGroundAnchor(const RoadLine& line,Vec3 player){
     if(!line.points.empty())player.z=sampleAt(line.points,nearestDistanceAlong(line.points,player)).position.z-roadSurfaceClearance;
     return player;
@@ -58,10 +59,12 @@ inline void clipRoadLineRange(RoadLine& line,Vec3 player,float radarRadius){
             if(aa<.000001f||disc<0)continue;
             const float t=(-bb-std::sqrt(disc))/aa;if(t<0||t>1)continue;
             line.points[i-1]={a.x+dx*t,a.y+dy*t,a.z+(b.z-a.z)*t};
+            if(line.stations.size()>i)line.stations[i-1]+=(line.stations[i]-line.stations[i-1])*t;
             if(line.bank.size()>i)line.bank[i-1]+=(line.bank[i]-line.bank[i-1])*t;
             if(line.edges.size()>i)for(unsigned side=0;side<2;++side)line.edges[i-1][side]+=(line.edges[i][side]-line.edges[i-1][side])*t;
             const auto skip=static_cast<std::ptrdiff_t>(i-1);
             line.points.erase(line.points.begin(),line.points.begin()+skip);
+            if(line.stations.size()>=i)line.stations.erase(line.stations.begin(),line.stations.begin()+skip);
             if(line.bank.size()>=i)line.bank.erase(line.bank.begin(),line.bank.begin()+skip);
             if(line.edges.size()>=i)line.edges.erase(line.edges.begin(),line.edges.begin()+skip);
             line.ahead=routeLength2D(line.points);entry=true;break;
@@ -71,9 +74,10 @@ inline void clipRoadLineRange(RoadLine& line,Vec3 player,float radarRadius){
     for(std::size_t i=1;i<line.points.size();++i)if(distance2D(line.points[i],player)>radius){
         const auto a=line.points[i-1],b=line.points[i];const float t=roadRangeExit(a,b,player,radius);
         line.points[i]={a.x+(b.x-a.x)*t,a.y+(b.y-a.y)*t,a.z+(b.z-a.z)*t};
+        if(line.stations.size()>i)line.stations[i]=line.stations[i-1]+(line.stations[i]-line.stations[i-1])*t;
         if(line.bank.size()>i)line.bank[i]=line.bank[i-1]+(line.bank[i]-line.bank[i-1])*t;
         if(line.edges.size()>i)for(unsigned side=0;side<2;++side)line.edges[i][side]=line.edges[i-1][side]+(line.edges[i][side]-line.edges[i-1][side])*t;
-        line.points.resize(i+1);if(line.bank.size()>i+1)line.bank.resize(i+1);if(line.edges.size()>i+1)line.edges.resize(i+1);
+        line.points.resize(i+1);if(line.stations.size()>i+1)line.stations.resize(i+1);if(line.bank.size()>i+1)line.bank.resize(i+1);if(line.edges.size()>i+1)line.edges.resize(i+1);
         line.ahead=routeLength2D(line.points);line.endsAtDestination=false;return;
     }
 }
@@ -83,12 +87,19 @@ inline Vec3 smoothRoadPoint(const std::vector<Vec3>& route,std::size_t i,float t
     const auto a=route[i-1],b=route[i],prev=route[i>=2?i-2:i-1],next=route[std::min(i+1,route.size()-1)];
     const float length=distance2D(a,b);if(length<.001f)return b;
     const auto direction=[](Vec3 a,Vec3 b){const float d=distance2D(a,b);return d>.001f?Vec3{(b.x-a.x)/d,(b.y-a.y)/d,(b.z-a.z)/d}:Vec3{};};
-    const auto in=direction(prev,a),edge=direction(a,b),out=direction(b,next);
-    const Vec3 m1{(in.x+edge.x)*length*.5f,(in.y+edge.y)*length*.5f,(in.z+edge.z)*length*.5f};
-    const Vec3 m2{(edge.x+out.x)*length*.5f,(edge.y+out.y)*length*.5f,(edge.z+out.z)*length*.5f};
-    const float u=t*t,v=u*t,h0=2*v-3*u+1,h1=v-2*u+t,h2=-2*v+3*u,h3=v-u;
+    const auto edge=direction(a,b);
+    const auto in=i>=2?direction(prev,a):edge,out=i+1<route.size()?direction(b,next):edge;
     const Vec3 straight{a.x+(b.x-a.x)*t,a.y+(b.y-a.y)*t,a.z+(b.z-a.z)*t};
-    Vec3 delta{a.x*h0+m1.x*h1+b.x*h2+m2.x*h3-straight.x,a.y*h0+m1.y*h1+b.y*h2+m2.y*h3-straight.y,a.z*h0+m1.z*h1+b.z*h2+m2.z*h3-straight.z};
+    // Local Hermite tangent corrections. A global segment-length tangent bowed
+    // even the middle of a long straight leg as GPS cropped its endpoints.
+    const float window=std::min(12.0f,length*.5f),along=t*length;
+    Vec3 delta{};
+    if(along<window){const float u=along/window,h=u*u*u-2*u*u+u;
+        delta.x+=(in.x-edge.x)*window*.5f*h;delta.y+=(in.y-edge.y)*window*.5f*h;
+    }
+    if(along>length-window){const float u=(along-(length-window))/window,h=u*u*u-u*u;
+        delta.x+=(out.x-edge.x)*window*.5f*h;delta.y+=(out.y-edge.y)*window*.5f*h;
+    }
     const float deviation=std::hypot(delta.x,delta.y);if(deviation>1.25f){delta.x*=1.25f/deviation;delta.y*=1.25f/deviation;}
     return {straight.x+delta.x,straight.y+delta.y,straight.z};
 }
@@ -127,6 +138,44 @@ inline bool keepRoadLineRoute(const std::vector<Vec3>& points,Vec3 player,unsign
     const auto nearest=sampleAt(points,nearestDistanceAlong(points,player)).position;
     return distance2D(player,nearest)<=12&&std::fabs(player.z-nearest.z)<=4;
 }
+// Keep road-distance parameters with every sample. Hidden context is used only
+// for decorative bends; it is never drawn or used to invent route geometry.
+inline RoadLine sampleRoadLine(const std::vector<Vec3>& route,float start,float end,float spacing){
+    RoadLine line;
+    float along=0;
+    for(std::size_t i=1;i<route.size();++i){
+        const float length=distance2D(route[i-1],route[i]);
+        if(!std::isfinite(length)||length>1000){line.points.clear();return line;}
+        const float segmentEnd=along+length;
+        if(length>.001f&&segmentEnd>start&&along<end){
+            const float a=std::max(start,along),b=std::min(end,segmentEnd);
+            if(line.points.empty()){line.points.push_back(smoothRoadPoint(route,i,(a-along)/length));line.stations.push_back(a);}
+            for(float d=(std::floor(a/spacing)+1)*spacing;d<b&&line.points.size()<1000;d+=spacing){line.points.push_back(smoothRoadPoint(route,i,(d-along)/length));line.stations.push_back(d);}
+            if(line.points.size()<1000){line.points.push_back(smoothRoadPoint(route,i,(b-along)/length));line.stations.push_back(b);}
+        }
+        along=segmentEnd;if(along>=end)break;
+    }
+    return line;
+}
+inline void roadLineBends(RoadLine& line,const RoadLine& context){
+    const auto bank=roadLineBank(context.points);
+    for(std::size_t first=0;first<bank.size();){
+        if(std::fabs(bank[first])<.001f){++first;continue;}
+        const bool left=bank[first]>0;std::size_t end=first;float weight=0,center=0,strength=0;
+        while(end<bank.size()&&std::fabs(bank[end])>=.001f&&(bank[end]>0)==left){
+            const float amount=std::fabs(bank[end]);weight+=amount;center+=amount*context.stations[end];strength=std::max(strength,amount);++end;
+        }
+        center/=std::max(weight,.001f);
+        const float start=context.stations[first?first-1:first],finish=context.stations[std::min(end,bank.size()-1)];
+        Vec3 point{};
+        for(std::size_t i=1;i<context.points.size();++i)if(context.stations[i]>=center){
+            const float t=(center-context.stations[i-1])/std::max(.001f,context.stations[i]-context.stations[i-1]);
+            const auto a=context.points[i-1],b=context.points[i];point={a.x+(b.x-a.x)*t,a.y+(b.y-a.y)*t,0};break;
+        }
+        line.bends.push_back({center,std::clamp(std::max(center-start,finish-center),8.0f,60.0f),left?strength:-strength,point});
+        first=end;
+    }
+}
 // Separate native-GPS consumer; the original RoadNav maneuver logic is untouched.
 inline RoadLine roadLine(const std::vector<Vec3>& route,Vec3 player,float /*speed*/,bool /*tracked*/=false,float radarRadius=300){
     RoadLine line;if(route.size()<2)return line;
@@ -138,19 +187,11 @@ inline RoadLine roadLine(const std::vector<Vec3>& route,Vec3 player,float /*spee
     // the range/anchor moves. At most 600 samples plus native corners.
     const float spacing=1.5f*std::max(1.0f,std::ceil((end-start)/600));
     if(end<=start+1)return line;
-    float along=0;
-    for(std::size_t i=1;i<route.size();++i){
-        const float length=distance2D(route[i-1],route[i]);
-        if(!std::isfinite(length)||length>1000){line.points.clear();return line;}
-        const float segmentEnd=along+length;
-        if(length>.001f&&segmentEnd>start&&along<end){
-            const float a=std::max(start,along),b=std::min(end,segmentEnd);
-            if(line.points.empty())line.points.push_back(smoothRoadPoint(route,i,(a-along)/length));
-            for(float d=(std::floor(a/spacing)+1)*spacing;d<b&&line.points.size()<1000;d+=spacing)line.points.push_back(smoothRoadPoint(route,i,(d-along)/length));
-            if(line.points.size()<1000)line.points.push_back(smoothRoadPoint(route,i,(b-along)/length));
-        }
-        along=segmentEnd;if(along>=end)break;
-    }
+    line=sampleRoadLine(route,start,end,spacing);
+    // 80 m contains the 60 m lift radius plus the 10 m curvature window.
+    // Clip/range movement must not move an existing bend's centre or peak.
+    const auto context=sampleRoadLine(route,std::max(0.0f,start-80),std::min(routeLength2D(route),end+80),spacing);
+    roadLineBends(line,context);
     clipRoadLineRange(line,player,radarRadius);line.ahead=routeLength2D(line.points);line.bank=roadLineBank(line.points);line.endsAtDestination=end>=routeLength2D(route)-.01f&&!line.points.empty()&&distance2D(line.points.back(),route.back())<.01f;return line;
 }
 // Shared mitered cross sections keep neighboring ribbon quads joined smoothly.
@@ -185,6 +226,21 @@ inline std::vector<float> roadLineLift(const std::vector<Vec3>& points,const std
             if(std::fabs(t)<1)lift[i]+=(left?1.0f:-1.0f)*height*.5f*(1+std::cos(3.14159265359f*t));
         }
         first=end;
+    }
+    return lift;
+}
+// Stable road stations, not the changing visible slice, define the profile.
+// Heights still follow the fitted road and player approach without temporal lag.
+inline std::vector<float> roadLineLift(const RoadLine& line,Vec3 player){
+    if(line.stations.size()!=line.points.size())return roadLineLift(line.points,line.bank,player);
+    std::vector<float> lift(line.points.size(),0);
+    for(const auto& bend:line.bends){
+        auto center=sampleAt(line.points,nearestDistanceAlong(line.points,bend.center)).position;
+        center.x=bend.center.x;center.y=bend.center.y;center.z-=roadSurfaceClearance;
+        const float height=roadLineBankHeight(center,player)*bend.strength;
+        for(std::size_t i=0;i<lift.size();++i){const float t=(line.stations[i]-bend.station)/bend.radius;
+            if(std::fabs(t)<1)lift[i]+=height*.5f*(1+std::cos(3.14159265359f*t));
+        }
     }
     return lift;
 }

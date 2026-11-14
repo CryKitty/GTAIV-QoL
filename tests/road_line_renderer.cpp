@@ -31,14 +31,14 @@ struct TestCamera {
 };
 void Log(const char* text){if(std::strstr(text,"status=draw submitted"))drawn=true;std::puts(text);}
 using Renderer=roadnav::RoadLineRendererWithScene<TestDepth,TestCamera>;
-unsigned colouredPixels(IDirect3DDevice9* device){
+unsigned colouredPixels(IDirect3DDevice9* device,bool brightness=false){
     IDirect3DSurface9* back=nullptr;assert(SUCCEEDED(device->GetBackBuffer(0,0,D3DBACKBUFFER_TYPE_MONO,&back)));
     D3DSURFACE_DESC desc{};back->GetDesc(&desc);IDirect3DSurface9* copy=nullptr;
     assert(SUCCEEDED(device->CreateOffscreenPlainSurface(desc.Width,desc.Height,desc.Format,D3DPOOL_SYSTEMMEM,&copy,nullptr)));
     assert(SUCCEEDED(device->GetRenderTargetData(back,copy)));D3DLOCKED_RECT rect{};
     assert(SUCCEEDED(copy->LockRect(&rect,nullptr,D3DLOCK_READONLY)));unsigned count=0;
     for(UINT y=0;y<desc.Height;++y){const auto* row=reinterpret_cast<const DWORD*>(static_cast<const unsigned char*>(rect.pBits)+y*rect.Pitch);
-        for(UINT x=0;x<desc.Width;++x)if(row[x]&0x00ffffffu)++count;}
+        for(UINT x=0;x<desc.Width;++x)if(brightness)count+=(row[x]&255)+((row[x]>>8)&255)+((row[x]>>16)&255);else if(row[x]&0x00ffffffu)++count;}
     copy->UnlockRect();copy->Release();back->Release();return count;
 }
 void draw(Renderer& renderer,IDirect3DDevice9* device,roadnav::LineFrame frame){
@@ -122,6 +122,20 @@ int main(){
             if(kind!=D3DDEVTYPE_NULLREF)assert(colouredPixels(device)>20);
             delayed.OnDestroyDevice(device);
         }
+    }
+    {
+        // Exercise the production destination draw path with no ribbon quads.
+        Renderer marker(Log);roadnav::LineFrame glyph;
+        glyph.line.points={{0,40,0},{0,40,0}};glyph.line.endsAtDestination=true;
+        glyph.at=GetTickCount();glyph.camera.position={0,-6,6};glyph.camera.rotation={-12,0,0};glyph.camera.fov=70;
+        glyph.player={0,0,0};draw(marker,device,glyph);assert(marker.renderedFrames()==1);
+        const auto full=kind!=D3DDEVTYPE_NULLREF?colouredPixels(device,true):0;
+        glyph.player={0,20,0};glyph.at=GetTickCount();draw(marker,device,glyph);assert(marker.renderedFrames()==2);
+        const auto half=kind!=D3DDEVTYPE_NULLREF?colouredPixels(device,true):0;
+        if(kind!=D3DDEVTYPE_NULLREF)assert(full>half&&half>0);
+        glyph.player={0,28,0};glyph.at=GetTickCount();draw(marker,device,glyph);
+        assert(marker.renderedFrames()==2);if(kind!=D3DDEVTYPE_NULLREF)assert(colouredPixels(device)==0);
+        marker.OnDestroyDevice(device);
     }
     SceneDiscoveryRetry retry;assert(retry.due(0xfffffff0u));assert(!retry.due(0x100u));assert(retry.due(0x800u));retry.reset();assert(retry.due(0x801u));
     depthTexture->Release();device->Release();api->Release();DestroyWindow(window);DeleteFileA(file);
