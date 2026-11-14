@@ -619,12 +619,25 @@ class RoadNavScript final : public ScriptThread {
     }
     struct EscapeGps {
         CompassHud& compass;
-        bool exists(Scripting::Blip blip){return blip.IsValid()&&Scripting::DoesBlipExist(blip);}
+        bool exists(Scripting::Blip blip){return blip.IsValid()&&blip.Get()!=~0u&&Scripting::DoesBlipExist(blip);}
         bool same(Scripting::Blip a,Scripting::Blip b){return a.Get()==b.Get();}
-        void route(Scripting::Blip blip,bool enabled){compass.requestNavigationRoute(blip,enabled);}
-        void remove(Scripting::Blip blip){Scripting::RemoveBlip(blip);}
-        Scripting::Blip add(roadnav::Vec3 point){Scripting::Blip blip{};Scripting::AddBlipForCoord(point.x,point.y,point.z,&blip);return blip;}
+        void route(Scripting::Blip blip,bool enabled){
+            using qolsafety::Stage;
+            if(!exists(blip))return;
+            qolclient::SafetyStage(enabled?Stage::RouteOnBegin:Stage::RouteOffBegin,blip.Get());
+            compass.requestNavigationRoute(blip,enabled);
+            qolclient::SafetyStage(enabled?Stage::RouteOnEnd:Stage::RouteOffEnd,blip.Get());
+        }
+        void remove(Scripting::Blip blip){
+            if(!exists(blip))return;
+            qolclient::SafetyStage(qolsafety::Stage::RemoveBegin,blip.Get());Scripting::RemoveBlip(blip);qolclient::SafetyStage(qolsafety::Stage::RemoveEnd);
+        }
+        Scripting::Blip add(roadnav::Vec3 point){
+            Scripting::Blip blip{};if(!roadnav::finiteDestination(point))return blip;
+            qolclient::SafetyStage(qolsafety::Stage::AddBegin);Scripting::AddBlipForCoord(point.x,point.y,point.z,&blip);qolclient::SafetyStage(qolsafety::Stage::AddEnd,blip.Get());return blip;
+        }
         bool move(Scripting::Blip blip,roadnav::Vec3 point){
+            if(!exists(blip)||!roadnav::finiteDestination(point))return false;
             using Native=void(__cdecl*)(GameTypes::scrNativeCallContext*);
             using Lookup=void*(__cdecl*)(const char*);
             static Native update=nullptr;static bool tried=false;
@@ -633,13 +646,19 @@ class RoadNavScript final : public ScriptThread {
                 update=lookup?reinterpret_cast<Native>(lookup("SET_BLIP_COORDINATES")):nullptr;
             }
             if(!update)return false;
+            qolclient::SafetyStage(qolsafety::Stage::MoveBegin,blip.Get());
             NativeContext context;context.Push(blip);context.Push(point.x);context.Push(point.y);context.Push(point.z);update(&context);
+            qolclient::SafetyStage(qolsafety::Stage::MoveEnd,blip.Get());
+            if(!exists(blip))return false;
             Scripting::Vector3 actual{};Scripting::GetBlipCoords(blip,&actual);
             return std::fabs(actual.X-point.x)<2&&std::fabs(actual.Y-point.y)<2&&std::fabs(actual.Z-point.z)<2;
         }
         void configure(Scripting::Blip blip){
+            if(!exists(blip))return;
+            qolclient::SafetyStage(qolsafety::Stage::ConfigureBegin,blip.Get());
             compass.setRouteHelper(blip.Get());Scripting::ChangeBlipAlpha(blip,255);Scripting::ChangeBlipColour(blip,9);
             Scripting::ChangeBlipNameFromAscii(blip,"Escape route");
+            qolclient::SafetyStage(qolsafety::Stage::ConfigureEnd,blip.Get());
         }
     };
     struct ForwardGps:EscapeGps {
@@ -699,8 +718,11 @@ class RoadNavScript final : public ScriptThread {
     }
     void restorePrimaryGps(){EscapeGps api{compass_};policeescape::restorePrimaryGps(chaseRoute_,primaryRouteBlip_,api);}
     bool requestEscape(roadnav::Vec3 point){
+        if(!roadnav::finiteDestination(point)){event("Police escape: rejected non-finite candidate; current route retained");return false;}
         EscapeGps api{compass_};const unsigned previous=chaseRoute_.Get();
+        qolclient::SafetyStage(qolsafety::Stage::HandoffBegin,previous);
         auto next=policeescape::requestGps(chaseRoute_,primaryRouteBlip_,point,api);
+        qolclient::SafetyStage(qolsafety::Stage::HandoffEnd,next.Get());
         if(!api.exists(next)){chaseRoute_={};return false;}
         chaseRoute_=next;chaseTarget_=0;escapeActive_=true;guidanceEnemy_=false;
         chasePoint_=point;escapeRequestedAt_=GetTickCount();
@@ -765,11 +787,13 @@ class RoadNavScript final : public ScriptThread {
         const float headingLength=std::hypot(escapeReplan_.heading.x,escapeReplan_.heading.y);
         if(!std::isfinite(headingLength)||headingLength<.5f){escapeReplan_.failed(now);event("Police escape: heading unavailable; retaining route");return true;}
         escapeReplan_.begin(now);
-        event(validTarget?(onRoute?"Police escape: recalc attempted; refresh or pursuit change":"Police escape: recalc attempted; left committed path"):"Police escape: recalc attempted; destination invalid or running out");
+        event(validTarget?(onRoute?"Police escape: recalc attempted; refresh or pursuit change":"Police escape: recalc attempted; left committed path"):"Police escape: recalc attempted; no usable committed route, selecting candidate");
         const float heading=std::atan2(escapeReplan_.heading.y,escapeReplan_.heading.x);
         const auto snap=[](roadnav::Vec3 sample,roadnav::Vec3& node){return GetClosestCarNode(sample.x,sample.y,sample.z,&node.x,&node.y,&node.z)!=0;};
         const auto cost=[](roadnav::Vec3 a,roadnav::Vec3 b){return NativeInvoke::Invoke<NATIVE_CALCULATE_TRAVEL_DISTANCE_BETWEEN_NODES,float>(a.x,a.y,a.z,b.x,b.y,b.z);};
+        qolclient::SafetyStage(qolsafety::Stage::CandidatesBegin);
         escapeOptions_=policeescape::candidates(player,escapeCenter_,radius,heading,snap,cost,police,true,policeescape::planningLead(motionSpeed_));
+        qolclient::SafetyStage(qolsafety::Stage::CandidatesEnd,static_cast<unsigned>(escapeOptions_.size()));
         if(escapeOptions_.size()>4)escapeOptions_.resize(4);
         if(escapeOptions_.empty()){escapeReplan_.failed(now);event("Police escape: no replacement reachable; retry backed off, keeping displayed route");return true;}
         escapeOption_=0;escapePlanning_=requestEscape(escapeOptions_.front().point);

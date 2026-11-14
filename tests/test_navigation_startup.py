@@ -43,8 +43,24 @@ class NavigationStartupTests(unittest.TestCase):
             self.assertNotIn(forbidden,bootstrap)
         hud=(ROOT/'vendor/roadnav/src/compass_hud.hpp').read_text()
         camera=hud.split('void drivingCameraHeightTick(bool stopping=false){',1)[1].split('void clearCompassWaypoint',1)[0]
-        self.assertLess(camera.index('state.gate(desired)==qolcamera::HeightGate::Ready'),camera.index('resolveHeightNatives();'))
+        self.assertLess(camera.index('state.gate(1)==qolcamera::HeightGate::Ready'),camera.index('resolveHeightNatives();'))
         scheduler=(ROOT/'src/ingame_updates.hpp').read_text().split('inline void Tick(',1)[1]
         self.assertLess(scheduler.index('if(!worldReady.load())return'),scheduler.index('AcquireSRWLockExclusive'))
+
+    def test_camera_entry_readiness_precedes_each_query_and_write(self):
+        source=(ROOT/'vendor/roadnav/src/compass_hud.hpp').read_text()
+        camera=source.split('void drivingCameraHeightTick(bool stopping=false){',1)[1].split('void clearCompassWaypoint',1)[0]
+        self.assertLess(camera.index('heightEntry_.seated('),camera.index('GetGameCamChild('))
+        self.assertLess(camera.index('DoesCamExist(gameplay)'),camera.index('heightEntry_.observed('))
+        self.assertLess(camera.index('heightEntry_.observed('),camera.index('resolveHeightNatives();'))
+        self.assertNotIn('IsCamInterpolating()',camera)
+        self.assertIn('NATIVE_IS_SPECIFIC_CAM_INTERPOLATING',source)
+        self.assertIn('cameraInterpolating<HeightQuery>(heightInterpolation_,gameplay)',camera)
+        self.assertIn('qolcamera::cameraHandle(scripted.Get())',camera)
+        self.assertIn('qolcamera::applySafeHeight',camera)
+        for operation in ('Child','ChildExists','Interpolation','Script','ScriptExists','ScriptActive','ScriptPropagate','OffsetRead','OffsetWrite'):
+            self.assertIn('Stage::'+operation+'Begin',camera)
+            self.assertIn('Stage::'+operation+'End',camera)
+        self.assertLess(camera.index('if(stopping)'),camera.index('GetPlayerChar('))
 
 if __name__=='__main__':unittest.main()
