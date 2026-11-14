@@ -35,7 +35,8 @@ sampled only for diagnostic comparison, never as an apply prerequisite.
 
 The original generic no-argument native context also leaves return storage
 uninitialised if a lookup fails. Offset setters/active queries are now explicitly
-resolved by SDK hash with name fallback; absent handlers prevent a claimed apply,
+resolved in the initialized game loop by SDK hash with name fallback, with a
+bounded retry if not yet available; absent handlers prevent a claimed apply,
 and active-query return storage is initialised. No alternate camera mechanism is
 introduced: the same SET_FOLLOW_VEHICLE_CAM_OFFSET handler receives
 (enabled, 0, 0, cm/100). Low invokes no camera query/write unless releasing our own

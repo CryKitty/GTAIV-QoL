@@ -521,7 +521,7 @@ public:
         qolclient::RefreshMenu(IsPauseMenuActive()!=0);
         awareness_.prune([&](unsigned blip,unsigned ped){std::lock_guard<std::mutex> lock(hostilityMutex_);return hostility_.friendly(blip,ped);});
         for(auto it=enemies_.begin();it!=enemies_.end();){
-            const auto blip=asBlip(*it);++it;
+            auto blip=asBlip(*it);++it;
             if(DoesBlipExist(blip)){ColourIndex colour=0;GetBlipColour(blip,&colour);enemyMarker(blip,colour,static_cast<unsigned>(GetBlipSprite(blip)));}
             else enemies_.erase(blip.Get());
         }

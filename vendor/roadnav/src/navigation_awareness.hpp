@@ -242,7 +242,7 @@ public:
         }
         states_[handle]=state;return state;
     }
-    bool suppressed(unsigned blip)const{for(const auto& item:hidden_)if(item.blip.Get()==blip)return true;return false;}
+    bool suppressed(unsigned blip)const{for(auto item:hidden_)if(item.blip.Get()==blip)return true;return false;}
     void suppressEnemy(Scripting::Blip blip,unsigned ped){
         using namespace Scripting;if(suppressed(blip.Get())||!DoesBlipExist(blip)||GetBlipInfoIdType(blip)!=BLIP_TYPE_CHAR)return;
         const auto bound=GetBlipInfoIdPedIndex(blip).Get();if(!enemymarkers::sameBinding(ped,bound))return;
@@ -265,7 +265,7 @@ public:
                 ++it;
             }
         }
-        enemymarkers::update(marks_,[&](const Mark& mark){
+        enemymarkers::update(marks_,[&](Mark& mark){
             auto state=pedState(mark.ped);state.hostile=state.hostile&&!friendly(mark.blip.Get(),mark.ped)&&samePed(mark);return state;
         },[&](Mark& mark){
             const auto state=pedState(mark.ped);restore(mark);
