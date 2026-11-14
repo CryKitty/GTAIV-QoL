@@ -230,6 +230,51 @@ int main(){
 
     {
         using namespace qolcamera;
+        // Exact b76 draw output must never become a native camera argument.
+        assert(!cameraHandle(0xfc3671f0u)&&!cameraHandle(0x80000000u));
+        assert(!cameraHandle(0)&&!cameraHandle(~0u)&&cameraHandle(3842));
+        DrivingState admitted;admitted.player=admitted.driver=admitted.fadedIn=admitted.control=true;
+        for(unsigned raw:{0u,~0u,0xfc3671f0u,0xfc4cd7bau,0x80000000u,3842u,4098u,0x7ffffffeu}){
+            auto checked=admitted;bool offset=false;unsigned calls=0;ScriptDraw classification=ScriptDraw::OtherCandidate;
+            assert(probeDrivingCamera(checked,3842,offset,[&]{++calls;return false;},[&]{++calls;return raw;},
+                [&](unsigned value,ScriptDraw kind){assert(value==raw);classification=kind;},[&]{++calls;return false;}));
+            const bool other=cameraHandle(raw)&&raw!=3842;
+            assert(checked.scriptCamera==other&&calls==(other?2u:3u));
+            assert(classification==(other?ScriptDraw::OtherCandidate:raw==3842?ScriptDraw::Gameplay:ScriptDraw::None));
+            DrivingHeight safe;unsigned written=0;
+            const auto command=applySafeHeight(safe,checked,120,offset,[&](bool,float,float,float){++written;});
+            assert(written==(other?0u:1u)&&command==(other?HeightCommand::None:HeightCommand::Apply));
+        }
+        for(unsigned blocked=0;blocked<10;++blocked){
+            auto checked=admitted;
+            if(blocked==0)checked.player=false;
+            if(blocked==1)checked.driver=false;
+            if(blocked==2)checked.cutscene=true;
+            if(blocked==3)checked.paused=true;
+            if(blocked==4)checked.fadedIn=false;
+            if(blocked==5)checked.control=false;
+            if(blocked==6)checked.interpolating=true;
+            if(blocked==7)checked.scriptCamera=true;
+            if(blocked==8)checked.natives=false;
+            if(blocked==9)checked.cameraReady=false;
+            unsigned callbacks=0;bool active=false;
+            assert(!probeDrivingCamera(checked,3842,active,[&]{++callbacks;return false;},[&]{++callbacks;return 0u;},
+                [&](unsigned,ScriptDraw){++callbacks;},[&]{++callbacks;return false;}));
+            DrivingHeight safe;
+            assert(applySafeHeight(safe,checked,120,false,[&](bool,float,float,float){++callbacks;})==HeightCommand::None&&callbacks==0);
+        }
+        for(unsigned invalid:{0u,~0u,0xfc3671f0u}){
+            auto checked=admitted;bool active=false;
+            assert(!probeDrivingCamera(checked,invalid,active,[]{assert(false);return false;},[]{assert(false);return 0u;},
+                [](unsigned,ScriptDraw){assert(false);},[]{assert(false);return false;}));
+            assert(!checked.cameraReady);
+        }
+        {
+            auto checked=admitted;bool active=false;unsigned calls=0;
+            assert(probeDrivingCamera(checked,3842,active,[&]{++calls;return true;},[]{assert(false);return 0u;},
+                [](unsigned,ScriptDraw){assert(false);},[]{assert(false);return false;}));
+            assert(checked.interpolating&&calls==1); // no draw/offset work during interpolation
+        }
         const auto notInterpolating=[](CameraBoolContext* context){context->value&=~255u;};
         const auto interpolating=[](CameraBoolContext* context){context->value=(context->value&~255u)|1u;};
         assert(!cameraInterpolating<CameraBoolContext>(notInterpolating,0x12345678u));

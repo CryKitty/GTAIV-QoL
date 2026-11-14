@@ -9,14 +9,21 @@ inline int heightPreset(int centimeters){
 }
 inline int presetHeight(int preset){return preset==1?45:preset==2?120:0;}
 inline const wchar_t* presetName(int preset){return preset==1?L"Medium":preset==2?L"High":L"Low (Default)";}
-inline bool cameraHandle(unsigned handle){return handle!=0&&handle!=~0u;}
+// Camera APIs use signed 32-bit IDs, not object addresses. A positive ID is
+// only a candidate: arbitrary native output must never be dereferenced.
+inline bool cameraHandle(unsigned handle){return handle>0&&handle<=0x7fffffffu;}
+enum class ScriptDraw {None,Gameplay,OtherCandidate};
+inline ScriptDraw scriptDraw(unsigned raw,unsigned gameplay){
+    if(!cameraHandle(raw))return ScriptDraw::None;
+    return raw==gameplay?ScriptDraw::Gameplay:ScriptDraw::OtherCandidate;
+}
 // Driver assignment alone does not prove follow-camera readiness.
 // Wait for seated, controllable driving, then two valid samples of one camera.
 struct CameraEntry {
     unsigned vehicle=0,camera=0,samples=0;std::uint32_t since=0;
     void reset(){*this={};}
     bool seated(std::uint32_t now,unsigned next,bool ready,bool sitting,bool entering){
-        if(!ready||!sitting||entering||!cameraHandle(next)){reset();return false;}
+        if(!ready||!sitting||entering||!next||next==~0u){reset();return false;}
         if(vehicle!=next){vehicle=next;since=now;camera=samples=0;return false;}
         return now-since>=500;
     }
@@ -52,6 +59,20 @@ struct DrivingState {
         return HeightGate::Ready;
     }
 };
+inline bool cameraAccessReady(const DrivingState& state){return state.gate(1)==HeightGate::Ready;}
+// The draw output is not an existence-test argument. Negative/zero outputs
+// mean no usable script camera; a different positive candidate conservatively
+// blocks height writes without Exists/Active/Propagating calls on that value.
+template<class Interpolate,class Draw,class Classify,class Offset>
+bool probeDrivingCamera(DrivingState& state,unsigned gameplay,bool& active,Interpolate interpolate,Draw draw,Classify classify,Offset offset){
+    if(!cameraAccessReady(state)||!cameraHandle(gameplay)){state.cameraReady=false;return false;}
+    state.interpolating=interpolate();
+    if(state.interpolating)return true;
+    const auto raw=draw();const auto kind=scriptDraw(raw,gameplay);classify(raw,kind);
+    state.scriptCamera=kind==ScriptDraw::OtherCandidate;
+    if(!state.scriptCamera)active=offset();
+    return true;
+}
 enum class HeightCommand {None,Apply,Release};
 struct DrivingHeight {
     bool owned=false;int applied=0;
@@ -77,7 +98,7 @@ template<class Write> HeightCommand applyHeight(DrivingHeight& height,const Driv
 // A follow-camera object may disappear during entry/exit/cutscene changes.
 // Keep ownership pending instead of touching that object's offset on teardown.
 template<class Write> HeightCommand applySafeHeight(DrivingHeight& height,const DrivingState& state,int cm,bool active,Write write){
-    if(state.gate(cm?cm:1)!=HeightGate::Ready)return HeightCommand::None;
+    if(!cameraAccessReady(state))return HeightCommand::None;
     return applyHeight(height,state,cm,active,write);
 }
 

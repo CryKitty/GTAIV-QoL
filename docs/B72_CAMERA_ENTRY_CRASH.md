@@ -1,3 +1,5 @@
+> Later b76 evidence identifies `DoesCamExist(scripted)` on an unusable draw output as the failing operation. See [the confirmed b76 investigation](B76_SCRIPT_CAMERA_HANDLE_CRASH.md). The analysis below records the evidence available for PR #20.
+
 # b72 first-driving-query crash
 
 ## Evidence and source-level isolation
