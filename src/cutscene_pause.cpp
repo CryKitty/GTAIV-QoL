@@ -116,7 +116,8 @@ protected:
         if(ready&&session.owned){Resume();session.owned=false;}pauseoverlay::Set(false);ready=false;Log("pause script stopped");}
     void RunScript() override{using Dispatch=void(__thiscall*)(ScriptThread*);auto mod=GetModuleHandleA("ScriptHook.dll");auto dispatch=mod?reinterpret_cast<Dispatch>(GetProcAddress(mod,"?RunScript@ScriptThread@@MAEXXZ")):nullptr;if(dispatch)dispatch(this);else Log("pause dispatcher export missing");}
     void RunTick() override{
-        DWORD audioState=0;const bool scene=loaded&&finished&&Read(cutsceneState,&audioState,4)&&(audioState==8||audioState==9)&&Query(loaded)&&!Query(finished);
+        DWORD audioState=0;const bool readable=Read(cutsceneState,&audioState,4);
+        const bool scene=cutscenemix::active(readable,audioState,loaded&&Query(loaded),!finished||Query(finished));
         const float multiplier=cutscenemix::gain(scene,qolclient::Enabled(QOL_VOCAL_SLIDERS),qolclient::Get(QOL_CUTSCENE_VOICE,100));
         const auto proof=cutsceneoutput::Apply(multiplier);const auto ds=directaudio::ApplyVolume();
         const int percent=qolclient::Get(QOL_CUTSCENE_VOICE,100);
