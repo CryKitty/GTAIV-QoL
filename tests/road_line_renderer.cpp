@@ -129,9 +129,9 @@ int main(){
         glyph.line.points={{0,40,0},{0,40,0}};glyph.line.endsAtDestination=true;
         glyph.at=GetTickCount();glyph.camera.position={0,-6,6};glyph.camera.rotation={-12,0,0};glyph.camera.fov=70;
         glyph.player={0,0,0};draw(marker,device,glyph);assert(marker.renderedFrames()==1);
-        const auto full=colouredPixels(device,true);
+        const auto full=kind!=D3DDEVTYPE_NULLREF?colouredPixels(device,true):0;
         glyph.player={0,20,0};glyph.at=GetTickCount();draw(marker,device,glyph);assert(marker.renderedFrames()==2);
-        const auto half=colouredPixels(device,true);
+        const auto half=kind!=D3DDEVTYPE_NULLREF?colouredPixels(device,true):0;
         if(kind!=D3DDEVTYPE_NULLREF)assert(full>half&&half>0);
         glyph.player={0,28,0};glyph.at=GetTickCount();draw(marker,device,glyph);
         assert(marker.renderedFrames()==2);if(kind!=D3DDEVTYPE_NULLREF)assert(colouredPixels(device)==0);
