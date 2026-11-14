@@ -40,10 +40,9 @@ int main(){
         assert(!qolsettings::uiApi.Footer(nullptr));
         const wchar_t* source=L"Help~n~                        ~p~GTAIV.exe: v1.2.0.59 / Fusion Fix: v5.1.2 / ASI Loader: v9~n~~r~Warning";
         const auto extended=qolsettings::uiApi.Footer(source);
-        assert(extended&&std::wcsstr(extended,L"CryKitty QoL: " QOL_VERSION_WIDE L" " QOL_BUILD_WIDE));
-        assert(qolupdatemenu::footerSeen.load());
+        assert(extended==source&&!qolupdatemenu::footerSeen.load());
         wchar_t label[60]{};assert(qolsettings::uiApi.MenuLabel("QOL_UPDATES",label,60));
-        assert(std::wcsstr(label,L"Check for QoL Updates")&&!std::wcsstr(label,QOL_VERSION_WIDE));
+        assert(std::wcsstr(label,QOL_VERSION_WIDE)&&std::wcsstr(label,QOL_BUILD_WIDE));
         qolupdatemenu::footerSeen.store(false);
         assert(qolsettings::uiApi.MenuLabel("QOL_UPDATES",label,60)&&std::wcsstr(label,QOL_BUILD_WIDE));
     }

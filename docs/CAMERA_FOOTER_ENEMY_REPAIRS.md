@@ -1,3 +1,5 @@
+> Current load hotfix: native QoL footer extension is held back; the exact b56 FusionFix host is restored and build identity remains on the QoL update row. See [load investigation](B64_WORLD_LOAD_HOTFIX.md). The text below records the earlier implementation.
+
 # PR #15 follow-up repairs: camera, footer, enemy lifecycle
 
 This repair was developed independently from main 81d1abe (PR #15), then rebased

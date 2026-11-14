@@ -1,4 +1,5 @@
 #include "../src/compass.hpp"
+#include "../src/world_load_gate.hpp"
 #include "../src/update_status_format.hpp"
 #include "../src/update_check_schedule.hpp"
 #include "../src/version_footer_text.hpp"
@@ -68,6 +69,20 @@ struct FakeGps {
     void configure(unsigned){}
 };
 int main(){
+    {
+        worldload::Gate gate;unsigned camera=0,prune=0,scheduler=0,renderer=0;
+        const auto initialize=[&]{++camera;++prune;++scheduler;++renderer;};
+        for(unsigned i=0;i<38000;++i)assert(!gate.allow({},initialize));
+        assert(camera==0&&prune==0&&scheduler==0&&renderer==0);
+        for(auto partial:{worldload::State{true,false,true,true},worldload::State{true,true,false,true},worldload::State{true,true,true,false},worldload::State{false,true,true,true}})assert(!gate.allow(partial,initialize));
+        assert(gate.allow({true,true,true,true},initialize));
+        assert(camera==1&&prune==1&&scheduler==1&&renderer==1);
+        assert(gate.allow({},initialize)); // pause/fade after initial ready does not reinitialise
+        assert(camera==1&&prune==1&&scheduler==1&&renderer==1);
+        gate.reset();assert(!gate.allow({},initialize));
+        assert(gate.allow({true,true,true,true},initialize)&&camera==2);
+    }
+
     {
         using namespace ingameupdates;Schedule timer;
         Schedule blocked;assert(!blocked.due(true,0,false,true,false));

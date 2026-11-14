@@ -102,20 +102,8 @@ void RefreshMenu(bool paused){
     const auto text=qolupdatemenu::label(Get(QOL_CHECK_UPDATES)!=0);
     if(text!=previous){previous=text;if(paused)if(auto refresh=refreshMenu.load())refresh();}
 }
-const wchar_t* __cdecl UiFooter(const wchar_t* source){
-    try{
-        if(!source)return source;
-        const auto length=wcsnlen_s(source,4097);if(length>4096)return source;
-        static thread_local std::wstring text;
-        const std::wstring original(source,length);text=qolfooter::extend(original,QOL_VERSION_WIDE,QOL_BUILD_WIDE);
-        const unsigned flags=(original.find(L"Fusion Fix: v")!=std::wstring::npos?1u:0u)|
-            (original.find(L"~p~")!=std::wstring::npos?2u:0u)|(original.find(L"CryKitty QoL:")!=std::wstring::npos?4u:0u);
-        static std::atomic<unsigned> observed{0};const unsigned mask=1u<<flags;
-        if(!(observed.fetch_or(mask)&mask)){char message[144];sprintf_s(message,"Native footer callback: markers=%u chars=%u extended=%u",flags,static_cast<unsigned>(length),text!=original?1u:0u);LogSetting(message);}
-        if(text==original)return source;
-        if(!qolupdatemenu::footerSeen.exchange(true))LogSetting("Native Game footer extended: QoL version/build present; update row status only");
-        return text.c_str();
-    }catch(...){LogSetting("Native footer extension failed; update row keeps build identity");return source;}
-}
+// Load hotfix: the exact b56 host has no cross-module ExtraInfo callback.
+// Retain the optional ABI tail, but do no formatting/TLS/logging work here.
+const wchar_t* __cdecl UiFooter(const wchar_t* source){return source;}
 const QolSettingsApi uiApi{sizeof(QolSettingsApi),1,UiGet,UiSet,UiReady,UiLabel,SetMenuRefresh,UiFooter};
 }

@@ -1,3 +1,10 @@
+GTAIV-QoL beta — conservative fix for the b64 world-loading hang
+
+- Restores the exact FusionFix menu host from the working b56 build. The native CryKitty QoL footer addition is held back: version/build identity stays beside Check for QoL Updates in Pause → QoL, together with live status and Updated time.
+- Waits for a faded-in world and a usable, controllable player before starting navigation, camera discovery, enemy cleanup and automatic update checks. Low / Medium / High camera choices, live-enemy tracking, corpse-marker cleanup and 10-minute update checks remain available after loading. Short startup stage records help identify any remaining load problem through automatic diagnostics.
+- The updater accepts the verified b56 host even after a rollback left a b64 installation receipt. Install through the normal updater with the game closed; saved menu choices, including High and update checks Off, remain. No file edits are needed.
+- After approval and a successful main build, update from the restored b56 install using the existing updater. Cold-launch into the world; check loading finishes, open Pause → QoL and verify the new build/status, then drive while cycling Low / Medium / High. Check live enemies and marker cleanup after defeat. Turn update checks On, watch Checking then Up to date, and leave play running over 10 minutes to check another attempt. With a newer build available, confirm Staged, exit once and relaunch to verify Updated time. Deck verification remains outstanding: logs isolate the b56-to-b64 regression but do not prove which new call stalled loading.
+
 GTAIV-QoL beta — camera preset application, native version footer and enemy cleanup
 
 - Repairs the driving-camera apply path without changing the presets: Low remains the game default, Medium is +45 cm, and High is +120 cm. Normal driving no longer depends on a game-camera child reporting itself as a propagating scripted camera. Actual scripted cameras, cutscenes, pause, control loss and existing script-owned offsets still prevent changes. Camera natives are resolved and checked before use; saved choices and nearest-preset migration remain.
