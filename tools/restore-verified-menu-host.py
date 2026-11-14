@@ -176,6 +176,20 @@ def line_type_menu(raw):
     j=len(code);code.extend(struct.pack('<i',0xd90d0-(rva+j+4)))
     code.extend(bytes.fromhex('83c404 c3'))
     struct.pack_into('<i',code,refresh_fix,refresh_thunk-refresh_anchor)
+    # Extend ExtraInfo's final native string directly, rather than patching
+    # the game renderer signature that FusionFix itself needs during startup.
+    footer_fixes=[];footer_thunks=[]
+    for offset in (0x98,0x8c):
+        footer_thunks.append(len(code))
+        code.extend(bytes.fromhex('9c 60 8bec 81ec10020000 83e4f0 0fae0424 fc e800000000 58'))
+        anchor=len(code)-1
+        code.extend(bytes.fromhex('8b80'));fix=len(code);code.extend(b'\0'*4);footer_fixes.append((fix,anchor))
+        skips=[]
+        for check,branch in [('85c0','74'),('833820','72'),('8b401c 85c0','74')]:
+            code.extend(bytes.fromhex(check+' '+branch));skips.append(len(code));code.append(0)
+        code.extend(bytes.fromhex('ff751c ffd0 83c404 85c0 7403 89451c'))
+        for j in skips:code[j]=len(code)-j-1
+        code.extend(bytes.fromhex('0fae0c24 8be5 61 9d 8987')+struct.pack('<I',offset)+b'\xc3')
     keys_at=len(code)
     for key_text in ['QOL_ESCAPE','QOL_MISSION','QOL_FRIEND','QOL_ENEMY','QOL_CUSTOM','QOL_UPDATES','QOL_CAMHEIGHT']:
         code.extend(key_text.encode().ljust(16,b'\0'))
@@ -207,6 +221,10 @@ def line_type_menu(raw):
     patch(0xd8268,'56578b7d08',decorate)
     patch(0xdf570,'558bec8b4508',setter)
     data[0xdf570]=0xe9 # entry tail-jump, not a call-site shim
+    for site,thunk,expected in [(0x72b1e,footer_thunks[0],'898798000000'),(0x72b66,footer_thunks[1],'89878c000000')]:
+        patch(site,expected,thunk)
+    for displacement,anchor in footer_fixes:
+        struct.pack_into('<i',code,displacement,state_rva-(rva+anchor))
     size=align(len(code),fa)
     header=struct.pack('<8sIIIIIIHHI',b'.qolmenu',len(code),rva,size,raw_at,0,0,0,0,0x60000020)
     data[table+count*40:table+(count+1)*40]=header

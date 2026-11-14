@@ -22,10 +22,27 @@ def patch(root):
     # Retained build91 inputs deliberately omit the optional label API.
     if 'static inline const QolSettingsApi* qolApi=' in bridge:
         if source.count(copy_row)!=1:raise RuntimeError('FusionFix row-label bridge differs from pinned source')
-        source=source.replace(copy_row,copy_row+"        if (qolApi && qolApi->size >= sizeof(QolSettingsApi) && qolApi->MenuLabel && qolApi->MenuLabel(label,text,60)) return nullptr;\n",1)
+        source=source.replace(copy_row,copy_row+"        if (qolApi && qolApi->size >= offsetof(QolSettingsApi, SetMenuRefresh) && qolApi->MenuLabel && qolApi->MenuLabel(label,text,60)) return nullptr;\n",1)
     source += '\nextern \"C\" __declspec(dllexport) uint32_t QoLFusionFixBridgeVersion() { return 1; }\n'
     path.write_text(source, encoding='utf-8')
     shutil.copyfile(own/'src/qol_settings_api.h', root/'source/qol_settings_api.h')
+
+    # ExtraInfo owns the native Game-footer string. Extend its final pointer
+    # through the same optional UI API; do not compete for its game signature.
+    info=root/'source/extrainfo.ixx'
+    info_source=info.read_text(encoding='utf-8-sig')
+    info_source=info_source.replace('#include <common.hxx>','#include <common.hxx>\n#include "qol_settings_api.h"',1)
+    assign='                            if (reg == 0x50)\n'
+    if info_source.count(assign)!=1:raise RuntimeError('FusionFix ExtraInfo assignment differs from pinned source')
+    callback='''                            const wchar_t* footer=extra.c_str();
+                            const auto core=GetModuleHandleA("GTAIV-QoL.asi");
+                            const auto get=core?reinterpret_cast<QolGetSettingsApi>(GetProcAddress(core,"QoLSettings_UiApi")):nullptr;
+                            const auto api=get?get(1):nullptr;
+                            if(api && api->size>=sizeof(QolSettingsApi) && api->Footer)
+                                if(const auto extended=api->Footer(footer)) footer=extended;
+'''
+    info_source=info_source.replace(assign,callback+assign,1).replace('(uintptr_t)extra.c_str()','(uintptr_t)footer')
+    info.write_text(info_source,encoding='utf-8')
 
     # DllMain must not depend on stack walking to recognize UAL. On Proton,
     # or a loader stack without usable unwind data, the old check can miss UAL

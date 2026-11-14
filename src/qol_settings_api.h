@@ -20,5 +20,7 @@ struct QolSettingsApi {
     // Optional additive tail; old version-1 hosts still use the first 20 bytes.
     int32_t (__cdecl* MenuLabel)(const char* key,wchar_t* text,uint32_t capacity);
     void (__cdecl* SetMenuRefresh)(void (__cdecl* callback)());
+    // Native FusionFix ExtraInfo final-string callback; borrowed until next call.
+    const wchar_t* (__cdecl* Footer)(const wchar_t* text);
 };
 typedef const QolSettingsApi* (__cdecl* QolGetSettingsApi)(uint32_t version);

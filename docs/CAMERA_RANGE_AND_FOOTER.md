@@ -57,21 +57,23 @@ one normal menu help/footer string. Its Game-tab branch (pMenuTab == 0) adds the
 purple version list. Graphics and Audio have different text in this same hook.
 There is no exported AddVersion API in that path.
 
-The CE-gated pause companion hooks the argument pushes after ExtraInfo's mid-hook,
-using a unique, checked SSE renderer signature. Its five overwritten bytes are
-PUSH -1 / PUSH -1 / PUSH EAX, disjoint from ExtraInfo's initial MOVSS. The existing
-MinHook trampoline replays those pushes; the adapter preserves flags, registers,
-FP/SIMD state and both -1 arguments, replacing only the string pointer when the
-bounded string contains ExtraInfo's purple Game-version marker. It inserts a new
-native ~n~ / matching indentation / ~p~ CryKitty QoL version+build line before any
-warning lines. It draws through the same native renderer, not a separate overlay.
+The verified bundled host now calls the optional core UI API Footer tail directly
+from ExtraInfo's final-string assignment. The previous second hook on the game's
+renderer argument pushes was unreliable: it changed bytes included in
+FusionFix's own startup signature. The native string extension no longer needs
+that game signature or a second MinHook hook. The checked seed adaptation patches
+only the two EAX/EDX context stores, preserving sections and relocations. Old API
+versions safely keep the original string. Matching, purple styling and warning
+placement are retained; no overlay is used.
 
-Only after extending an actual footer does the companion notify the core, which
-then leaves just the update control's name and live status on its QoL row. Until
-Game is visited this launch, or if ExtraInfo is disabled/signature unavailable,
-PR #14's identity stays on the row. This conservative fallback avoids losing the
-only visible identity. No new setting or file edits are needed. Both ASIs use the
-same CI-generated version/build header; VERSION still identifies named releases.
+Only after an actual native Game-footer extension does the core set footerSeen,
+which removes the duplicate identity from the QoL update row. Until then (or with
+ExtraInfo disabled/old host/old API), PR #14's identity remains. Automatic logs
+report callback marker flags, length and success, never the input text. VERSION
+still names releases and the CI build number still identifies each update.
+
+See [repair evidence and lifecycle](CAMERA_FOOTER_ENEMY_REPAIRS.md) for camera
+apply gating, enemy cleanup, diagnostics limits and the regression coverage.
 
 ## Acceptance
 

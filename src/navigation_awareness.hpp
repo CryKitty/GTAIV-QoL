@@ -41,7 +41,7 @@ inline bool validPool(const PedPool& p,unsigned player,unsigned flag){
     return p.storage>=0x10000&&p.flags>=0x10000&&p.size>0&&p.size<=2048&&p.stride>=0x500&&p.stride<=0x4000&&(player>>8)<p.size&&!(flag&0x80)&&flag==(player&255);
 }
 inline unsigned poolHandle(unsigned slot,unsigned flag){return flag&0x80?0:(slot<<8)|flag;}
-inline bool attacker(bool damage,bool combatOrderToPlayer,bool dead,float distance,bool aggressive=true){return !dead&&distance<=180&&(combatOrderToPlayer||(damage&&aggressive));}
+inline bool attacker(bool damage,bool combatOrderToPlayer,bool dead,float distance,bool aggressive=true){return !dead&&distance<=180&&aggressive&&(combatOrderToPlayer||damage);}
 // Convert GTA colour/control tokens to plain readable text; substitute the
 // dynamic ~a~/~1~ fields captured from the original instruction call.
 inline std::string briefText(const std::string& raw,const std::vector<std::string>& inserts){

@@ -87,7 +87,12 @@ class CompassHud {
         if(!compass::hostileMarkerType(static_cast<unsigned>(type))){enemies_.erase(blip.Get());return false;}
         if(type==BLIP_TYPE_CHAR)ped=GetBlipInfoIdPedIndex(blip);
         else if(type==BLIP_TYPE_CAR){auto car=GetBlipInfoIdCarIndex(blip);if(car.IsValid()&&DoesVehicleExist(car))GetDriverOfCar(car,&ped);}
-        const bool red=compass::enemyColour(colour)||sprite==BLIP_DWAYNE_RED||sprite==BLIP_PLAYBOY_X_RED||enemies_.count(blip.Get())!=0;
+        const bool red=compass::enemyColour(colour)||sprite==BLIP_DWAYNE_RED||sprite==BLIP_PLAYBOY_X_RED;
+        if(type==BLIP_TYPE_CHAR&&(!awareness_.pedState(ped.Get()).capable())){
+            if(red||enemies_.count(blip.Get()))awareness_.suppressEnemy(blip,ped.Get());
+            enemies_.erase(blip.Get());return false;
+        }
+        if(type==BLIP_TYPE_CAR&&ped.IsValid()&&!awareness_.pedState(ped.Get()).capable()){enemies_.erase(blip.Get());return false;}
         bool enemy=false;{std::lock_guard<std::mutex> lock(hostilityMutex_);enemy=!hostility_.friendly(blip.Get(),ped.Get())&&(awareness_.attacking(ped.Get())||((type==BLIP_TYPE_CHAR||type==BLIP_TYPE_CAR)?hostility_.enemy(blip.Get(),ped.Get(),red):red));}
         if(enemy)enemies_.insert(blip.Get());else enemies_.erase(blip.Get());
         return enemy;
@@ -258,21 +263,48 @@ class CompassHud {
         Scripting::DisplayTextWithLiteralString(x,y,"STRING",value);
     }
 
+    RadarNative heightOffset_=nullptr,heightActive_=nullptr;
+    struct HeightQuery:NativeContext {HeightQuery(){*static_cast<u32*>(m_pReturn)=0;}};
+    int heightLoggedCm_=-1;unsigned heightLoggedGate_=~0u;DWORD heightLogAt_=0;
+    unsigned heightApplies_=0,heightReleases_=0;
     void drivingCameraHeightTick(bool stopping=false){
         using namespace Scripting;
         const int desired=stopping?0:qolclient::Get(QOL_DRIVING_CAMERA_HEIGHT,0);
-        if(!desired&&!drivingHeight_.owned)return; // Default does not even query/write the camera.
-        const auto player=ConvertIntToPlayerIndex(GetPlayerId());Ped ped{};GetPlayerChar(player,&ped);
-        Vehicle car{};Ped driver{};Camera gameplay{};
-        if(ped.IsValid()&&DoesCharExist(ped)&&IsCharInAnyCar(ped)){GetCarCharIsUsing(ped,&car);if(car.IsValid()&&DoesVehicleExist(car))GetDriverOfCar(car,&driver);}
-        GetGameCamChild(&gameplay);
-        const bool cutscene=NativeInvoke::Invoke<NATIVE_HAS_CUTSCENE_LOADED,b8>()&&!NativeInvoke::Invoke<NATIVE_HAS_CUTSCENE_FINISHED,b8>();
-        const bool normal=desired>0&&driver.Get()==ped.Get()&&ped.IsValid()&&car.IsValid()&&!cutscene&&
-            !IsPauseMenuActive()&&IsScreenFadedIn()&&IsPlayerControlOn(player)&&gameplay.IsValid()&&IsCamPropagating(gameplay)&&!IsCamInterpolating();
-        const bool active=NativeInvoke::Invoke<NATIVE_IS_FOLLOW_VEHICLE_CAM_OFFSET_ACTIVE,b8>()!=0;
-        const auto command=drivingHeight_.update(normal,desired,active);
-        if(command==qolcamera::HeightCommand::Apply)NativeInvoke::Invoke<NATIVE_SET_FOLLOW_VEHICLE_CAM_OFFSET,ScriptVoid>(true,0.0f,0.0f,drivingHeight_.meters());
-        else if(command==qolcamera::HeightCommand::Release)NativeInvoke::Invoke<NATIVE_SET_FOLLOW_VEHICLE_CAM_OFFSET,ScriptVoid>(false,0.0f,0.0f,0.0f);
+        qolcamera::DrivingState state;state.stopping=stopping;
+        state.natives=heightOffset_&&heightActive_;
+        bool active=false;Ped ped{};Vehicle car{};Ped driver{};
+        if(desired&&!stopping){
+            const auto player=ConvertIntToPlayerIndex(GetPlayerId());GetPlayerChar(player,&ped);
+            state.player=ped.IsValid()&&DoesCharExist(ped);
+            if(state.player&&IsCharInAnyCar(ped)){GetCarCharIsUsing(ped,&car);if(car.IsValid()&&DoesVehicleExist(car))GetDriverOfCar(car,&driver);}
+            state.driver=state.player&&car.IsValid()&&driver.Get()==ped.Get();
+            state.cutscene=NativeInvoke::Invoke<NATIVE_HAS_CUTSCENE_LOADED,b8>()&&!NativeInvoke::Invoke<NATIVE_HAS_CUTSCENE_FINISHED,b8>();
+            state.paused=IsPauseMenuActive()!=0;state.fadedIn=IsScreenFadedIn()!=0;state.control=IsPlayerControlOn(player)!=0;
+            state.interpolating=IsCamInterpolating();
+            // GET_GAME_CAM_CHILD describes a node inside the ordinary gameplay
+            // graph, not proof of a propagating script camera. Reject an actual
+            // scripted draw camera instead; no child-handle prerequisite.
+            Camera scripted{};NativeInvoke::Invoke<NATIVE_GET_SCRIPT_DRAW_CAM,ScriptVoid>(&scripted);
+            state.scriptCamera=scripted.IsValid()&&DoesCamExist(scripted)&&IsCamActive(scripted)&&IsCamPropagating(scripted);
+            if(heightActive_){HeightQuery query;heightActive_(&query);active=query.GetResult<u32>()!=0;}
+        }
+        const auto command=qolcamera::applyHeight(drivingHeight_,state,desired,active,[&](bool enabled,float x,float y,float z){
+            if(!heightOffset_)return;
+            NativeContext call;call.Push(enabled);call.Push(x);call.Push(y);call.Push(z);heightOffset_(&call);
+        });
+        if(command==qolcamera::HeightCommand::Apply)++heightApplies_;
+        if(command==qolcamera::HeightCommand::Release)++heightReleases_;
+        const auto gate=static_cast<unsigned>(state.gate(desired));const DWORD now=GetTickCount();
+        if(log_&&(desired!=heightLoggedCm_||gate!=heightLoggedGate_||command==qolcamera::HeightCommand::Release||(desired&&now-heightLogAt_>=5000))){
+            // Fixed numeric state only, no player/session identifiers. Record
+            // transitions plus a bounded heartbeat instead of per-frame spam.
+            Camera child{};bool childValid=false,childPropagating=false;
+            if(desired&&!stopping){GetGameCamChild(&child);childValid=child.IsValid()&&DoesCamExist(child);childPropagating=childValid&&IsCamPropagating(child);}
+            char message[288];std::snprintf(message,sizeof(message),"Driving camera state: preset=%d cm=%d gate=%u driver=%u scripted=%u active=%u owned=%u command=%u apply=%u release=%u natives=%u old-child-valid=%u old-child-propagating=%u",
+                qolcamera::heightPreset(desired),desired,gate,state.driver?1u:0u,state.scriptCamera?1u:0u,active?1u:0u,drivingHeight_.owned?1u:0u,
+                static_cast<unsigned>(command),heightApplies_,heightReleases_,state.natives?1u:0u,childValid?1u:0u,childPropagating?1u:0u);log_(message);
+            heightLoggedCm_=desired;heightLoggedGate_=gate;heightLogAt_=now;heightApplies_=heightReleases_=0;
+        }
     }
 
     void clearCompassWaypoint(){
@@ -326,6 +358,8 @@ public:
     }
     explicit CompassHud(void (*log)(const char*)=nullptr,compass::NoticeRenderer* noticeRenderer=nullptr):noticeRenderer_(noticeRenderer),log_(log){}
     void start(){
+        heightLoggedCm_=-1;heightLoggedGate_=~0u;heightLogAt_=0;heightApplies_=heightReleases_=0;
+        if(log_){char message[120];const int cm=qolclient::Get(QOL_DRIVING_CAMERA_HEIGHT,0);std::snprintf(message,sizeof(message),"Driving camera loaded: preset=%d cm=%d",qolcamera::heightPreset(cm),cm);log_(message);}
         char path[MAX_PATH]{};GetModuleFileNameA(nullptr,path,MAX_PATH);
         char* slash=std::strrchr(path,'\\');if(slash){slash[1]=0;strcat_s(path,"GTAIV-QoL.ini");}
         compassDefault_=GetPrivateProfileIntA("Compass","Enabled",1,path)!=0;
@@ -338,6 +372,10 @@ public:
         using Lookup=void* (__cdecl*)(std::uint32_t);using Names=void* (__cdecl*)(const char*);
         const auto lookup=module?reinterpret_cast<Lookup>(GetProcAddress(module,"?GetNativeAddressFromHash@Game@@SAPAXI@Z")):nullptr;
         const auto names=module?reinterpret_cast<Names>(GetProcAddress(module,"?GetNativeAddress@Game@@SAPAXPBD@Z")):nullptr;
+        const auto cameraNative=[&](unsigned hash,const char* name){auto fn=lookup?lookup(hash):nullptr;if(!fn&&names)fn=names(name);return reinterpret_cast<RadarNative>(fn);};
+        heightOffset_=cameraNative(Scripting::NATIVE_SET_FOLLOW_VEHICLE_CAM_OFFSET,"SET_FOLLOW_VEHICLE_CAM_OFFSET");
+        heightActive_=cameraNative(Scripting::NATIVE_IS_FOLLOW_VEHICLE_CAM_OFFSET_ACTIVE,"IS_FOLLOW_VEHICLE_CAM_OFFSET_ACTIVE");
+        if(log_){char message[100];std::snprintf(message,sizeof(message),"Driving camera native resolution: set=%u active=%u",heightOffset_?1u:0u,heightActive_?1u:0u);log_(message);}
         const auto init=MH_Initialize();if(init!=MH_OK&&init!=MH_ERROR_ALREADY_INITIALIZED)return;
         auto install=[&](unsigned hash,const char* name,void* detour,RadarNative& original,void*& target){
             if(target)return;auto address=lookup?lookup(hash):nullptr;if(!address&&names)address=names(name);
@@ -354,8 +392,9 @@ public:
     unsigned missionRouteAge(unsigned target){return awareness_.routeRequestAge(target);}
     bool navigationTargetEnemy(Scripting::Blip target){Scripting::ColourIndex colour=0;Scripting::GetBlipColour(target,&colour);return enemyMarker(target,colour,static_cast<unsigned>(Scripting::GetBlipSprite(target)));}
     bool navigationChasePosition(Scripting::Blip target,roadnav::Vec3& point){
-        using namespace Scripting;if(!DoesBlipExist(target))return false;
+        using namespace Scripting;if(!DoesBlipExist(target)||awareness_.suppressed(target.Get()))return false;
         if(GetBlipInfoIdType(target)==BLIP_TYPE_CHAR){auto ped=GetBlipInfoIdPedIndex(target);
+            if(!awareness_.pedState(ped.Get()).capable())return false;
             if(ped.IsValid()&&DoesCharExist(ped)&&IsCharInAnyCar(ped)){Vehicle car{};GetCarCharIsUsing(ped,&car);
                 if(car.IsValid()&&DoesVehicleExist(car)){GetCarCoordinates(car,&point.x,&point.y,&point.z);return std::isfinite(point.x)&&std::isfinite(point.y)&&std::isfinite(point.z);}}
         }
@@ -424,7 +463,7 @@ public:
             if(!compass::radarDisplay(display))continue;
             float speed=0;bool inVehicle=false;const auto type=GetBlipInfoIdType(blip);
             if(type==BLIP_TYPE_CAR){auto car=GetBlipInfoIdCarIndex(blip);if(!car.IsValid()||car.Get()==playerCar.Get()||!DoesVehicleExist(car)||IsCarDead(car))continue;GetCarSpeed(car,&speed);inVehicle=true;}
-            else if(type==BLIP_TYPE_CHAR){auto ped=GetBlipInfoIdPedIndex(blip);if(!ped.IsValid()||ped.Get()==playerPed.Get()||!DoesCharExist(ped)||IsCharDead(ped))continue;GetCharSpeed(ped,&speed);if(IsCharInAnyCar(ped)){Vehicle car{};GetCarCharIsUsing(ped,&car);if(car.IsValid()&&DoesVehicleExist(car)&&!IsCarDead(car)){GetCarSpeed(car,&speed);inVehicle=true;}}}
+            else if(type==BLIP_TYPE_CHAR){auto ped=GetBlipInfoIdPedIndex(blip);if(!ped.IsValid()||ped.Get()==playerPed.Get()||!awareness_.pedState(ped.Get()).capable())continue;GetCharSpeed(ped,&speed);if(IsCharInAnyCar(ped)){Vehicle car{};GetCarCharIsUsing(ped,&car);if(car.IsValid()&&DoesVehicleExist(car)&&!IsCarDead(car)){GetCarSpeed(car,&speed);inVehicle=true;}}}
             else continue;
             roadnav::Vec3 point{};if(!position(blip,point))continue;
             const float distance=roadnav::distance2D(player,point);
@@ -466,6 +505,12 @@ public:
     void tick(){
         using namespace Scripting;
         qolclient::RefreshMenu(IsPauseMenuActive()!=0);
+        awareness_.prune([&](unsigned blip,unsigned ped){std::lock_guard<std::mutex> lock(hostilityMutex_);return hostility_.friendly(blip,ped);});
+        for(auto it=enemies_.begin();it!=enemies_.end();){
+            const auto blip=asBlip(*it);++it;
+            if(DoesBlipExist(blip)){ColourIndex colour=0;GetBlipColour(blip,&colour);enemyMarker(blip,colour,static_cast<unsigned>(GetBlipSprite(blip)));}
+            else enemies_.erase(blip.Get());
+        }
         const auto inputNow=GetTickCount();
         const bool nativeWaypointDown=IsButtonPressed(0,static_cast<ePadButton>(10))!=0;
         bool rawController=false;const bool waypointDown=controller_.left(nativeWaypointDown,rawController);
@@ -541,7 +586,7 @@ public:
             if(!compass::nativeRadarMarkerVisible(display,alpha,IsBlipShortRange(blip)!=0,distance,range,sprite)){++rangeFiltered;continue;}
             ColourIndex col=0;GetBlipColour(blip,&col);
             const bool entity=type==BLIP_TYPE_CAR||type==BLIP_TYPE_CHAR||type==BLIP_TYPE_OBJECT||type==BLIP_TYPE_PICKUP;
-            const bool enemy=enemyMarker(blip,col,sprite);
+            const bool enemy=enemyMarker(blip,col,sprite);if(awareness_.suppressed(blip.Get()))continue;
             const int priority=selected||sprite==BLIP_WAYPOINT?3:(sprite<=BLIP_OBJECTIVE_5?2:0);
             const bool police=policeMarker(blip);
             const bool objective=!outingVenue&&!police&&awareness::objectiveLabel(mission,enemy,entity,sprite,blip.Get()==missionTarget.Get(),haveMissionPoint?roadnav::distance2D(point,missionPoint):100000.0f);
