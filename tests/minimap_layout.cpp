@@ -46,11 +46,28 @@ int main(){
     // changes any component alpha, including the mapped radar component.
     auto* radar=reinterpret_cast<unsigned char*>(table[31]);radar[0x59]=128;radar[0x48]=192;info[8].alpha=200;
     assert(display(radar)&&radar[0x59]==128&&radar[0x48]==192&&info[8].alpha==200);
-    image[0x5400]=1;assert(display(reinterpret_cast<void*>(table[31])));
+    image[0x5400]=1;mask.enable(nullptr,base);assert(display(reinterpret_cast<void*>(table[31])));
     assert(radar[0x59]==128&&radar[0x48]==192&&info[8].alpha==200);
     assert(info[8].pos.x==.1f&&!minimaplayout::displaced(*reinterpret_cast<minimaplayout::Point*>(static_cast<std::uintptr_t>(table[31])+0x18)));
-    image[0x5400]=0;assert(display(reinterpret_cast<void*>(table[31]))&&minimaplayout::displaced(info[8].pos));
+    image[0x5400]=0;mask.enable(nullptr,base);assert(display(reinterpret_cast<void*>(table[31]))&&minimaplayout::displaced(info[8].pos));
     mask.release();assert(radar[0x59]==128&&radar[0x48]==192&&info[8].alpha==200);assert(!mask.active()&&info[8].pos.x==.1f&&display(reinterpret_cast<void*>(table[31])));
+    // Replacement components inherit off-screen geometry from the live layout.
+    // Off during pause must recover the new component even before any query/tick.
+    for(unsigned cycle=0;cycle<3;++cycle){
+        table[31]=static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(radar));
+        mask.enable(nullptr,base);assert(mask.active());
+        auto* replacement=image+0xb000+cycle*0x180;std::memcpy(replacement,radar,0x180);
+        table[31]=static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(replacement));
+        assert(minimaplayout::displaced(*reinterpret_cast<minimaplayout::Point*>(replacement+0x18)));
+        image[0x5400]=1;mask.release();
+        const auto restored=*reinterpret_cast<minimaplayout::Point*>(replacement+0x18);
+        assert(restored.x==.1f&&restored.y==.8f&&info[8].pos.x==.1f);
+        assert(!minimaplayout::displaced(*reinterpret_cast<minimaplayout::Point*>(radar+0x18)));
+        assert(replacement[0x11]==1&&replacement[0x59]==128); // original native visibility/opacity remain
+        image[0x5400]=0;
+    }
+    table[31]=static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(radar));
+    radar[0x11]=0;mask.enable(nullptr,base);mask.release();assert(radar[0x11]==0);radar[0x11]=1; // user/game-hidden stays hidden
     // Alternate CE resolution: the generic table signature is absent, but
     // the native's decoded indexed HUD load and display call identify both.
     std::memset(image+0x1080,0xcc,sizeof(componentCode));

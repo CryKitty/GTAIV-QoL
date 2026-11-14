@@ -92,15 +92,15 @@ int main(){
     front();back();assert(meters==0&&borders==0&&mask.hidden()==2);
     const auto nativeFill=reinterpret_cast<Draw>(image+0x1700),restoreState=reinterpret_cast<Draw>(image+0x1ec0);
     auto& fills=*reinterpret_cast<unsigned*>(image+0x3020);auto& restores=*reinterpret_cast<unsigned*>(image+0x3024);
-    nativeFill();assert(fills==0&&mask.fillHidden()==1&&mask.fillCalls()==1);
+    nativeFill();assert(fills==1&&mask.fillHidden()==0&&mask.fillCalls()==0);
     restoreState();assert(restores==1); // Preserve shared state and all CPU GPS work.
     state(image+0x3200);meter();border();assert(meters==1&&borders==1); // Last selection was ring; unrelated HUD still draws.
     state(image+0x3208);meter();assert(meters==2); // Gun/other sprite cannot change compass meter visibility.
     state(image+0x3204);meter();assert(meters==3);
-    image[0x3300]=1;front();back();nativeFill();assert(fills==1);assert(meters==5&&borders==3); // Live pause menu, without game ticks.
-    image[0x3300]=0;front();nativeFill();assert(fills==1&&mask.fillHidden()==2);assert(meters==5&&mask.hidden()==5);
-    std::thread worker([&](){meter();front();});worker.join();assert(meters==6&&mask.hidden()==6);
-    mask.release();front();back();nativeFill();assert(fills==2);assert(meters==8&&borders==5&&!mask.active());
+    image[0x3300]=1;front();back();nativeFill();assert(fills==2);assert(meters==5&&borders==3); // Live pause menu, without game ticks.
+    image[0x3300]=0;front();nativeFill();assert(fills==3&&mask.fillHidden()==0);assert(meters==5&&mask.hidden()==3);
+    std::thread worker([&](){meter();front();});worker.join();assert(meters==6&&mask.hidden()==4);
+    mask.release();front();back();nativeFill();assert(fills==4);assert(meters==8&&borders==5&&!mask.active());
     // A second queued function using the same sprite is ambiguous: don't hook.
     makeFrame(0x1380,0x3200);image[0x1400]=0x68;put(0x1401,address(0x1380));
     MinimapRing ambiguous;ambiguous.enable(base+0x3300,nullptr,base);assert(!ambiguous.active());front();assert(meters==9);

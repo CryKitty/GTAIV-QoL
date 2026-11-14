@@ -1,3 +1,9 @@
+GTAIV-QoL beta — safer compass HUD masking and radar restoration
+
+- Turning Compass HUD Off restores the radar position even if the game replaced its radar component while the compass was active. Repeated On/Off cycles preserve the game’s own radar visibility and opacity choices.
+- The compass stops intercepting shared HUD visibility queries and no longer skips an entire native radar-content callback. This is a conservative response to the wardrobe help prompt that clears when Compass HUD is turned Off: native content and message-lifetime work must keep running. The message observer remains read-only. The exact prompt-cleanup cause still needs an in-game check; native health/ammo fill visuals may remain visible with Compass On until a narrower visual-only mask is verified.
+- Delivered through the existing updater; no new settings, file edits or release-version change. After approval/merge and successful main CI, update normally. In Pause → QoL toggle Compass HUD On, approach the safehouse wardrobe, then leave the room, apartment and drive away: the help prompt must clear normally. Toggle Compass HUD Off and confirm the full vanilla radar returns, then repeat On/Off several times on foot and in a vehicle, including pause/resume. Check phone/mission compass messages still work. Deck verification remains outstanding.
+
 GTAIV-QoL beta — fix the b76 crash when entering a car
 
 - Stops the camera-height code from testing a bogus scripted-camera value as if it were a real camera. The new b76 trace identifies this as the crash point even with no wanted level or route. Missing/negative draw values are ignored; another positive camera candidate safely holds off height changes without querying that untrusted value.
