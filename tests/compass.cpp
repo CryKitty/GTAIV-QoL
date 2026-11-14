@@ -1,5 +1,6 @@
 #include "../src/compass.hpp"
 #include "../src/update_status_format.hpp"
+#include "../src/update_check_schedule.hpp"
 #include "../src/version_footer_text.hpp"
 #include "../src/compass_outings.hpp"
 #include "../src/driving_camera_height.hpp"
@@ -67,6 +68,30 @@ struct FakeGps {
 };
 int main(){
     {
+        using namespace ingameupdates;Schedule timer;
+        Schedule blocked;assert(!blocked.due(true,0,false,true,false));
+        assert(blocked.due(true,1,false,false,false)); // startup waits for ownership, not another interval
+        assert(!blocked.due(false,2,false,true,false));
+        assert(!timer.due(false,0,false,false,false));
+        assert(timer.due(true,100,false,false,false)); // startup / On unchanged
+        assert(!timer.due(true,600099,false,false,false));
+        assert(timer.due(true,600100,false,false,false));
+        assert(!timer.due(true,600101,false,false,false)); // no duplicate
+        assert(!timer.due(true,1200100,true,false,false)); // queued request
+        assert(!timer.due(true,1200200,false,true,false)); // in flight
+        assert(timer.due(true,1200300,false,false,false)); // idle after delay, no catch-up burst
+        assert(!timer.due(true,1800300,false,false,true)); // staged
+        assert(!timer.due(true,2400300,false,false,true));
+        assert(!timer.due(false,2400400,false,false,true)&&!timer.enabled);
+        assert(timer.due(true,2400500,false,false,false)); // fresh toggle starts interval
+        // A failed check has no special retry loop: retry only next interval.
+        assert(!timer.due(true,3000499,false,false,false));
+        assert(timer.due(true,3000500,false,false,false));
+        timer={};assert(timer.due(true,9000000,false,false,false)); // new session, no old deadline
+        assert(!timer.due(true,9000001,false,false,false));
+    }
+
+    {
         using namespace qolcamera;
         for(int cm=0;cm<=200;++cm){
             const int p=heightPreset(cm),target=presetHeight(p);
@@ -94,6 +119,8 @@ int main(){
 
     {
         using namespace qolupdatemenu;
+        const auto staged=parse("[Update]\nState=failed\nStaged=1\n");assert(staged.valid&&staged.staged);
+        assert(!parse("[Update]\nState=failed\nStaged=garbage\n").valid);
         const auto receipt=parse("[Update]\nState=staged\n[Installed]\nSha="+std::string(40,'a')+"\nBuild=47\nUpdatedLocal=2026-11-13 16:00\n");
         assert(receipt.valid&&receipt.state=="staged"&&receipt.build=="47");
         assert(!parse("[Update]\nState=private response\n").valid);

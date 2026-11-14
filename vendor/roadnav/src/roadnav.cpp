@@ -906,6 +906,7 @@ class RoadNavScript final : public ScriptThread {
     }
 protected:
     void OnStart() override{
+        qolclient::UpdateSession(true);
         const auto ini=executableFolder()+"GTAIV-QoL.ini";
         navigationDiagnostics=GetPrivateProfileIntA("Diagnostics","LogToFile",0,ini.c_str())!=0;
         loggedLineMode_=-1;
@@ -923,7 +924,7 @@ protected:
         tickLogged_=attached_=wasVisible_=haveArrival_=false;lastCueCount_=0;lastDestination_=false;hide();
         if(navigationDiagnostics){char text[180];std::snprintf(text,sizeof(text),"RoadNav | build=%s | compiled=%s %s",ROADNAV_BUILD_ID,__DATE__,__TIME__);event(text);}
     }
-    void OnKill() override{finishForwardRoute(GetTickCount());clearChase();compass_.stop();hide();haveArrival_=false;attached_=false;event("ScriptHook script stopped");}
+    void OnKill() override{qolclient::UpdateSession(false);finishForwardRoute(GetTickCount());clearChase();compass_.stop();hide();haveArrival_=false;attached_=false;event("ScriptHook script stopped");}
     void RunScript() override{
         using Dispatcher=void (__thiscall*)(ScriptThread*);
         auto module=GetModuleHandleA("ScriptHook.dll");
