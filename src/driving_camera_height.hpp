@@ -23,7 +23,8 @@ struct CameraEntry {
     bool observed(unsigned next){
         if(!cameraHandle(next)){camera=samples=0;return false;}
         if(camera!=next){camera=next;samples=1;return false;}
-        samples=std::min(samples+1,2u);return samples>=2;
+        if(samples<2)++samples;
+        return samples>=2;
     }
 };
 // NativeContext aliases its first argument and result storage. Boolean native
