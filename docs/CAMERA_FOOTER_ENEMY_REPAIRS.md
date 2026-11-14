@@ -1,7 +1,9 @@
 # PR #15 follow-up repairs: camera, footer, enemy lifecycle
 
-This branch is based on main 81d1abe (PR #15), independently of periodic-check
-PR #16. It contains no periodic-check scheduling changes.
+This repair was developed independently from main 81d1abe (PR #15), then rebased
+onto main 6073fb5 after periodic-check PR #16 merged. The rebase preserves both
+changelog entries and both independent regression blocks; this repair adds no
+periodic-check scheduling changes.
 
 ## Evidence and honest limits
 
