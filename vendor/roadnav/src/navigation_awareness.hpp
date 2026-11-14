@@ -131,10 +131,12 @@ class NavigationAwareness {
     bool samePed(const Mark& mark){using namespace Scripting;return DoesBlipExist(mark.blip)&&GetBlipInfoIdType(mark.blip)==BLIP_TYPE_CHAR&&GetBlipInfoIdPedIndex(mark.blip).Get()==mark.ped;}
     void restore(Mark& mark){
         using namespace Scripting;
-        if(!DoesBlipExist(mark.blip)||GetBlipInfoIdType(mark.blip)!=BLIP_TYPE_CHAR)return;
-        const auto bound=GetBlipInfoIdPedIndex(mark.blip).Get();
+        if(!DoesBlipExist(mark.blip))return;
+        const auto type=GetBlipInfoIdType(mark.blip);
+        const auto bound=type==BLIP_TYPE_CHAR?GetBlipInfoIdPedIndex(mark.blip).Get():0u;
         if(!enemymarkers::sameBinding(mark.ped,bound))return; // Never touch a rebound/reused marker.
-        if(mark.owned){RemoveBlip(mark.blip);return;}
+        if(mark.owned){RemoveBlip(mark.blip);return;} // Includes detached/converted orphan blips.
+        if(type!=BLIP_TYPE_CHAR)return;
         ColourIndex colour=0;GetBlipColour(mark.blip,&colour);if(colour==9)ChangeBlipColour(mark.blip,mark.colour);
         const auto display=NativeInvoke::Invoke<NATIVE_GET_BLIP_INFO_ID_DISPLAY,u32>(mark.blip);
         if(display==4)ChangeBlipDisplay(mark.blip,static_cast<eBlipDisplay>(mark.display));
@@ -251,14 +253,17 @@ public:
     template<class Friendly> void prune(Friendly friendly){
         using namespace Scripting;states_.clear();
         for(auto it=hidden_.begin();it!=hidden_.end();){
-            if(!DoesBlipExist(it->blip)){it=hidden_.erase(it);continue;}
+            if(!DoesBlipExist(it->blip)||GetBlipInfoIdType(it->blip)!=BLIP_TYPE_CHAR){it=hidden_.erase(it);continue;}
             const auto bound=GetBlipInfoIdPedIndex(it->blip).Get();
             if(!enemymarkers::sameBinding(it->ped,bound)){it=hidden_.erase(it);continue;}
             const auto state=pedState(it->ped);
             if(state.threat()&&!friendly(it->blip.Get(),it->ped)){
                 if(NativeInvoke::Invoke<NATIVE_GET_BLIP_INFO_ID_DISPLAY,u32>(it->blip)==0)ChangeBlipDisplay(it->blip,static_cast<eBlipDisplay>(it->display));
                 it=hidden_.erase(it);
-            }else ++it;
+            }else{
+                if(NativeInvoke::Invoke<NATIVE_GET_BLIP_INFO_ID_DISPLAY,u32>(it->blip)!=0)ChangeBlipDisplay(it->blip,static_cast<eBlipDisplay>(0));
+                ++it;
+            }
         }
         enemymarkers::update(marks_,[&](const Mark& mark){
             auto state=pedState(mark.ped);state.hostile=state.hostile&&!friendly(mark.blip.Get(),mark.ped)&&samePed(mark);return state;
@@ -286,6 +291,10 @@ public:
         for(auto& mark:marks_)handles.push_back(mark.ped);
         {std::lock_guard<std::mutex> lock(mutex_);for(const auto& entry:combat_)handles.push_back(entry.first);}
         std::sort(handles.begin(),handles.end());handles.erase(std::unique(handles.begin(),handles.end()),handles.end());
+        // Preserve the old retention radius independently of per-frame life cleanup.
+        for(auto it=marks_.begin();it!=marks_.end();){roadnav::Vec3 point{};GetCharCoordinates(pedHandle(it->ped),&point.x,&point.y,&point.z);
+            if(roadnav::distance2D(point,position)>220){restore(*it);it=marks_.erase(it);}else ++it;
+        }
         Vehicle vehicle{};GetCarCharIsUsing(player,&vehicle);
         for(auto handle:handles){if(handle==player.Get()||marks_.size()>=32||attacking(handle))continue;auto ped=pedHandle(handle);
             if(!DoesCharExist(ped)||IsCharDead(ped))continue;roadnav::Vec3 point{};GetCharCoordinates(ped,&point.x,&point.y,&point.z);const float distance=roadnav::distance2D(point,position);if(distance>180||!pedState(handle).capable())continue;
