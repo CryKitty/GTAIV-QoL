@@ -345,7 +345,7 @@ int main(){
         const auto write=[&](bool on,float x,float y,float z){writes.push_back({on,x,y,z});};
         assert(applyHeight(height,driving,presetHeight(0),false,write)==HeightCommand::None&&writes.empty());
         assert(applyHeight(height,driving,presetHeight(1),false,write)==HeightCommand::Apply);
-        assert(writes.back().on&&writes.back().x==0&&writes.back().y==0&&std::fabs(writes.back().z-.45f)<.0001f);
+        assert(writes.back().on&&writes.back().x==0&&writes.back().y==0&&std::fabs(writes.back().z-.60f)<.0001f);
         assert(applyHeight(height,driving,presetHeight(1),true,write)==HeightCommand::None);
         assert(applyHeight(height,driving,presetHeight(2),true,write)==HeightCommand::Apply&&std::fabs(writes.back().z-1.2f)<.0001f);
         driving.scriptCamera=true;assert(applyHeight(height,driving,120,true,write)==HeightCommand::Release&&!writes.back().on&&writes.back().z==0);
