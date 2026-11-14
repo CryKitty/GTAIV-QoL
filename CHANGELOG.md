@@ -1,3 +1,10 @@
+GTAIV-QoL beta — fix the b76 crash when entering a car
+
+- Stops the camera-height code from testing a bogus scripted-camera value as if it were a real camera. The new b76 trace identifies this as the crash point even with no wanted level or route. Missing/negative draw values are ignored; another positive camera candidate safely holds off height changes without querying that untrusted value.
+- Scripted-camera, interpolation and offset probes now share the apply path’s readiness gate. The seating and safe gameplay-camera checks remain, and the automatic trace states when the current frame is ready rather than leaving an earlier “not ready” sample as the last clue. Per-operation markers remain; unsafe scripted-camera existence/active checks are removed.
+- Low stays the game default, Medium +45 cm and High +120 cm. The loading hotfix, updater, police guidance, destination fades and road stabilizers are unchanged. Receive through the normal updater after approval/merge and successful main CI; no new setting, file edits or release-version change.
+- Retest after updating: cold-load with no wanted level and no waypoint. In Pause → QoL select High, then simply enter a normal vehicle and drive. Next, turn Road Line and Police Escape Line On and carjack a car in police sight: enter, confirm the escape line appears, and drive until wanted clears. Cycle Low → Medium → High → Low while driving, then check pause/resume and repeated entry/exit. Exit normally for automatic diagnostics upload. Deck verification remains outstanding.
+
 GTAIV-QoL beta — safer camera entry during a police chase
 
 - Driving Camera Height now waits until you are fully seated and in control, then checks that the gameplay camera exists and stays valid before querying or changing its height. This closes the first-driving-query path implicated in the b72 crash when carjacking near police. Low stays the game default; Medium remains +45 cm and High +120 cm. Height changes wait about half a second after safe seating plus two valid camera samples; police escape planning is not delayed.

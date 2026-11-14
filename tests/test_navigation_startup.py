@@ -56,11 +56,29 @@ class NavigationStartupTests(unittest.TestCase):
         self.assertNotIn('IsCamInterpolating()',camera)
         self.assertIn('NATIVE_IS_SPECIFIC_CAM_INTERPOLATING',source)
         self.assertIn('cameraInterpolating<HeightQuery>(heightInterpolation_,gameplay)',camera)
-        self.assertIn('qolcamera::cameraHandle(scripted.Get())',camera)
+        self.assertIn('qolcamera::cameraAccessReady(state)',camera)
+        self.assertIn('qolcamera::probeDrivingCamera',camera)
         self.assertIn('qolcamera::applySafeHeight',camera)
-        for operation in ('Child','ChildExists','Interpolation','Script','ScriptExists','ScriptActive','ScriptPropagate','OffsetRead','OffsetWrite'):
+        for operation in ('Child','ChildExists','Interpolation','Script','ScriptClassify','OffsetRead','OffsetWrite'):
             self.assertIn('Stage::'+operation+'Begin',camera)
             self.assertIn('Stage::'+operation+'End',camera)
         self.assertLess(camera.index('if(stopping)'),camera.index('GetPlayerChar('))
+
+    def test_draw_output_never_reaches_native_camera_dereference(self):
+        source=(ROOT/'vendor/roadnav/src/compass_hud.hpp').read_text()
+        camera=source.split('void drivingCameraHeightTick(bool stopping=false){',1)[1].split('void clearCompassWaypoint',1)[0]
+        self.assertIn('u32 raw=0',camera)
+        self.assertIn('query.Push(&raw)',camera)
+        self.assertEqual(camera.count('DoesCamExist('),1)
+        self.assertIn('DoesCamExist(gameplay)',camera)
+        self.assertNotIn('DoesCamExist(scripted)',camera)
+        self.assertNotIn('IsCamActive(',camera)
+        self.assertNotIn('IsCamPropagating(',camera)
+        self.assertNotIn('Stage::ScriptExistsBegin',camera)
+        self.assertNotIn('Stage::ScriptActiveBegin',camera)
+        self.assertNotIn('Stage::ScriptPropagateBegin',camera)
+        self.assertLess(camera.index('qolcamera::cameraAccessReady(state)'),camera.index('Stage::ProbesReady'))
+        self.assertLess(camera.index('Stage::ProbesReady'),camera.index('qolclient::LoadStage(7)'))
+        self.assertLess(camera.index('qolclient::LoadStage(7)'),camera.index('qolcamera::probeDrivingCamera'))
 
 if __name__=='__main__':unittest.main()

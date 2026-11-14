@@ -11,7 +11,7 @@ enum class Stage:unsigned {
     OffsetWriteBegin,OffsetWriteEnd,CandidatesBegin,CandidatesEnd,
     HandoffBegin,HandoffEnd,RouteOffBegin,RouteOffEnd,RouteOnBegin,RouteOnEnd,
     AddBegin,AddEnd,MoveBegin,MoveEnd,RemoveBegin,RemoveEnd,
-    ConfigureBegin,ConfigureEnd,Count
+    ConfigureBegin,ConfigureEnd,ProbesReady,ScriptClassifyBegin,ScriptClassifyEnd,Count
 };
 inline const char* stageName(unsigned stage){
     constexpr const char* names[]={"camera child begin","camera child finish","camera child exists begin","camera child exists finish",
@@ -21,7 +21,7 @@ inline const char* stageName(unsigned stage){
         "camera offset write begin","camera offset write finish","escape candidates begin","escape candidates finish",
         "escape handoff begin","escape handoff finish","GPS route off begin","GPS route off finish","GPS route on begin","GPS route on finish",
         "GPS add begin","GPS add finish","GPS move begin","GPS move finish","GPS remove begin","GPS remove finish",
-        "GPS configure begin","GPS configure finish"};
+        "GPS configure begin","GPS configure finish","camera probes ready","camera script handle classify begin","camera script handle classify finish"};
     static_assert(sizeof(names)/sizeof(names[0])==static_cast<unsigned>(Stage::Count));
     return stage<static_cast<unsigned>(Stage::Count)?names[stage]:nullptr;
 }

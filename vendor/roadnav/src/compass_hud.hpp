@@ -311,28 +311,27 @@ class CompassHud {
                 state.cameraReady=true;
                 qolclient::LoadStage(5);resolveHeightNatives();qolclient::LoadStage(6);
                 state.natives=heightOffset_&&heightActive_&&heightScript_&&heightInterpolation_;
-                if(state.natives){
+                if(state.natives&&qolcamera::cameraAccessReady(state)){
+                    // This is the current admission, not the last throttled state
+                    // sample: all subsequent probes share the write gate.
+                    qolclient::SafetyStage(Stage::ProbesReady,gameplay.Get());
                     qolclient::LoadStage(7);
-                    // Never call global IS_CAM_INTERPOLATING on a camera-less
-                    // entry frame. This query names the validated live child.
-                    qolclient::SafetyStage(Stage::InterpolationBegin);
-                    state.interpolating=qolcamera::cameraInterpolating<HeightQuery>(heightInterpolation_,gameplay);
-                    qolclient::SafetyStage(Stage::InterpolationEnd,state.interpolating?1u:0u);
-                    if(!state.interpolating){
-                        Camera scripted{};
-                        qolclient::SafetyStage(Stage::ScriptBegin);NativeContext query;query.Push(&scripted);heightScript_(&query);qolclient::SafetyStage(Stage::ScriptEnd,scripted.Get());
-                        bool exists=false;
-                        if(qolcamera::cameraHandle(scripted.Get())){
-                            qolclient::SafetyStage(Stage::ScriptExistsBegin);exists=DoesCamExist(scripted)!=0;qolclient::SafetyStage(Stage::ScriptExistsEnd,exists?1u:0u);
-                        }
-                        if(exists){
-                            qolclient::SafetyStage(Stage::ScriptActiveBegin);const bool running=IsCamActive(scripted);qolclient::SafetyStage(Stage::ScriptActiveEnd,running?1u:0u);
-                            if(running){qolclient::SafetyStage(Stage::ScriptPropagateBegin);state.scriptCamera=IsCamPropagating(scripted);qolclient::SafetyStage(Stage::ScriptPropagateEnd,state.scriptCamera?1u:0u);}
-                        }
-                        if(!state.scriptCamera){
-                            qolclient::SafetyStage(Stage::OffsetReadBegin);HeightQuery offset;heightActive_(&offset);active=offset.GetResult<u32>()!=0;qolclient::SafetyStage(Stage::OffsetReadEnd,active?1u:0u);
-                        }
-                    }
+                    qolcamera::probeDrivingCamera(state,gameplay.Get(),active,[&]{
+                        qolclient::SafetyStage(Stage::InterpolationBegin);
+                        const bool result=qolcamera::cameraInterpolating<HeightQuery>(heightInterpolation_,gameplay);
+                        qolclient::SafetyStage(Stage::InterpolationEnd,result?1u:0u);return result;
+                    },[&]{
+                        // GET_SCRIPT_DRAW_CAM can return a non-handle in ordinary
+                        // gameplay. Keep the raw value numeric and untrusted.
+                        u32 raw=0;
+                        qolclient::SafetyStage(Stage::ScriptBegin);NativeContext query;query.Push(&raw);heightScript_(&query);qolclient::SafetyStage(Stage::ScriptEnd,raw);
+                        return raw;
+                    },[&](unsigned raw,qolcamera::ScriptDraw kind){
+                        qolclient::SafetyStage(Stage::ScriptClassifyBegin,raw);
+                        qolclient::SafetyStage(Stage::ScriptClassifyEnd,static_cast<unsigned>(kind));
+                    },[&]{
+                        qolclient::SafetyStage(Stage::OffsetReadBegin);HeightQuery offset;heightActive_(&offset);const bool result=offset.GetResult<u32>()!=0;qolclient::SafetyStage(Stage::OffsetReadEnd,result?1u:0u);return result;
+                    });
                     qolclient::LoadStage(8);
                 }
             }
