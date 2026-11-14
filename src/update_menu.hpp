@@ -6,6 +6,7 @@
 #include "qol_version.hpp"
 namespace qolupdatemenu {
 inline std::atomic<bool> requestFailed{false};
+inline std::atomic<bool> footerSeen{false};
 inline unsigned fileAge(const wchar_t* file){
     WIN32_FILE_ATTRIBUTE_DATA attributes{};FILETIME now{};GetSystemTimeAsFileTime(&now);
     if(!GetFileAttributesExW(file,GetFileExInfoStandard,&attributes))return 0;
@@ -37,6 +38,6 @@ inline std::wstring label(bool enabled){
     const bool queued=enabled&&GetFileAttributesW(request)!=INVALID_FILE_ATTRIBUTES;
     code=pendingState(code,queued,requestFailed.load(),fileAge(request),fileAge(receipt));
     if(!enabled&&code!="failed")code="idle";
-    return format(QOL_VERSION_WIDE,QOL_BUILD_WIDE,code,date);
+    return format(QOL_VERSION_WIDE,QOL_BUILD_WIDE,code,date,footerSeen.load());
 }
 }

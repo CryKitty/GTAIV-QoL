@@ -1082,7 +1082,7 @@ protected:
                 if(arrows&&(freshRoute||forwardRouteHelper_.IsValid()||forwardRestoreAt_))cues_=roadnav::routeCues(route.points,player,motionSpeed_,forkHints(route.points,player,motionSpeed_));else cues_={};
                 if(lineEnabled){
                     const bool tracked=chaseTarget_&&chaseRoute_.IsValid()&&!escapeActive_&&!waypoint;
-                    auto nextLine=roadnav::roadLine(forwardRoute_.points.size()>1?forwardRoute_.points:route.points,player,motionSpeed_,tracked);
+                    auto nextLine=roadnav::roadLine(forwardRoute_.points.size()>1?forwardRoute_.points:route.points,player,motionSpeed_,tracked,compass_.radarRange());
                     const auto probe=[](float x,float y,float z){float ground=-10000;
                         NativeInvoke::Invoke<Scripting::NATIVE_GET_GROUND_Z_FOR_3D_COORD,Scripting::ScriptVoid>(x,y,z,&ground);return ground;};
                     roadnav::stabilizeRoadPath(nextLine,line_);
@@ -1108,7 +1108,7 @@ protected:
             }
 
             if(lineEnabled&&escapeReplan_.observed&&escapeShown_.points.size()>1){
-                auto nextEscape=roadnav::roadLine(escapeShown_.points,player,motionSpeed_);
+                auto nextEscape=roadnav::roadLine(escapeShown_.points,player,motionSpeed_,false,compass_.radarRange());
                 const auto probe=[](float x,float y,float z){float ground=-10000;
                     NativeInvoke::Invoke<Scripting::NATIVE_GET_GROUND_Z_FOR_3D_COORD,Scripting::ScriptVoid>(x,y,z,&ground);return ground;};
                 roadnav::stabilizeRoadPath(nextEscape,escapeLine_);
@@ -1184,10 +1184,12 @@ protected:
                     roadnav::trackLineEndpoint(displayedLine,live);roadnav::pinDestination(displayedLine,live);
                 }
             }
+            roadnav::clipRoadLineRange(displayedLine,player,compass_.radarRange());
+            auto displayedEscape=escapeLine_;roadnav::clipRoadLineRange(displayedEscape,player,compass_.radarRange());
             if(primaryShown)gRoadLineRenderer.submit({displayedLine,frame,now,player,routeKind_,colours,nearClip,farClip,1,viewBend_});else gRoadLineRenderer.clear();
             // A narrower red/blue escape ribbon leaves the primary route visible
             // on shared roads, then separates naturally at the escape turn.
-            if(types.visible(lineEnabled,awareness::RouteKind::Escape))gEscapeLineRenderer.submit({escapeLine_,frame,now,player,awareness::RouteKind::Escape,true,nearClip,farClip,!primaryShown||line_.points.empty()?1.0f:.48f,viewBend_});else gEscapeLineRenderer.clear();
+            if(types.visible(lineEnabled,awareness::RouteKind::Escape))gEscapeLineRenderer.submit({displayedEscape,frame,now,player,awareness::RouteKind::Escape,true,nearClip,farClip,!primaryShown||line_.points.empty()?1.0f:.48f,viewBend_});else gEscapeLineRenderer.clear();
         }
     }
 };

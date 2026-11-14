@@ -32,7 +32,7 @@ class LineTypeMenuTests(unittest.TestCase):
   return u
  def test_all_rows_keys_labels_and_original_stack_contracts_after_rebase(self):
   keys=['QOL_ESCAPE','QOL_MISSION','QOL_FRIEND','QOL_ENEMY','QOL_CUSTOM','QOL_UPDATES','QOL_CAMHEIGHT']
-  labels=['Police Escape Line','Mission Line','Friend Line','Enemy Line','Custom Line','Check for QoL Updates','Driving Camera Height (cm)']
+  labels=['Police Escape Line','Mission Line','Friend Line','Enemy Line','Custom Line','Check for QoL Updates','Driving Camera Height']
   for base in [0x10000000,0x30000000]:
    for row in range(14):
     u=self.machine(base,row);site=base+0xd7c9a
@@ -60,7 +60,7 @@ class LineTypeMenuTests(unittest.TestCase):
     self.assertEqual(u.reg_read(UC_X86_REG_EDI),row)
  def test_height_slider_range_screen_and_numeric_display_after_rebase(self):
   for base in [0x10000000,0x30000000]:
-   for row,expected in [(3,(0,120,1)),(5,(0,1600,20)),(13,(0,200,5))]:
+   for row,expected in [(3,(0,120,1)),(5,(0,1600,20)),(13,(0,2,1))]:
     for site in [0xd7d2e,0xd7d9a]:
      u=self.machine(base,row);u.emu_start(base+site,base+site+8,count=100)
      self.assertEqual(u.reg_read(UC_X86_REG_ESP),0x804000)

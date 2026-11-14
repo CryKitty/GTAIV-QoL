@@ -44,7 +44,8 @@ FallbackRadiusMeters = 300
 ; All compass distances use miles. Legacy MetricDistances is ignored.
 
 [Camera]
-; Pause -> QoL -> Driving Camera Height (cm). 0 keeps the game default.
+; Pause -> QoL -> Driving Camera Height: Low (0), Medium (45), High (120 cm).
+; Legacy values map to the nearest preset; Low leaves the camera untouched.
 DrivingHeightCm=0
 TaxiFovSliderVersion = 1
 ; Rear-seat taxi interior view only, 40–120 degrees. 0 preserves the vanilla view.

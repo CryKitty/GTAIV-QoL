@@ -158,7 +158,7 @@ def line_type_menu(raw):
     j=len(code);code.extend(struct.pack('<i',0xd90d0-(rva+j+4)))
     code.extend(bytes.fromhex('83c404 58 5e 5d c20400'))
     # Appended height row uses the existing live slider callbacks, with its
-    # own bounded 0..200 cm / 5 cm argument helper. No old row IDs move.
+    # own discrete 0..2 / step 1 preset selector. No old row IDs move.
     height_branch=len(code);code.extend(bytes.fromhex('83c404'))
     for row in (3,5,13):
         code.extend(bytes.fromhex('83ff')+bytes([row])+bytes.fromhex('0f84'))
@@ -167,9 +167,9 @@ def line_type_menu(raw):
     old_range=0xd712e+0xc00+5+struct.unpack_from('<i',data,0xd712f)[0]
     height_range=len(code);code.extend(bytes.fromhex('83ff0d 7405 e9'))
     j=len(code);code.extend(struct.pack('<i',old_range-(rva+j+4)))
-    code.extend(bytes.fromhex('50 c74424180000a040 c744241400004843 c744241000000000 58c3'))
+    code.extend(bytes.fromhex('50 c74424180000803f c744241400000040 c744241000000000 58c3'))
     old_numeric=0xd7986+0xc00+5+struct.unpack_from('<i',data,0xd7987)[0]
-    height_numeric=len(code);code.extend(bytes.fromhex('817d1800004843 7405 e9'))
+    height_numeric=len(code);code.extend(bytes.fromhex('817d1800000040 7405 e9'))
     j=len(code);code.extend(struct.pack('<i',old_numeric-(rva+j+4)))
     code.extend(bytes.fromhex('58 c744242400000000 6a6c 56 50 c3'))
     refresh_thunk=len(code);code.extend(bytes.fromhex('6a00 e8'))
@@ -180,7 +180,7 @@ def line_type_menu(raw):
     for key_text in ['QOL_ESCAPE','QOL_MISSION','QOL_FRIEND','QOL_ENEMY','QOL_CUSTOM','QOL_UPDATES','QOL_CAMHEIGHT']:
         code.extend(key_text.encode().ljust(16,b'\0'))
     labels_at=len(code)
-    for label_text in ['Police Escape Line','Mission Line','Friend Line','Enemy Line','Custom Line','Check for QoL Updates','Driving Camera Height (cm)']:
+    for label_text in ['Police Escape Line','Mission Line','Friend Line','Enemy Line','Custom Line','Check for QoL Updates','Driving Camera Height']:
         code.extend(label_text.encode('utf-16le').ljust(64,b'\0'))
     turns_at=len(code);code.extend('Turn Arrows\0'.encode('utf-16le'))
     for displacement,anchor in turn_fixes:struct.pack_into('<i',code,displacement,turns_at-anchor)

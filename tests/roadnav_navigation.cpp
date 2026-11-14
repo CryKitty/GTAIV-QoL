@@ -168,7 +168,7 @@ int main(){
         assert(cues.destination.visible&&cues.destination.position.x==mission.x&&cues.destination.position.y==mission.y&&cues.destination.position.z==mission.z);
         const std::vector<Vec3> chase{{0,0,0},{0,200,0},{0,400,0},{0,600,0}};
         assert(!roadLine(chase,Vec3{},0).endsAtDestination);
-        const auto base=roadLine(chase,Vec3{},0,true);
+        const auto base=roadLine(chase,Vec3{},0,true,1000);
         assert(base.endsAtDestination&&base.points.size()<=500);
         for(float travel=0;travel<=25;travel+=.25f){
             auto live=base;const Vec3 car{1.25f,600+travel,1.0f};
@@ -259,6 +259,43 @@ int main(){
         fitRoadSurface(rejected,{0,0,1},noEscapeSurface,missing,&otherLevel);
         assert(!rejected.visible()); // Never borrow a bridge/other floor.
     }
+    {
+        // Full native GPS buffer feeds the radar boundary at rest and speed.
+        // No planning-side speed horizon or 500-point render cap may starve it.
+        std::array<unsigned char,0xdb0*2> memory{};
+        const std::int32_t count=214,state=3;
+        std::memcpy(memory.data()+0xd60,&count,4);std::memcpy(memory.data()+0xd64,&state,4);
+        for(int i=0;i<count;++i){const float point[]{0,static_cast<float>(i)*25,static_cast<float>(i)*.5f,0};std::memcpy(memory.data()+i*16,point,16);}
+        const auto read=[&](std::uintptr_t at,void* out,std::size_t size){if(at>memory.size()||size>memory.size()-at)return false;std::memcpy(out,memory.data()+at,size);return true;};
+        NativeGpsRoute native;assert(readGpsRoute(0,read,native)&&native.points.size()==214);
+        for(float radius:{50.f,150.f,300.f,1000.f,5000.f})for(float speed:{0.f,1.f,40.f,80.f}){
+            auto line=roadLine(native.points,{},speed,false,radius);
+            assert(line.visible()&&!line.endsAtDestination&&line.points.size()<=1000);
+            assert(std::fabs(distance2D(line.points.back(),{})-radius)<.01f);
+            for(const auto& p:line.points)assert(distance2D(p,{})<=radius+.01f);
+            assert(line.points.back().z>0); // slopes remain on the native path
+            clipRoadLineRange(line,{},radius*.5f); // live radar change / retained path
+            assert(std::fabs(distance2D(line.points.back(),{})-radius*.5f)<.01f);
+        }
+        RoadLine retained;retained.points={{-400,0,1},{400,0,3}};
+        retained.bank={0,1};retained.edges={{1,1},{3,3}};clipRoadLineRange(retained,{},100);
+        assert(retained.visible()&&std::fabs(retained.points.front().x+100)<.01f&&std::fabs(retained.points.back().x-100)<.01f);
+        assert(retained.edges.size()==2&&retained.bank.size()==2);
+        auto pin=roadLine({{0,0,0},{0,90,0}}, {},0,false,100);pinDestination(pin,{0,110,0});clipRoadLineRange(pin,{},100);
+        assert(!pin.endsAtDestination);
+        // Winding road arc length exceeds radius: clip radially, never at radius metres along the path.
+        const std::vector<Vec3> bend{{0,0,0},{0,100,0},{100,100,0},{100,0,0},{400,0,0}};
+        const auto curved=roadLine(bend,{},0,false,150);
+        assert(curved.ahead>300&&std::fabs(distance2D(curved.points.back(),{})-150)<.01f);
+        // Stop at the first exit; no disconnected shortcut when the route re-enters.
+        const auto reenter=roadLine({{0,0,0},{0,400,0},{100,0,0}}, {},0,false,100);
+        assert(std::fabs(reenter.points.back().y-100)<.02f&&!reenter.endsAtDestination);
+        assert(roadLine({{0,0,0},{0,90,0}}, {},0,false,100).endsAtDestination);
+        auto tracked=roadLine({{0,0,0},{0,90,0}}, {},0,true,100);
+        assert(trackLineEndpoint(tracked,{0,110,0}));clipRoadLineRange(tracked,{},100);
+        assert(std::fabs(tracked.points.back().y-100)<.01f&&!tracked.endsAtDestination);
+    }
+
     // Compare the optimized bank calculation against the original sampling
     // formula over different densities, elevations, duplicates and turn signs.
     for(unsigned count:{0u,1u,2u,20u,220u,500u}){
@@ -387,7 +424,7 @@ int main(){
     projection.projection[3][3]=1;assert(!projection.usable()); // Reject orthographic HUD/shadow views.
 
     assert(roadLine({{0,0,0},{0,20,0}},{0,0,0},0).endsAtDestination);
-    assert(!roadLine({{0,0,0},{0,200,0}},{0,0,0},0).endsAtDestination);
+    assert(!roadLine({{0,0,0},{0,600,0}},{0,0,0},0).endsAtDestination);
 
     RoadLine flat;flat.points={{0,4,30},{0,5.5f,40},{0,7,20},{0,8.5f,0}};
     fitRoadSurface(flat,{0,0,1},{},[](float,float,float ceiling){return ceiling>=0?0.0f:-10000.0f;});
@@ -465,10 +502,11 @@ int main(){
     const auto quad=roadLineQuad({0,0,0},{0,10,1},.5f);
     assert(std::fabs(distance2D(quad[0],quad[1])-.5f)<.001f&&quad[2].z==1);
     assert(roadDeviceDepth(1,.1f,1000)<roadDeviceDepth(10,.1f,1000));
-    assert(roadLineLookAhead(0)==35&&roadLineLookAhead(10)<roadLineLookAhead(20)&&roadLineLookAhead(20)<roadLineLookAhead(40));
+    assert(roadLineRange(0)==300&&roadLineRange(5001)==300&&roadLineRange(std::nanf(""))==300);
     const auto fastRibbon=roadLine({{0,0,0},{0,600,0}},{0,0,0},40);
     const auto slowRibbon=roadLine({{0,0,0},{0,600,0}},{0,0,0},0);
-    assert(fastRibbon.ahead>slowRibbon.ahead*5);
+    assert(fastRibbon.points.size()==slowRibbon.points.size()&&std::fabs(fastRibbon.ahead-slowRibbon.ahead)<.001f);
+    assert(std::fabs(slowRibbon.points.back().y-300)<.001f);
     const auto smooth=smoothRoadPoint(gps,1,.9f);assert(smooth.x<0&&std::fabs(smooth.x)<=1.25f);
     const auto endSection=roadLineSection(gps,1,.441f);assert(distance2D(endSection[0],endSection[1])>=.441f);
     const float foreground=std::log(5.0f/.1f)/std::log(1000.0f/.1f);

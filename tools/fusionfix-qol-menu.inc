@@ -12,7 +12,7 @@
         qolApi=api;
         if(api->size>=sizeof(QolSettingsApi)&&api->SetMenuRefresh)api->SetMenuRefresh([]{ FillMenu(0); });
         const char* keys[] = { "QOL_ROADNAV", "QOL_AUTOZOOM", "QOL_CSPAUSE", "QOL_TAXI", "QOL_GPSLINE", "QOL_CUTVOICE", "QOL_COMPASS", "QOL_ESCAPE", "QOL_MISSION", "QOL_FRIEND", "QOL_ENEMY", "QOL_CUSTOM", "QOL_UPDATES", "QOL_CAMHEIGHT" };
-        const wchar_t* labels[] = { L"Turn Arrows", L"Map Autozoom", L"Pause During Cutscenes", L"Taxi FOV (degrees)", L"Road Line", L"Cutscene Audio (%)", L"Compass HUD", L"Police Escape Line", L"Mission Line", L"Friend Line", L"Enemy Line", L"Custom Line", L"Check for QoL Updates", L"Driving Camera Height (cm)" };
+        const wchar_t* labels[] = { L"Turn Arrows", L"Map Autozoom", L"Pause During Cutscenes", L"Taxi FOV (degrees)", L"Road Line", L"Cutscene Audio (%)", L"Compass HUD", L"Police Escape Line", L"Mission Line", L"Friend Line", L"Enemy Line", L"Custom Line", L"Check for QoL Updates", L"Driving Camera Height" };
         const auto qolScreen = AddScreen("QoL", MenuScreen::Audio);
         uint32_t rows = 0;
         const uint32_t order[]={0,1,2,3,13,4,7,8,9,10,11,5,6,12};
@@ -29,10 +29,10 @@
             else
             {
                 const bool taxi=id==QOL_VOCAL_SLIDERS,height=id==13;
-                bool added = AddSlider(taxi||height?qolScreen:MenuScreen::Audio, keys[id], 0.0f, height?200.0f:taxi?120.0f:1600.0f, height?5.0f:taxi?1.0f:20.0f,
+                bool added = AddSlider(taxi||height?qolScreen:MenuScreen::Audio, keys[id], 0.0f, height?2.0f:taxi?120.0f:1600.0f, height?1.0f:taxi?1.0f:20.0f,
                     [api, id] { return static_cast<float>(api->Get(id)); },
                     [api, id](float value) { api->Set(id, static_cast<int32_t>(value)); });
-                AddSlider(MenuScreen::TitleAudio, keys[id], 0.0f, height?200.0f:taxi?120.0f:1600.0f, height?5.0f:taxi?1.0f:20.0f,
+                AddSlider(MenuScreen::TitleAudio, keys[id], 0.0f, height?2.0f:taxi?120.0f:1600.0f, height?1.0f:taxi?1.0f:20.0f,
                     [api, id] { return static_cast<float>(api->Get(id)); },
                     [api, id](float value) { api->Set(id, static_cast<int32_t>(value)); });
                 if (added) rows |= 1u << id;
