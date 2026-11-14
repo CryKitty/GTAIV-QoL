@@ -20,3 +20,10 @@ The original bridge build uses the current `tools/patch-fusionfix-menu.py` and `
 5. The shipped navigation adaptation and exact byte preimages are in tools/restore-verified-menu-host.py. Current source-level menu intent is also in tools/fusionfix-qol-menu.inc. The original seed's startup, original section locations and relocation directory are retained. The five line-type rows use a new .qolmenu section with position-independent key/label helpers, avoiding out-of-bounds reads from the original seven-row stack arrays. Registration order nests the five child rows below Road Line without changing IDs. A separate non-executable RW .qoldata slot captures the optional version-1 API tail for per-draw indented/grey labels; 20-byte older APIs safely use the original label-copy path. Core UiSet rejects child changes while master Off. Turn Arrows is the displayed turn-guidance label. Tests execute every helper at preferred/rebased addresses and check the old sections/directories stay in place.
 
 The host is modified FusionFix, not an official upstream binary, and is covered by its own GPL-3.0 terms in LICENSE.txt; the root MIT licence does not replace those terms. The full public tree contains the bridge source and adaptations; upstream source remains available at the pinned public URL above.
+
+The current adaptation also extends ExtraInfo's final native footer pointer via
+the optional core UI API Footer field. Checked stores at RVAs 0x7371e/0x73766
+call PIC helpers in .qolmenu; game renderer signatures are not hooked by QoL.
+Old/missing API tails preserve the original pointer. Emulated preferred/rebased
+tests cover both stores, register/flags/SIMD preservation and fallback. The source
+builder applies the equivalent change to pinned extrainfo.ixx.

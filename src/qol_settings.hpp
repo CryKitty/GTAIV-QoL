@@ -5,7 +5,11 @@
 #include "qol_menu_labels.hpp"
 #include "update_menu.hpp"
 #include "driving_camera_height.hpp"
+#include "version_footer_text.hpp"
 namespace qolsettings {
+using Report=void(*)(const char*);
+std::atomic<Report> report{nullptr};
+void LogSetting(const char* text){if(auto log=report.load())log(text);}
 struct Definition {const char* section;const char* key;int initial;int maximum;};
 constexpr Definition definitions[QOL_SETTING_COUNT]={
     {"RoadNav","Enabled",1,1},{"DefaultMapZoom","Enabled",1,1},
@@ -18,6 +22,7 @@ constexpr Definition definitions[QOL_SETTING_COUNT]={
     {"Updates","CheckForUpdates",0,1},{"Camera","DrivingHeightCm",0,200}
 };
 std::atomic<int> values[QOL_SETTING_COUNT];
+std::atomic<int> loadedHeightCm{0};
 char path[MAX_PATH]{};
 SRWLOCK writeLock=SRWLOCK_INIT;
 INIT_ONCE initialized=INIT_ONCE_STATIC_INIT;
@@ -25,6 +30,7 @@ std::atomic<unsigned> menuRows{0};
 void Load(){
     for(unsigned i=0;i<QOL_SETTING_COUNT;++i){const auto& d=definitions[i];
         const int read=static_cast<int>(GetPrivateProfileIntA(d.section,d.key,d.initial,path));
+        if(i==QOL_DRIVING_CAMERA_HEIGHT)loadedHeightCm.store(read);
         values[i].store(read>=0&&read<=d.maximum?read:d.initial);
     }
     values[QOL_DRIVING_CAMERA_HEIGHT].store(qolcamera::presetHeight(qolcamera::heightPreset(values[QOL_DRIVING_CAMERA_HEIGHT].load())));
@@ -49,10 +55,12 @@ int32_t __cdecl Set(uint32_t id,int32_t value){
     AcquireSRWLockExclusive(&writeLock);
     const bool ok=WritePrivateProfileStringA(definitions[id].section,definitions[id].key,text,path)!=0;
     if(ok)values[id].store(value);
-    ReleaseSRWLockExclusive(&writeLock);return ok?1:0;
+    ReleaseSRWLockExclusive(&writeLock);
+    if(ok&&id==QOL_DRIVING_CAMERA_HEIGHT){char message[128];sprintf_s(message,"Driving camera preset selected: preset=%d cm=%d",qolcamera::heightPreset(value),value);LogSetting(message);}
+    return ok?1:0;
 }
 void __cdecl MenuReady(uint32_t rows){menuRows.store(rows);}
-const QolSettingsApi api{sizeof(QolSettingsApi),1,Get,Set,MenuReady,nullptr,nullptr};
+const QolSettingsApi api{sizeof(QolSettingsApi),1,Get,Set,MenuReady,nullptr,nullptr,nullptr};
 
 // The verified menu host has one reserved, never-shown gameplay-voice row.
 // Its UI-only adapter maps that row to Road Line On/Off; the normal settings
@@ -94,5 +102,20 @@ void RefreshMenu(bool paused){
     const auto text=qolupdatemenu::label(Get(QOL_CHECK_UPDATES)!=0);
     if(text!=previous){previous=text;if(paused)if(auto refresh=refreshMenu.load())refresh();}
 }
-const QolSettingsApi uiApi{sizeof(QolSettingsApi),1,UiGet,UiSet,UiReady,UiLabel,SetMenuRefresh};
+const wchar_t* __cdecl UiFooter(const wchar_t* source){
+    try{
+        if(!source)return source;
+        const auto length=wcsnlen_s(source,4097);if(length>4096)return source;
+        static thread_local std::wstring text;
+        const std::wstring original(source,length);text=qolfooter::extend(original,QOL_VERSION_WIDE,QOL_BUILD_WIDE);
+        const unsigned flags=(original.find(L"Fusion Fix: v")!=std::wstring::npos?1u:0u)|
+            (original.find(L"~p~")!=std::wstring::npos?2u:0u)|(original.find(L"CryKitty QoL:")!=std::wstring::npos?4u:0u);
+        static std::atomic<unsigned> observed{0};const unsigned mask=1u<<flags;
+        if(!(observed.fetch_or(mask)&mask)){char message[144];sprintf_s(message,"Native footer callback: markers=%u chars=%u extended=%u",flags,static_cast<unsigned>(length),text!=original?1u:0u);LogSetting(message);}
+        if(text==original)return source;
+        if(!qolupdatemenu::footerSeen.exchange(true))LogSetting("Native Game footer extended: QoL version/build present; update row status only");
+        return text.c_str();
+    }catch(...){LogSetting("Native footer extension failed; update row keeps build identity");return source;}
+}
+const QolSettingsApi uiApi{sizeof(QolSettingsApi),1,UiGet,UiSet,UiReady,UiLabel,SetMenuRefresh,UiFooter};
 }

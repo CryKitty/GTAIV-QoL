@@ -63,7 +63,6 @@ bool Stopped(){return directaudio::Stopped()||audioengine::Stopped();}
 #include "cutscene_timeline.hpp"
 #include "pause_overlay.hpp"
 #include "menu_value_text.hpp"
-#include "version_footer.hpp"
 
 int Clock(Handler fn){QueryContext result;fn(&result);return result.GetResult<int>();}
 // Resolve source-derived state/flag reads independently of the native handlers.
@@ -160,7 +159,7 @@ BOOL CALLBACK Initialize(PINIT_ONCE,PVOID,PVOID*){
     directaudio::Install();
     Log("Legacy voice metadata processing removed; cutscene output volume only");
     menuvalue::Install();
-    versionfooter::Install();
+    Log("Native footer uses verified FusionFix ExtraInfo callback; no competing renderer hook");
     InitializeBundledRoadNav(ownModule);
     auto mod=GetModuleHandleA("ScriptHook.dll");using Register=void(__cdecl*)(ScriptThread*,HMODULE);auto reg=mod?reinterpret_cast<Register>(GetProcAddress(mod,"?RegisterThread@ScriptHookManager@@SAXPAVScriptThread@@PAUHINSTANCE__@@@Z")):nullptr;
     if(!reg){Log("ScriptHook registration unavailable");return TRUE;}

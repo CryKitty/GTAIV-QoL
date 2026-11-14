@@ -13,6 +13,7 @@
 #include "../src/date_compass.hpp"
 #include <cwchar>
 #include "../src/navigation_awareness.hpp"
+#include "../src/enemy_markers.hpp"
 #include "../src/police_escape.hpp"
 #include "../src/escape_gps_request.hpp"
 #include <set>
@@ -89,6 +90,25 @@ int main(){
         assert(timer.due(true,3000500,false,false,false));
         timer={};assert(timer.due(true,9000000,false,false,false)); // new session, no old deadline
         assert(!timer.due(true,9000001,false,false,false));
+    }
+
+    {
+        struct Mark {unsigned ped;bool owned;};
+        for(bool owned:{false,true})for(const auto state:{enemymarkers::State{false,false,false,true},enemymarkers::State{true,true,false,true},enemymarkers::State{true,false,true,true},enemymarkers::State{true,false,false,false}}){
+            std::vector<Mark> marks{{17,owned}};bool world=true,compassBlip=true;unsigned retired=0;
+            // Normal update only: stale damage/attack flags do not participate.
+            enemymarkers::update(marks,[&](const Mark&){return state;},[&](const Mark&){world=compassBlip=false;++retired;});
+            assert(marks.empty()&&!world&&!compassBlip&&retired==1);
+            std::vector<compass::ChaseCandidate> candidates;
+            for(const auto& mark:marks)candidates.push_back({mark.ped,40,10,true});
+            assert(compass::chooseChaseTarget(candidates,17)==0);
+        }
+        std::vector<Mark> live{{17,true}};bool cleared=false;
+        enemymarkers::update(live,[](const Mark&){return enemymarkers::State{true,false,false,true};},[&](const Mark&){cleared=true;});
+        assert(live.size()==1&&!cleared);
+        assert(compass::chooseChaseTarget({{live.front().ped,40,10,true}},17)==17);
+        assert(enemymarkers::sameBinding(17,0)&&enemymarkers::sameBinding(17,17)&&!enemymarkers::sameBinding(17,18));
+        assert(!awareness::attacker(true,true,false,20,false)); // remembered damage and order cannot resurrect an idle attacker
     }
 
     {
@@ -188,6 +208,22 @@ int main(){
 
     {
         using namespace qolcamera;DrivingHeight height;
+        DrivingState driving;driving.player=driving.driver=driving.fadedIn=driving.control=true;
+        struct Offset {bool on;float x,y,z;};std::vector<Offset> writes;
+        const auto write=[&](bool on,float x,float y,float z){writes.push_back({on,x,y,z});};
+        assert(applyHeight(height,driving,presetHeight(0),false,write)==HeightCommand::None&&writes.empty());
+        assert(applyHeight(height,driving,presetHeight(1),false,write)==HeightCommand::Apply);
+        assert(writes.back().on&&writes.back().x==0&&writes.back().y==0&&std::fabs(writes.back().z-.45f)<.0001f);
+        assert(applyHeight(height,driving,presetHeight(1),true,write)==HeightCommand::None);
+        assert(applyHeight(height,driving,presetHeight(2),true,write)==HeightCommand::Apply&&std::fabs(writes.back().z-1.2f)<.0001f);
+        driving.scriptCamera=true;assert(applyHeight(height,driving,120,true,write)==HeightCommand::Release&&!writes.back().on&&writes.back().z==0);
+        driving.scriptCamera=false;assert(applyHeight(height,driving,120,true,write)==HeightCommand::None); // pre-existing script offset
+        assert(applyHeight(height,driving,120,false,write)==HeightCommand::Apply);
+        driving.paused=true;assert(applyHeight(height,driving,120,true,write)==HeightCommand::Release);
+        driving.paused=false;driving.natives=false;assert(applyHeight(height,driving,45,false,write)==HeightCommand::None);
+        driving.natives=true;assert(applyHeight(height,driving,45,false,write)==HeightCommand::Apply);
+        assert(applyHeight(height,driving,0,true,write)==HeightCommand::Release);
+        height={};
         assert(height.update(true,0,false)==HeightCommand::None&&!height.owned); // neutral is untouched
         assert(height.update(true,100,true)==HeightCommand::None&&!height.owned); // script-owned offset
         assert(height.update(true,100,false)==HeightCommand::Apply&&height.meters()==1);
@@ -552,7 +588,7 @@ int main(){
     assert(!compass::hostileMarkerType(4)&&!compass::hostileMarkerType(5));
     assert(!awareness::attacker(true,false,false,10,false)); // Accidental vehicle contact.
     assert(awareness::attacker(true,false,false,10,true)); // Damage plus active aggression.
-    assert(awareness::attacker(false,true,false,10,false)); // Explicit attack order.
+    assert(!awareness::attacker(false,true,false,10,false)); // Stale attack order without live aggression.
     assert(!awareness::attacker(true,true,true,10,true));
 
     assert(std::fabs((compass::StripLayout::lineY-compass::raisedMeterY(800))*800-10)<.001f);

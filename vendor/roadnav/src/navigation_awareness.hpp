@@ -1,5 +1,6 @@
 #pragma once
 #include "../../../src/navigation_awareness.hpp"
+#include "../../../src/enemy_markers.hpp"
 #include "../../minhook/include/MinHook.h"
 #include <unordered_map>
 #include <mutex>
@@ -57,6 +58,9 @@ class NavigationAwareness {
     DWORD polled_=0;
     struct Mark {unsigned ped;Scripting::Blip blip;bool owned;unsigned colour,display;};
     std::vector<Mark> marks_;
+    struct Hidden {unsigned ped;Scripting::Blip blip;unsigned display;};
+    std::vector<Hidden> hidden_;
+    std::unordered_map<unsigned,enemymarkers::State> states_;
     template<class T> static bool read(std::uintptr_t address,T& value){SIZE_T bytes=0;return address>=0x10000&&ReadProcessMemory(GetCurrentProcess(),reinterpret_cast<void*>(address),&value,sizeof(value),&bytes)&&bytes==sizeof(value);}
     static std::string stringAt(std::uintptr_t address,unsigned limit=480){
         std::string out;for(unsigned i=0;i<limit;++i){char c=0;if(!read(address+i,c))return {};if(!c)return out;out+=c;}return {};
@@ -124,10 +128,15 @@ class NavigationAwareness {
         if(log_){char line[120];std::snprintf(line,sizeof(line),"Compass attacker pool: signature matches=%u available=%u",matches,poolGlobal_?1u:0u);log_(line);}
     }
     static Scripting::Ped pedHandle(unsigned handle){Scripting::Ped ped{};std::memcpy(&ped,&handle,sizeof(handle));return ped;}
-    bool samePed(Mark& mark){using namespace Scripting;return DoesBlipExist(mark.blip)&&GetBlipInfoIdType(mark.blip)==BLIP_TYPE_CHAR&&GetBlipInfoIdPedIndex(mark.blip).Get()==mark.ped;}
+    bool samePed(const Mark& mark){using namespace Scripting;return DoesBlipExist(mark.blip)&&GetBlipInfoIdType(mark.blip)==BLIP_TYPE_CHAR&&GetBlipInfoIdPedIndex(mark.blip).Get()==mark.ped;}
     void restore(Mark& mark){
-        using namespace Scripting;if(!samePed(mark))return;
-        if(mark.owned){RemoveBlip(mark.blip);return;}
+        using namespace Scripting;
+        if(!DoesBlipExist(mark.blip))return;
+        const auto type=GetBlipInfoIdType(mark.blip);
+        const auto bound=type==BLIP_TYPE_CHAR?GetBlipInfoIdPedIndex(mark.blip).Get():0u;
+        if(!enemymarkers::sameBinding(mark.ped,bound))return; // Never touch a rebound/reused marker.
+        if(mark.owned){RemoveBlip(mark.blip);return;} // Includes detached/converted orphan blips.
+        if(type!=BLIP_TYPE_CHAR)return;
         ColourIndex colour=0;GetBlipColour(mark.blip,&colour);if(colour==9)ChangeBlipColour(mark.blip,mark.colour);
         const auto display=NativeInvoke::Invoke<NATIVE_GET_BLIP_INFO_ID_DISPLAY,u32>(mark.blip);
         if(display==4)ChangeBlipDisplay(mark.blip,static_cast<eBlipDisplay>(mark.display));
@@ -201,7 +210,12 @@ public:
         Camera active{};GetRootCam(&active);if(!active.IsValid())GetGameCamChild(&active);
         if(active.IsValid()&&DoesCamExist(active)&&!taxiCameras_.count(active.Get())){float fov=0;GetCamFov(active,&fov);if(fov>=35&&fov<=55)SetCamFov(active,fov);}
     }
-    void clearMarks(){for(auto& mark:marks_)restore(mark);marks_.clear();polled_=0;}
+    void clearMarks(){
+        for(auto& mark:marks_)restore(mark);marks_.clear();
+        for(auto& item:hidden_)if(Scripting::DoesBlipExist(item.blip)&&Scripting::GetBlipInfoIdType(item.blip)==Scripting::BLIP_TYPE_CHAR&&enemymarkers::sameBinding(item.ped,Scripting::GetBlipInfoIdPedIndex(item.blip).Get())&&NativeInvoke::Invoke<Scripting::NATIVE_GET_BLIP_INFO_ID_DISPLAY,u32>(item.blip)==0)
+            Scripting::ChangeBlipDisplay(item.blip,static_cast<Scripting::eBlipDisplay>(item.display));
+        hidden_.clear();states_.clear();polled_=0;
+    }
     void stop(){restoreTaxi();clearMarks();for(auto& target:targets_)if(target){MH_DisableHook(target);MH_RemoveHook(target);target=nullptr;}active_=nullptr;originals_={};std::lock_guard<std::mutex> lock(mutex_);combat_.clear();brief_.clear();routeBriefs_.clear();missionRoute_=0;dateSession_={};poolGlobal_=0;poolTried_=false;armed_=false;}
     std::string brief(bool mission){std::lock_guard<std::mutex> lock(mutex_);if(!mission)brief_.clear();return brief_;}
     std::string briefFor(unsigned handle){std::lock_guard<std::mutex> lock(mutex_);const auto found=routeBriefs_.find(handle);return found==routeBriefs_.end()?std::string{}:found->second;}
@@ -216,6 +230,50 @@ public:
         return dateSession_.current(active,now);
     }
     unsigned missionRoute(bool mission){std::lock_guard<std::mutex> lock(mutex_);if(!mission)missionRoute_=0;return missionRoute_;}
+    enemymarkers::State pedState(unsigned handle){
+        const auto found=states_.find(handle);if(found!=states_.end())return found->second;
+        using namespace Scripting;const auto ped=pedHandle(handle);enemymarkers::State state;
+        state.exists=handle&&DoesCharExist(ped);
+        if(state.exists){
+            u32 health=0;GetCharHealth(ped,&health);
+            state.dead=IsCharDead(ped)||static_cast<std::int32_t>(health)<=0;
+            state.hostile=!state.dead&&(IsPedInCombat(ped)||IsCharShooting(ped)||IsCharInMeleeCombat(ped));
+            state.incapacitated=IsCharFatallyInjured(ped)||IsCharInjured(ped);
+        }
+        states_[handle]=state;return state;
+    }
+    bool suppressed(unsigned blip)const{for(auto item:hidden_)if(item.blip.Get()==blip)return true;return false;}
+    void suppressEnemy(Scripting::Blip blip,unsigned ped){
+        using namespace Scripting;if(suppressed(blip.Get())||!DoesBlipExist(blip)||GetBlipInfoIdType(blip)!=BLIP_TYPE_CHAR)return;
+        const auto bound=GetBlipInfoIdPedIndex(blip).Get();if(!enemymarkers::sameBinding(ped,bound))return;
+        const auto display=NativeInvoke::Invoke<NATIVE_GET_BLIP_INFO_ID_DISPLAY,u32>(blip);
+        hidden_.push_back({ped,blip,display});ChangeBlipDisplay(blip,static_cast<eBlipDisplay>(0));
+        if(log_)log_("Enemy marker native display suppressed; game-owned blip retained");
+    }
+    template<class Friendly> void prune(Friendly friendly){
+        using namespace Scripting;states_.clear();
+        for(auto it=hidden_.begin();it!=hidden_.end();){
+            if(!DoesBlipExist(it->blip)||GetBlipInfoIdType(it->blip)!=BLIP_TYPE_CHAR){it=hidden_.erase(it);continue;}
+            const auto bound=GetBlipInfoIdPedIndex(it->blip).Get();
+            if(!enemymarkers::sameBinding(it->ped,bound)){it=hidden_.erase(it);continue;}
+            const auto state=pedState(it->ped);
+            if(state.threat()&&!friendly(it->blip.Get(),it->ped)){
+                if(NativeInvoke::Invoke<NATIVE_GET_BLIP_INFO_ID_DISPLAY,u32>(it->blip)==0)ChangeBlipDisplay(it->blip,static_cast<eBlipDisplay>(it->display));
+                it=hidden_.erase(it);
+            }else{
+                if(NativeInvoke::Invoke<NATIVE_GET_BLIP_INFO_ID_DISPLAY,u32>(it->blip)!=0)ChangeBlipDisplay(it->blip,static_cast<eBlipDisplay>(0));
+                ++it;
+            }
+        }
+        enemymarkers::update(marks_,[&](Mark& mark){
+            auto state=pedState(mark.ped);state.hostile=state.hostile&&!friendly(mark.blip.Get(),mark.ped)&&samePed(mark);return state;
+        },[&](Mark& mark){
+            const auto state=pedState(mark.ped);restore(mark);
+            if(!mark.owned)suppressEnemy(mark.blip,mark.ped);
+            {std::lock_guard<std::mutex> lock(mutex_);combat_.erase(mark.ped);}
+            if(log_){char message[136];std::snprintf(message,sizeof(message),"Enemy marker retired: exists=%u dead=%u incapacitated=%u hostile=%u owned=%u friendly=%u",state.exists?1u:0u,state.dead?1u:0u,state.incapacitated?1u:0u,state.hostile?1u:0u,mark.owned?1u:0u,friendly(mark.blip.Get(),mark.ped)?1u:0u);log_(message);}
+        });
+    }
     bool attacking(unsigned ped)const{for(const auto& mark:marks_)if(mark.ped==ped)return true;return false;}
     bool due(DWORD now)const{return !polled_||now-polled_>=250;}
     void tick(Scripting::Ped player,roadnav::Vec3 position,const std::vector<Scripting::Blip>& blips,bool fullSnapshot){
@@ -233,16 +291,16 @@ public:
         for(auto& mark:marks_)handles.push_back(mark.ped);
         {std::lock_guard<std::mutex> lock(mutex_);for(const auto& entry:combat_)handles.push_back(entry.first);}
         std::sort(handles.begin(),handles.end());handles.erase(std::unique(handles.begin(),handles.end()),handles.end());
-        for(auto it=marks_.begin();it!=marks_.end();){auto ped=pedHandle(it->ped);roadnav::Vec3 point{};
-            const bool live=DoesCharExist(ped)&&!IsCharDead(ped);if(live)GetCharCoordinates(ped,&point.x,&point.y,&point.z);
-            if(!live||roadnav::distance2D(point,position)>220||!samePed(*it)){restore(*it);it=marks_.erase(it);}else ++it;
+        // Preserve the old retention radius independently of per-frame life cleanup.
+        for(auto it=marks_.begin();it!=marks_.end();){roadnav::Vec3 point{};GetCharCoordinates(pedHandle(it->ped),&point.x,&point.y,&point.z);
+            if(roadnav::distance2D(point,position)>220){restore(*it);it=marks_.erase(it);}else ++it;
         }
         Vehicle vehicle{};GetCarCharIsUsing(player,&vehicle);
         for(auto handle:handles){if(handle==player.Get()||marks_.size()>=32||attacking(handle))continue;auto ped=pedHandle(handle);
-            if(!DoesCharExist(ped)||IsCharDead(ped))continue;roadnav::Vec3 point{};GetCharCoordinates(ped,&point.x,&point.y,&point.z);const float distance=roadnav::distance2D(point,position);if(distance>180)continue;
+            if(!DoesCharExist(ped)||IsCharDead(ped))continue;roadnav::Vec3 point{};GetCharCoordinates(ped,&point.x,&point.y,&point.z);const float distance=roadnav::distance2D(point,position);if(distance>180||!pedState(handle).capable())continue;
             bool ordered=false;{std::lock_guard<std::mutex> lock(mutex_);const auto found=combat_.find(handle);ordered=found!=combat_.end()&&found->second==player.Get();}
             const bool damage=HasCharBeenDamagedByChar(player,ped,false)||(vehicle.IsValid()&&DoesVehicleExist(vehicle)&&HasCarBeenDamagedByChar(vehicle,ped));
-            const bool aggressive=IsPedInCombat(ped)||IsCharShooting(ped)||IsCharInMeleeCombat(ped);
+            const bool aggressive=pedState(handle).hostile;
             if(!awareness::attacker(damage,ordered,false,distance,aggressive))continue;
             Blip marker{};for(auto blip:blips)if(DoesBlipExist(blip)&&GetBlipInfoIdType(blip)==BLIP_TYPE_CHAR&&GetBlipInfoIdPedIndex(blip).Get()==handle){marker=blip;break;}
             const bool owned=!marker.IsValid();if(owned&&!fullSnapshot)continue;

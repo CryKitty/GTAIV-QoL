@@ -34,6 +34,19 @@ int main(){
         assert(qolsettings::uiApi.Get(row)==static_cast<int>(row%2));
         assert(qolsettings::uiApi.Set(row,1));
     }
+    {
+        const wchar_t* help=L"Ordinary help";qolupdatemenu::footerSeen.store(false);
+        assert(qolsettings::uiApi.Footer(help)==help&&!qolupdatemenu::footerSeen.load());
+        assert(!qolsettings::uiApi.Footer(nullptr));
+        const wchar_t* source=L"Help~n~                        ~p~GTAIV.exe: v1.2.0.59 / Fusion Fix: v5.1.2 / ASI Loader: v9~n~~r~Warning";
+        const auto extended=qolsettings::uiApi.Footer(source);
+        assert(extended&&std::wcsstr(extended,L"CryKitty QoL: " QOL_VERSION_WIDE L" " QOL_BUILD_WIDE));
+        assert(qolupdatemenu::footerSeen.load());
+        wchar_t label[60]{};assert(qolsettings::uiApi.MenuLabel("QOL_UPDATES",label,60));
+        assert(std::wcsstr(label,L"Check for QoL Updates")&&!std::wcsstr(label,QOL_VERSION_WIDE));
+        qolupdatemenu::footerSeen.store(false);
+        assert(qolsettings::uiApi.MenuLabel("QOL_UPDATES",label,60)&&std::wcsstr(label,QOL_BUILD_WIDE));
+    }
     wchar_t untouched[60]=L"stock";
     assert(!qolsettings::uiApi.MenuLabel("QOL_TAXI",untouched,60));assert(std::wcscmp(untouched,L"stock")==0);
     assert(!qolsettings::uiApi.MenuLabel(keys[0],untouched,2));assert(std::wcscmp(untouched,L"stock")==0);

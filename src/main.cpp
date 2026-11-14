@@ -281,7 +281,8 @@ BOOL CALLBACK Initialize(PINIT_ONCE, PVOID, PVOID*) {
     Log("GTAIV-QoL 300% native interactive-map zoom; failed cutscene focus probe removed. No code detours or exception observers.");
     Log("Cutscene focus probe removed: synthetic activation minimized the game without pausing the cutscene.");
     diagnostics::Start(ini, exe, prefix);
-    qolsettings::Ensure();
+    qolsettings::Ensure();qolsettings::report.store(Log);
+    {char message[128];sprintf_s(message,"Driving camera startup: stored=%d preset=%d cm=%d",qolsettings::loadedHeightCm.load(),qolcamera::heightPreset(qolsettings::Get(QOL_DRIVING_CAMERA_HEIGHT)),qolsettings::Get(QOL_DRIVING_CAMERA_HEIGHT));Log(message);}
     zoomPercent=GetPrivateProfileIntA("DefaultMapZoom","ZoomPercent",300,ini);
     if(!SupportedVersion(exe)||!mapzoom::ValidPercent(zoomPercent)){
         Log("Unsupported version or ZoomPercent; no changes.");
