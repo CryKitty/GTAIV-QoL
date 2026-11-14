@@ -15,9 +15,6 @@
 // No native visibility changes and no Radar Off preference overrides. Keep all
 // visibility answers intact; displace only HUD_RADAR's own layout geometry.
 class MinimapLayout {
-    using Display=bool(__thiscall*)(void*);
-    inline static Display original_=nullptr;
-    inline static std::atomic<MinimapLayout*> owner_{nullptr};
     std::uintptr_t info_=0,components_=0,frontend_=0,target_=0;
     bool installed_=false,attempted_=false;
     const char* status_="not initialized";
@@ -34,25 +31,34 @@ class MinimapLayout {
         if(!minimaplayout::displaced(current))saved={address,current};
         if(saved.address)write(address,minimaplayout::Point{-10000,-10000});
     }
-    void update(void* queried=nullptr){
+    // The engine can copy our displaced layout into a replacement radar
+    // component. Preserve the last native baseline instead of treating the
+    // inherited sentinel as a new original (or losing its restore address).
+    void live(std::uintptr_t address,bool mask){
+        const bool have=live_.address||layout_.address;
+        const auto baseline=live_.address?live_.point:layout_.point;
+        if(live_.address&&live_.address!=address)restore(live_);
+        minimaplayout::Point current{};if(!read(address,current)||!minimaplayout::valid(current))return;
+        if(!minimaplayout::displaced(current)){if(mask)live_={address,current};}
+        else if(!live_.address&&have)live_={address,baseline};
+        if(mask&&live_.address)write(address,minimaplayout::Point{-10000,-10000});
+    }
+    void recoverCurrent(){
+        minimaplayout::Info info{};std::uint32_t component=0;
+        if(read(info_+8*sizeof(info),info)&&minimaplayout::radar(info)&&read(components_+info.slot*4,component)&&component>=0x10000)
+            live(static_cast<std::uintptr_t>(component)+0x18,false);
+    }
+    void update(){
         unsigned char frontend=1;
-        if(!installed_||!read(frontend_,frontend)||frontend!=0){restore(live_);restore(layout_);return;}
+        if(!installed_)return;
+        if(!read(frontend_,frontend)||frontend!=0){recoverCurrent();restore(live_);restore(layout_);return;}
         minimaplayout::Info info{};std::uint32_t component=0;
         if(!read(info_+8*sizeof(info),info)||!minimaplayout::radar(info)||!read(components_+info.slot*4,component)||component<0x10000)return;
-        if(queried&&reinterpret_cast<std::uintptr_t>(queried)!=component)return;
-        if(queried)queries_.fetch_add(1,std::memory_order_relaxed);
-        // The map layout and the radar-specific visual callbacks are separate.
-        // Keep component alpha/colour and shared native visibility unchanged.
+        queries_.fetch_add(1,std::memory_order_relaxed);
         move(info_+8*sizeof(info)+offsetof(minimaplayout::Info,pos),layout_);
-        move(static_cast<std::uintptr_t>(component)+0x18,live_);
+        live(static_cast<std::uintptr_t>(component)+0x18,true);
     }
-    static bool __fastcall displaying(void* component,void*){
-        // Always preserve the original answer; the shared query may gate UI
-        // work such as wanted stars and notifications elsewhere in the engine.
-        const bool result=original_?original_(component):false;
-        if(auto* owner=owner_.load(std::memory_order_acquire))owner->update(component);
-        return result;
-    }
+
 public:
     bool active()const{return installed_;}
     std::uintptr_t frontendAddress()const{return frontend_;}
@@ -65,8 +71,8 @@ public:
     unsigned fillHidden()const{return ring_.fillHidden();}
     void release(){
         ring_.release();
-        if(installed_){MH_DisableHook(reinterpret_cast<void*>(target_));MH_RemoveHook(reinterpret_cast<void*>(target_));}
-        owner_.store(nullptr,std::memory_order_release);original_=nullptr;installed_=false;
+        if(installed_)recoverCurrent();
+        installed_=false;
         restore(live_);restore(layout_);attempted_=false;status_="released";
     }
     void enable(void(*log)(const char*),std::uintptr_t testImage=0,std::uintptr_t testWanted=0){
@@ -116,10 +122,6 @@ public:
             if(queries.size()==1){target_=queries.front();foundDisplay=1;}
         }
         if(foundInfo!=1||foundComponents!=1||foundFrontend!=1||foundDisplay!=1){status_="layout signatures unavailable";if(log){char text[160];std::snprintf(text,sizeof(text),"Compass minimap: geometry signatures info=%u table=%u frontend=%u query=%u",foundInfo,foundComponents,foundFrontend,foundDisplay);log(text);}return;}
-        const auto init=MH_Initialize();if(init!=MH_OK&&init!=MH_ERROR_ALREADY_INITIALIZED){status_="hook initialization failed";return;}
-        owner_.store(this,std::memory_order_release);
-        if(MH_CreateHook(reinterpret_cast<void*>(target_),reinterpret_cast<void*>(&displaying),reinterpret_cast<void**>(&original_))!=MH_OK){owner_=nullptr;status_="geometry observer unavailable";return;}
-        if(MH_EnableHook(reinterpret_cast<void*>(target_))!=MH_OK){MH_RemoveHook(reinterpret_cast<void*>(target_));owner_=nullptr;original_=nullptr;status_="geometry observer unavailable";return;}
-        installed_=true;status_="radar geometry";ring_.enable(frontend_,log,testImage);update();if(log)log("Compass minimap: radar-only position mask active; native visibility, component opacity, palette and preferences unchanged");
+        installed_=true;status_="radar geometry; native HUD queries untouched";ring_.enable(frontend_,log,testImage);update();if(log)log("Compass minimap: radar geometry polled on script ticks; no shared HUD visibility hook; native opacity/preferences unchanged");
     }
 };

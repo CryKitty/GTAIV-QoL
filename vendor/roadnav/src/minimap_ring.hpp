@@ -13,7 +13,7 @@
 
 // IV-SDK identifies CRadar::DrawFrameFront/Back as void cdecl callbacks.
 // Resolve them through their own radar sprites and deferred callback references.
-// Suppress the border callbacks and the separate radar-owned visual fill.
+// Suppress only the dedicated border callbacks; native content always runs.
 // No shared sprite primitive, texture-selection, HUD query or phase is hooked.
 class MinimapRing {
     using Frame=void(__cdecl*)();
@@ -139,26 +139,17 @@ public:
             status_="frame callbacks unavailable";
             if(log){char line[200];std::snprintf(line,sizeof(line),"Compass minimap: frame signatures sprites=%u,%u state=%u callbacks=%u,%u; shared draw functions untouched",static_cast<unsigned>(sprites[0].size()),static_cast<unsigned>(sprites[1].size()),static_cast<unsigned>(states.size()),static_cast<unsigned>(frames[0].size()),static_cast<unsigned>(frames[1].size()));log(line);}return;
         }
-        // The fill is a separate queued visual callback. Identify it by the
-        // queue owner containing both borders and its no-args queue constructor,
-        // preserving GPS updates and common render-state callbacks in that phase.
-        std::vector<radarfill::Section> image;
-        for(unsigned n=0;n<nt.FileHeader.NumberOfSections;++n){IMAGE_SECTION_HEADER section{};
-            if(!read(headers+n*sizeof(section),section)||!(section.Characteristics&IMAGE_SCN_MEM_READ)||section.VirtualAddress>=size||section.Misc.VirtualSize>size-section.VirtualAddress||section.Misc.VirtualSize>32*1024*1024)continue;
-            radarfill::Section part{base+section.VirtualAddress,std::vector<unsigned char>(section.Misc.VirtualSize),(section.Characteristics&IMAGE_SCN_MEM_EXECUTE)!=0};SIZE_T bytes=0;
-            if(ReadProcessMemory(GetCurrentProcess(),reinterpret_cast<void*>(part.base),part.bytes.data(),part.bytes.size(),&bytes)&&bytes==part.bytes.size())image.push_back(std::move(part));
-        }
-        const auto fillTarget=radarfill::resolve(image,frames[0][0],frames[1][0],log);
-        if(log){char line[220];std::snprintf(line,sizeof(line),"Compass minimap: typed radar queue phase=%08x slot=%u visual-fill=%08x candidates=%u",static_cast<unsigned>(fillTarget.phase),fillTarget.slot,static_cast<unsigned>(fillTarget.callback),fillTarget.candidates);log(line);}
+        // Queue order does not prove that a callback is visual-only. Let the
+        // engine run its native fill/content callbacks, including lifetime work.
         const auto init=MH_Initialize();if(init!=MH_OK&&init!=MH_ERROR_ALREADY_INITIALIZED){status_="frame hook initialization failed";return;}
         const std::array<void*,3> detours{{reinterpret_cast<void*>(&front),reinterpret_cast<void*>(&back),reinterpret_cast<void*>(&fill)}};
-        const std::array<std::uintptr_t,3> resolved{{frames[0][0],frames[1][0],fillTarget.callback}};
+        const std::array<std::uintptr_t,3> resolved{{frames[0][0],frames[1][0],0}};
         owner_.store(this,std::memory_order_release);
         for(unsigned n=0;n<3;++n){if(!resolved[n])continue;auto* target=reinterpret_cast<void*>(resolved[n]);
             if(MH_CreateHook(target,detours[n],reinterpret_cast<void**>(&original_[n]))!=MH_OK){release();status_="frame hook unavailable";return;}targets_[n]=target;
         }
         for(auto* target:targets_)if(target&&MH_EnableHook(target)!=MH_OK){release();status_="frame hook unavailable";return;}
-        installed_=true;status_=fillTarget.callback?"radar border and visual fill":"radar border only; fill unresolved";
-        if(log)log("Compass minimap: radar-specific callbacks filtered; GPS generation and shared HUD rendering preserved");
+        installed_=true;status_="radar borders only; native content callbacks preserved";
+        if(log)log("Compass minimap: only verified border callbacks filtered; native fill/content and lifetime callbacks never suppressed");
     }
 };
