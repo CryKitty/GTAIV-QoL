@@ -574,6 +574,7 @@ roadnav::TurnRenderer gTurnRenderer{turnRendererEvent};
 roadnav::RoadLineRenderer gRoadLineRenderer{turnRendererEvent};
 roadnav::RoadLineRenderer gEscapeLineRenderer{turnRendererEvent};
 compass::NoticeRenderer gCompassNoticeRenderer;
+drivingrender::Verifier gDrivingCameraVerifier;
 class RoadNavScript final : public ScriptThread {
     CompassHud compass_{turnRendererEvent,&gCompassNoticeRenderer};
     DWORD previousTick_=0, lastServiceTry_=0, lastCueLog_=0;
@@ -927,6 +928,7 @@ class RoadNavScript final : public ScriptThread {
         service->RemoveDeviceHook(&gRoadLineRenderer);service->AddDeviceHook(&gRoadLineRenderer);
         service->RemoveDeviceHook(&gEscapeLineRenderer);service->AddDeviceHook(&gEscapeLineRenderer);
         service->RemoveDeviceHook(&gCompassNoticeRenderer);service->AddDeviceHook(&gCompassNoticeRenderer);
+        service->RemoveDeviceHook(&gDrivingCameraVerifier);service->AddDeviceHook(&gDrivingCameraVerifier);
         attached_=true;event("Turn chevron renderer attached to D3DHook");
     }
     worldload::Gate worldGate_;bool firstRuntime_=true;
