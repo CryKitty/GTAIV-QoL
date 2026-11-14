@@ -278,6 +278,8 @@ jobs:
             init = reinterpret_cast<void(*)()>(GetProcAddress(m,"InitializeASI"));
             if (!init) return 4;
             init(); init();
+            auto mask = reinterpret_cast<unsigned(__cdecl*)(unsigned,unsigned)>(GetProcAddress(m,"QoLCompass_SetEnabled"));
+            if (!mask || mask(0,1)!=0 || mask(1,2)!=0) return 5; // real export, no world/native initialization
             FreeLibrary(m);
             return 0;
           }
