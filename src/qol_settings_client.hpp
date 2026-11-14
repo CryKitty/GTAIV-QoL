@@ -1,5 +1,6 @@
 #pragma once
 #include "qol_settings_api.h"
+#include "runtime_stages.hpp"
 namespace qolclient {
 inline const QolSettingsApi* Api() {
     auto module=GetModuleHandleA("GTAIV-QoL.asi");
@@ -14,6 +15,14 @@ inline void RefreshMenu(bool paused){
     const auto refresh=module?reinterpret_cast<Refresh>(GetProcAddress(module,"QoLSettings_RefreshMenu")):nullptr;
     if(refresh)refresh(paused?1u:0u);
 }
+inline qolsafety::StageBudget safetyBudget;
+inline void SafetyStage(qolsafety::Stage stage,unsigned value=0){
+    if(!safetyBudget.claim(stage))return;
+    using Report=void(__cdecl*)(unsigned,unsigned,unsigned);
+    const auto module=GetModuleHandleA("GTAIV-QoL.asi");
+    const auto report=module?reinterpret_cast<Report>(GetProcAddress(module,"QoLRuntime_Stage")):nullptr;
+    if(report)report(static_cast<unsigned>(stage),GetTickCount(),value);
+}
 inline unsigned loadStages=0;
 inline void LoadStage(unsigned stage){
     if(stage>=16||(loadStages&(1u<<stage)))return;loadStages|=1u<<stage;
@@ -23,7 +32,7 @@ inline void LoadStage(unsigned stage){
     if(report)report(stage);
 }
 inline void UpdateSession(bool active){
-    if(!active)loadStages=0;
+    if(!active){loadStages=0;safetyBudget.reset();}
     using Session=void(__cdecl*)(unsigned);
     const auto module=GetModuleHandleA("GTAIV-QoL.asi");
     const auto session=module?reinterpret_cast<Session>(GetProcAddress(module,"QoLUpdates_Session")):nullptr;

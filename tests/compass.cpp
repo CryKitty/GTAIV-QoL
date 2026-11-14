@@ -1,3 +1,4 @@
+#include "../src/runtime_stages.hpp"
 #include "../src/compass.hpp"
 #include "../src/world_load_gate.hpp"
 #include "../src/update_status_format.hpp"
@@ -13,6 +14,7 @@
 #include "../src/wanted_compass.hpp"
 #include "../src/date_compass.hpp"
 #include <cwchar>
+#include <cstring>
 #include "../src/navigation_awareness.hpp"
 #include "../src/enemy_markers.hpp"
 #include "../src/police_escape.hpp"
@@ -21,6 +23,11 @@
 #include <cassert>
 #include <cstdio>
 #include <limits>
+struct CameraBoolContext {
+    unsigned value=0;
+    void Push(unsigned handle){value=handle;}
+    template<class T> T GetResult(){T result{};std::memcpy(&result,&value,sizeof(T));return result;}
+};
 struct AlphaNative {
     static int next,calls;
     template<std::uint32_t Hash,class R> static R invoke(std::uint32_t handle,int* alpha){
@@ -59,14 +66,14 @@ struct RadarTable {
     bool exists(std::uint32_t handle){return handle==0x00050002u||handle==0x00060003u;}
 };
 struct FakeGps {
-    std::set<unsigned> blips{1,2},active{1};bool movable=true,addSucceeds=true;unsigned moves=0,removes=0;
+    std::set<unsigned> blips{1,2},active{1};bool movable=true,addSucceeds=true,expireOnMove=false,expireOnConfigure=false;unsigned moves=0,removes=0;
     bool exists(unsigned h){return blips.count(h)!=0;}
     bool same(unsigned a,unsigned b){return a==b;}
     void route(unsigned h,bool enabled){if(enabled)active.insert(h);else active.erase(h);assert(active.size()<=1);}
-    bool move(unsigned h,roadnav::Vec3){assert(!active.count(h)&&!active.count(1));++moves;return movable;}
+    bool move(unsigned h,roadnav::Vec3){assert(!active.count(h)&&!active.count(1));++moves;if(expireOnMove)blips.erase(h);return movable;}
     void remove(unsigned h){assert(!active.count(h));blips.erase(h);++removes;}
     unsigned add(roadnav::Vec3){assert(!blips.count(2));if(!addSucceeds)return 0;blips.insert(3);return 3;}
-    void configure(unsigned){}
+    void configure(unsigned h){if(expireOnConfigure)blips.erase(h);}
 };
 int main(){
     {
@@ -219,6 +226,48 @@ int main(){
             stack.finishPersistent(stack.persistentNameY()+.048f);
             assert(stack.hoverNameY()>stack.persistentDistance+.024f);
         }
+    }
+
+    {
+        using namespace qolcamera;
+        const auto notInterpolating=[](CameraBoolContext* context){context->value&=~255u;};
+        const auto interpolating=[](CameraBoolContext* context){context->value=(context->value&~255u)|1u;};
+        assert(!cameraInterpolating<CameraBoolContext>(notInterpolating,0x12345678u));
+        assert(cameraInterpolating<CameraBoolContext>(interpolating,0x12345678u));
+        DrivingState oldAdmission;oldAdmission.player=oldAdmission.driver=oldAdmission.fadedIn=oldAdmission.control=true;
+        assert(oldAdmission.gate(120)==HeightGate::Ready); // b72 admitted driver assignment without seating/camera proof
+        CameraEntry entry;unsigned queries=0;
+        for(unsigned t=0;t<1000;++t)if(entry.seated(t,7,true,false,true))++queries;
+        assert(queries==0); // carjacking: driver flag alone is insufficient
+        assert(!entry.seated(1000,7,true,true,false));
+        assert(!entry.seated(1499,7,true,true,false));
+        assert(entry.seated(1500,7,true,true,false));
+        assert(!entry.observed(0)&&!entry.observed(~0u));
+        assert(!entry.observed(11)&&entry.observed(11));
+        assert(!entry.observed(12)&&entry.observed(12)); // changed camera needs two samples
+        assert(!entry.seated(1501,8,true,true,false)); // different vehicle restarts readiness
+        assert(!entry.seated(2100,8,false,true,false)); // lost control resets it
+        assert(!entry.seated(2200,8,true,true,false));
+        assert(entry.seated(2700,8,true,true,false));
+        entry.reset();assert(!entry.seated(0xffffff00u,8,true,true,false));
+        assert(entry.seated(244u,8,true,true,false)); // unsigned clock wrap
+        DrivingHeight height;DrivingState state;state.player=state.driver=state.fadedIn=state.control=true;
+        state.cameraReady=false;unsigned writes=0;
+        auto write=[&](bool,float,float,float){++writes;};
+        assert(applySafeHeight(height,state,120,false,write)==HeightCommand::None&&writes==0);
+        state.cameraReady=true;assert(applySafeHeight(height,state,120,false,write)==HeightCommand::Apply&&writes==1);
+        state.cameraReady=false;assert(applySafeHeight(height,state,0,true,write)==HeightCommand::None&&height.owned&&writes==1);
+        state.cameraReady=true;assert(applySafeHeight(height,state,0,true,write)==HeightCommand::Release&&!height.owned&&writes==2);
+        state.scriptCamera=true;assert(applySafeHeight(height,state,120,false,write)==HeightCommand::None&&writes==2);
+        state.scriptCamera=false;state.interpolating=true;assert(applySafeHeight(height,state,120,false,write)==HeightCommand::None&&writes==2);
+        state.interpolating=false;state.stopping=true;assert(applySafeHeight(height,state,120,false,write)==HeightCommand::None&&writes==2);
+        qolsafety::StageBudget budget;
+        for(unsigned stage=0;stage<static_cast<unsigned>(qolsafety::Stage::Count);++stage){
+            assert(qolsafety::stageName(stage));for(unsigned i=0;i<8;++i)assert(budget.claim(static_cast<qolsafety::Stage>(stage)));
+            assert(!budget.claim(static_cast<qolsafety::Stage>(stage)));
+        }
+        assert(!qolsafety::stageName(999)&&!budget.claim(static_cast<qolsafety::Stage>(999)));
+        budget.reset();assert(budget.claim(qolsafety::Stage::OffsetReadBegin));
     }
 
     {
@@ -525,6 +574,21 @@ int main(){
     assert(gps.active==std::set<unsigned>{3});
     FakeGps failed;failed.movable=false;failed.addSucceeds=false;
     assert(!policeescape::requestGps(2u,1u,Vec3{},failed));assert(failed.active==std::set<unsigned>{1});
+
+    {
+        FakeGps invalid;
+        for(const auto point:{Vec3{std::numeric_limits<float>::quiet_NaN(),1,2},Vec3{1,std::numeric_limits<float>::infinity(),2},Vec3{1,2,-std::numeric_limits<float>::infinity()}}){
+            assert(!policeescape::requestGps(2u,1u,point,invalid));
+            assert(invalid.moves==0&&invalid.removes==0&&invalid.active==std::set<unsigned>{1});
+            assert((invalid.blips==std::set<unsigned>{1,2}));
+        }
+        FakeGps expiring;expiring.expireOnMove=true;
+        assert(policeescape::requestGps(2u,1u,Vec3{10,20,0},expiring)==3);
+        assert(expiring.removes==0&&expiring.active==std::set<unsigned>{3});
+        FakeGps gone;gone.expireOnConfigure=true;
+        assert(!policeescape::requestGps(2u,1u,Vec3{10,20,0},gone));
+        assert(gone.active==std::set<unsigned>{1}); // no invalid helper route-on; original restored
+    }
 
     Vec3 selected{};unsigned samples=0;
     const auto snap=[&](Vec3 a,Vec3& b){++samples;b=a;return true;};

@@ -263,10 +263,10 @@ class CompassHud {
         Scripting::DisplayTextWithLiteralString(x,y,"STRING",value);
     }
 
-    RadarNative heightOffset_=nullptr,heightActive_=nullptr,heightScript_=nullptr;
+    RadarNative heightOffset_=nullptr,heightActive_=nullptr,heightScript_=nullptr,heightInterpolation_=nullptr;
     DWORD heightResolveAt_=0;bool heightResolveTried_=false;unsigned heightNativeState_=~0u;
     void resolveHeightNatives(){
-        if(heightOffset_&&heightActive_&&heightScript_)return;
+        if(heightOffset_&&heightActive_&&heightScript_&&heightInterpolation_)return;
         const DWORD now=GetTickCount();if(heightResolveTried_&&now-heightResolveAt_<1000)return;
         heightResolveTried_=true;heightResolveAt_=now;
         using Lookup=void* (__cdecl*)(unsigned);using Names=void* (__cdecl*)(const char*);
@@ -277,55 +277,83 @@ class CompassHud {
         heightOffset_=native(Scripting::NATIVE_SET_FOLLOW_VEHICLE_CAM_OFFSET,"SET_FOLLOW_VEHICLE_CAM_OFFSET");
         heightActive_=native(Scripting::NATIVE_IS_FOLLOW_VEHICLE_CAM_OFFSET_ACTIVE,"IS_FOLLOW_VEHICLE_CAM_OFFSET_ACTIVE");
         heightScript_=native(Scripting::NATIVE_GET_SCRIPT_DRAW_CAM,"GET_SCRIPT_DRAW_CAM");
-        const unsigned available=(heightOffset_?1u:0u)|(heightActive_?2u:0u)|(heightScript_?4u:0u);
-        if(log_&&available!=heightNativeState_){char message[120];std::snprintf(message,sizeof(message),"Driving camera native resolution: set=%u active=%u draw=%u",heightOffset_?1u:0u,heightActive_?1u:0u,heightScript_?1u:0u);log_(message);heightNativeState_=available;}
+        heightInterpolation_=native(Scripting::NATIVE_IS_SPECIFIC_CAM_INTERPOLATING,"IS_SPECIFIC_CAM_INTERPOLATING");
+        const unsigned available=(heightOffset_?1u:0u)|(heightActive_?2u:0u)|(heightScript_?4u:0u)|(heightInterpolation_?8u:0u);
+        if(log_&&available!=heightNativeState_){char message[120];std::snprintf(message,sizeof(message),"Driving camera native resolution: set=%u active=%u draw=%u specific=%u",heightOffset_?1u:0u,heightActive_?1u:0u,heightScript_?1u:0u,heightInterpolation_?1u:0u);log_(message);heightNativeState_=available;}
     }
     struct HeightQuery:NativeContext {HeightQuery(){*static_cast<u32*>(m_pReturn)=0;}};
+    qolcamera::CameraEntry heightEntry_;
     int heightLoggedCm_=-1;unsigned heightLoggedGate_=~0u;DWORD heightLogAt_=0;
     unsigned heightApplies_=0,heightReleases_=0;
     void drivingCameraHeightTick(bool stopping=false){
-        using namespace Scripting;
+        using namespace Scripting;using qolsafety::Stage;
         const int desired=stopping?0:qolclient::Get(QOL_DRIVING_CAMERA_HEIGHT,0);
-        qolcamera::DrivingState state;state.stopping=stopping;
-
-        bool active=false;Ped ped{};Vehicle car{};Ped driver{};
-        if(desired&&!stopping){
-            const auto player=ConvertIntToPlayerIndex(GetPlayerId());GetPlayerChar(player,&ped);
-            state.player=ped.IsValid()&&DoesCharExist(ped);
-            if(state.player&&IsCharInAnyCar(ped)){GetCarCharIsUsing(ped,&car);if(car.IsValid()&&DoesVehicleExist(car))GetDriverOfCar(car,&driver);}
-            state.driver=state.player&&car.IsValid()&&driver.Get()==ped.Get();
-            state.cutscene=NativeInvoke::Invoke<NATIVE_HAS_CUTSCENE_LOADED,b8>()&&!NativeInvoke::Invoke<NATIVE_HAS_CUTSCENE_FINISHED,b8>();
-            state.paused=IsPauseMenuActive()!=0;state.fadedIn=IsScreenFadedIn()!=0;state.control=IsPlayerControlOn(player)!=0;
-            // A loaded ScriptHook tick alone does not imply a usable follow
-            // camera. Never resolve/query cameras on a loading/non-driver frame.
-            if(state.gate(desired)==qolcamera::HeightGate::Ready){
-                qolclient::LoadStage(5);resolveHeightNatives();qolclient::LoadStage(6);state.natives=heightOffset_&&heightActive_&&heightScript_;
-                qolclient::LoadStage(7);
-                state.interpolating=IsCamInterpolating();
-                // GET_GAME_CAM_CHILD describes a node inside the ordinary gameplay
-                // graph, not proof of a propagating script camera. Reject an actual
-                // scripted draw camera instead; no child-handle prerequisite.
-                Camera scripted{};if(heightScript_){NativeContext query;query.Push(&scripted);heightScript_(&query);}
-                state.scriptCamera=scripted.IsValid()&&DoesCamExist(scripted)&&IsCamActive(scripted)&&IsCamPropagating(scripted);
-                if(heightActive_){HeightQuery query;heightActive_(&query);active=query.GetResult<u32>()!=0;}
-                qolclient::LoadStage(8);
+        if(stopping){heightEntry_.reset();return;} // No camera work during teardown.
+        if(!desired&&!drivingHeight_.owned){heightEntry_.reset();return;} // Default is untouched.
+        qolcamera::DrivingState state;
+        bool active=false,seated=false,entering=false,gameplayValid=false;
+        Ped ped{};Vehicle car{};Ped driver{};Camera gameplay{};
+        const auto player=ConvertIntToPlayerIndex(GetPlayerId());GetPlayerChar(player,&ped);
+        state.player=ped.IsValid()&&DoesCharExist(ped);
+        if(state.player&&IsCharInAnyCar(ped)){GetCarCharIsUsing(ped,&car);if(car.IsValid()&&DoesVehicleExist(car))GetDriverOfCar(car,&driver);}
+        state.driver=state.player&&car.IsValid()&&driver.Get()==ped.Get();
+        state.cutscene=NativeInvoke::Invoke<NATIVE_HAS_CUTSCENE_LOADED,b8>()&&!NativeInvoke::Invoke<NATIVE_HAS_CUTSCENE_FINISHED,b8>();
+        state.paused=IsPauseMenuActive()!=0;state.fadedIn=IsScreenFadedIn()!=0;state.control=IsPlayerControlOn(player)!=0;
+        if(state.driver){seated=IsCharSittingInCar(ped,car)!=0;entering=IsCharGettingInToACar(ped)!=0;}
+        const bool normal=state.gate(1)==qolcamera::HeightGate::Ready;
+        state.cameraReady=false;
+        if(heightEntry_.seated(GetTickCount(),car.Get(),normal,seated,entering)){
+            qolclient::SafetyStage(Stage::ChildBegin);GetGameCamChild(&gameplay);qolclient::SafetyStage(Stage::ChildEnd,gameplay.Get());
+            if(qolcamera::cameraHandle(gameplay.Get())){
+                qolclient::SafetyStage(Stage::ChildExistsBegin);gameplayValid=DoesCamExist(gameplay)!=0;qolclient::SafetyStage(Stage::ChildExistsEnd,gameplayValid?1u:0u);
+            }
+            if(heightEntry_.observed(gameplayValid?gameplay.Get():0)){
+                state.cameraReady=true;
+                qolclient::LoadStage(5);resolveHeightNatives();qolclient::LoadStage(6);
+                state.natives=heightOffset_&&heightActive_&&heightScript_&&heightInterpolation_;
+                if(state.natives){
+                    qolclient::LoadStage(7);
+                    // Never call global IS_CAM_INTERPOLATING on a camera-less
+                    // entry frame. This query names the validated live child.
+                    qolclient::SafetyStage(Stage::InterpolationBegin);
+                    state.interpolating=qolcamera::cameraInterpolating<HeightQuery>(heightInterpolation_,gameplay);
+                    qolclient::SafetyStage(Stage::InterpolationEnd,state.interpolating?1u:0u);
+                    if(!state.interpolating){
+                        Camera scripted{};
+                        qolclient::SafetyStage(Stage::ScriptBegin);NativeContext query;query.Push(&scripted);heightScript_(&query);qolclient::SafetyStage(Stage::ScriptEnd,scripted.Get());
+                        bool exists=false;
+                        if(qolcamera::cameraHandle(scripted.Get())){
+                            qolclient::SafetyStage(Stage::ScriptExistsBegin);exists=DoesCamExist(scripted)!=0;qolclient::SafetyStage(Stage::ScriptExistsEnd,exists?1u:0u);
+                        }
+                        if(exists){
+                            qolclient::SafetyStage(Stage::ScriptActiveBegin);const bool running=IsCamActive(scripted);qolclient::SafetyStage(Stage::ScriptActiveEnd,running?1u:0u);
+                            if(running){qolclient::SafetyStage(Stage::ScriptPropagateBegin);state.scriptCamera=IsCamPropagating(scripted);qolclient::SafetyStage(Stage::ScriptPropagateEnd,state.scriptCamera?1u:0u);}
+                        }
+                        if(!state.scriptCamera){
+                            qolclient::SafetyStage(Stage::OffsetReadBegin);HeightQuery offset;heightActive_(&offset);active=offset.GetResult<u32>()!=0;qolclient::SafetyStage(Stage::OffsetReadEnd,active?1u:0u);
+                        }
+                    }
+                    qolclient::LoadStage(8);
+                }
             }
         }
-        const auto command=qolcamera::applyHeight(drivingHeight_,state,desired,active,[&](bool enabled,float x,float y,float z){
-            if(!heightOffset_)return;
-            NativeContext call;call.Push(enabled);call.Push(x);call.Push(y);call.Push(z);heightOffset_(&call);
-        });
+        auto command=qolcamera::HeightCommand::None;
+        // Defer both apply AND release across camera destruction/transition.
+        // Retain ownership until the next validated driving frame can release.
+        {
+            command=qolcamera::applySafeHeight(drivingHeight_,state,desired,active,[&](bool enabled,float x,float y,float z){
+                qolclient::SafetyStage(Stage::OffsetWriteBegin,enabled?1u:0u);
+                NativeContext call;call.Push(enabled);call.Push(x);call.Push(y);call.Push(z);heightOffset_(&call);
+                qolclient::SafetyStage(Stage::OffsetWriteEnd,enabled?1u:0u);
+            });
+        }
         if(command==qolcamera::HeightCommand::Apply)++heightApplies_;
         if(command==qolcamera::HeightCommand::Release)++heightReleases_;
         const auto gate=static_cast<unsigned>(state.gate(desired));const DWORD now=GetTickCount();
         if(log_&&(desired!=heightLoggedCm_||gate!=heightLoggedGate_||command==qolcamera::HeightCommand::Release||(desired&&now-heightLogAt_>=5000))){
-            // Fixed numeric state only, no player/session identifiers. Record
-            // transitions plus a bounded heartbeat instead of per-frame spam.
-            Camera child{};bool childValid=false,childPropagating=false;
-            if(gate==static_cast<unsigned>(qolcamera::HeightGate::Ready)){GetGameCamChild(&child);childValid=child.IsValid()&&DoesCamExist(child);childPropagating=childValid&&IsCamPropagating(child);}
-            char message[288];std::snprintf(message,sizeof(message),"Driving camera state: preset=%d cm=%d gate=%u driver=%u scripted=%u active=%u owned=%u command=%u apply=%u release=%u natives=%u old-child-valid=%u old-child-propagating=%u",
+            char message[288];std::snprintf(message,sizeof(message),"Driving camera state: preset=%d cm=%d gate=%u driver=%u scripted=%u active=%u owned=%u command=%u apply=%u release=%u natives=%u seated=%u entering=%u gameplay-valid=%u ready=%u",
                 qolcamera::heightPreset(desired),desired,gate,state.driver?1u:0u,state.scriptCamera?1u:0u,active?1u:0u,drivingHeight_.owned?1u:0u,
-                static_cast<unsigned>(command),heightApplies_,heightReleases_,state.natives?1u:0u,childValid?1u:0u,childPropagating?1u:0u);log_(message);
+                static_cast<unsigned>(command),heightApplies_,heightReleases_,state.natives?1u:0u,seated?1u:0u,entering?1u:0u,gameplayValid?1u:0u,state.cameraReady?1u:0u);log_(message);
             heightLoggedCm_=desired;heightLoggedGate_=gate;heightLogAt_=now;heightApplies_=heightReleases_=0;
         }
     }
