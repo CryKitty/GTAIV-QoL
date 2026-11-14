@@ -14,6 +14,12 @@ inline void RefreshMenu(bool paused){
     const auto refresh=module?reinterpret_cast<Refresh>(GetProcAddress(module,"QoLSettings_RefreshMenu")):nullptr;
     if(refresh)refresh(paused?1u:0u);
 }
+inline void UpdateSession(bool active){
+    using Session=void(__cdecl*)(unsigned);
+    const auto module=GetModuleHandleA("GTAIV-QoL.asi");
+    const auto session=module?reinterpret_cast<Session>(GetProcAddress(module,"QoLUpdates_Session")):nullptr;
+    if(session)session(active?1u:0u);
+}
 inline int Get(unsigned id,int fallback) {const auto api=Api();const int value=api?api->Get(id):-1;return value>=0?value:fallback;}
 inline bool Enabled(unsigned id,bool fallback=true) {return Get(id,fallback?1:0)!=0;}
 }

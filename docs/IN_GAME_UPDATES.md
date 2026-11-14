@@ -1,7 +1,8 @@
 # In-game update checks on Steam Deck / Proton
 
 Pause → QoL → **Check for QoL Updates** is Off by default. Turn it On to queue a
-check; it also queues one check at each game startup while already On. Off does
+check; it also queues one check at each game startup while already On and repeats
+every ten minutes during the session while idle. Off does
 not contact GitHub, cancels a staged apply, and preserves the other menu choices.
 The toggle and installed worker arrive through the normal updater; no file edits
 or manual systemd commands are needed.
@@ -117,3 +118,44 @@ The native Game-menu version-footer extension now owns the identity display once
 that footer has actually been shown this launch. The QoL update row then keeps
 only its control name and live status/timestamp. Until then, or when unavailable,
 it retains the build identity described above. See [camera/range/footer notes](CAMERA_RANGE_AND_FOOTER.md).
+
+## Periodic session checks
+
+The fixed interval is 600,000 ms, controlled only by the existing update toggle.
+The Windows core's existing background tick owns an in-memory Schedule using
+GetTickCount64. Startup/On still checks immediately once the bridge is idle;
+every attempted request (including a write failure) anchors the next ten minutes.
+No deadline/periodic job is persisted or scheduled in systemd. Pausing the game
+does not stop the wall-clock interval; no gameplay window is opened.
+
+Queued requests, Checking/Downloading/Applying receipts and a staged flag suppress
+new requests. The worker commits Checking before deleting the request, and the
+native tick reads request existence before the receipt, closing the handoff gap.
+Busy checks are not duplicated even after the interval expires; once idle the
+overdue check can run and starts a fresh interval, without catch-up bursts. Failed
+checks retry at the next deadline. Unclaimed requests already failed by the
+120-second watchdog can be replaced at that deadline, with only one request file.
+The new Staged flag also suppresses checks after a failed apply with a valid stage.
+Only a stale busy receipt is reset to failure by an idle worker holding the update
+lock; this recovers worker restarts without confusing an active check with idle.
+
+Off resets the schedule and removes the temporary/final request. The worker
+cancels the stage before its running-game apply gate, so Off cancellation works
+during play too. An already executing HTTP call cannot be recalled; opt-in is
+checked before subsequent download/staging/apply. ScriptHook OnKill stops and
+clears the core scheduler through an additive export; OnStart resumes a fresh
+session. A process exit destroys the timer. The worker deletes requests when GTA
+is no longer running; the next native startup also clears any old request before
+its startup check. A request older than the live Linux GTA process start is
+rejected, including exit/relaunch entirely between worker polls. The Linux
+/proc start time is used because Proton's Windows PID can differ from Linux PID.
+Legitimate staged update payloads remain available for normal exit installation;
+only queued checks/deadlines are session-local.
+
+Native timer decisions are tested with explicit clocks; Windows file/lifecycle
+tests simulate busy, failed, staged and unloaded states. Worker tests cover a
+mid-session newly available build through the real state path, immediate Off
+cancellation, failed retry, stale request cleanup and Linux process-start parsing.
+Use the newest changelog's updater-only acceptance steps. Download/publish times,
+worker polling and network latency add to the interval; no hard completion time
+is promised for failed/slow networks or a worker that is not running.

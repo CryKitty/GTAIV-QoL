@@ -8,7 +8,7 @@ inline bool validDate(const std::wstring& s){
     const auto number=[&](unsigned i){return (s[i]-L'0')*10+s[i+1]-L'0';};
     return number(5)>=1&&number(5)<=12&&number(8)>=1&&number(8)<=31&&number(11)<=23&&number(14)<=59;
 }
-struct Receipt {std::string state="idle",sha,build;std::wstring updated;bool valid=false;};
+struct Receipt {std::string state="idle",sha,build;std::wstring updated;bool valid=false,staged=false;};
 inline bool knownState(const std::string& s){
     for(const char* value:{"idle","checking","downloading","staged","applying","up_to_date","failed","updated","no_release","cancelled"})if(s==value)return true;
     return false;
@@ -16,13 +16,14 @@ inline bool knownState(const std::string& s){
 inline Receipt parse(const std::string& source){
     Receipt result;if(source.size()>4096)return result;
     for(unsigned char c:source)if(c==0||c>127)return result;
-    std::string section;std::size_t begin=0;bool stateSeen=false;
+    std::string section;std::size_t begin=0;bool stateSeen=false,stagedValid=true;
     while(begin<source.size()){
         const auto end=source.find('\n',begin);auto line=source.substr(begin,end==std::string::npos?end:end-begin);
         if(!line.empty()&&line.back()=='\r')line.pop_back();
         if(!line.empty()&&line.front()=='[')section=line;
         const auto split=line.find('=');
         if(split!=std::string::npos){const auto key=line.substr(0,split),value=line.substr(split+1);
+            if(section=="[Update]"&&key=="Staged"){result.staged=value=="1";stagedValid=value=="0"||value=="1";}
             if(section=="[Update]"&&key=="State"){result.state=value;stateSeen=true;}
             if(section=="[Installed]"){
                 if(key=="Sha")result.sha=value;
@@ -35,7 +36,7 @@ inline Receipt parse(const std::string& source){
     }
     bool sha=result.sha.empty()||result.sha.size()==40;
     for(char c:result.sha)sha=sha&&((c>='0'&&c<='9')||(c>='a'&&c<='f'));
-    result.valid=stateSeen&&knownState(result.state)&&sha&&(result.updated.empty()||validDate(result.updated));return result;
+    result.valid=stateSeen&&stagedValid&&knownState(result.state)&&sha&&(result.updated.empty()||validDate(result.updated));return result;
 }
 inline std::wstring format(const std::wstring& version,const std::wstring& build,const std::string& state,const std::wstring& installed,bool footer=false){
     std::wstring status;

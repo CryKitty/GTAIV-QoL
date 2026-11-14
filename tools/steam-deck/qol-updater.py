@@ -346,6 +346,22 @@ def game_running():
         except OSError:pass
     return False
 
+def game_start_time():
+    # Windows PIDs under Proton need not equal Linux PIDs. Compare the shared
+    # request's mtime to the live GTA process start, including an exit/relaunch
+    # that occurred entirely between worker polls.
+    try:
+        boot=next(int(line.split()[1]) for line in Path('/proc/stat').read_text().splitlines() if line.startswith('btime '))
+        ticks=os.sysconf('SC_CLK_TCK');starts=[]
+        for process in Path('/proc').glob('[0-9]*'):
+            try:
+                if (process/'comm').read_text().strip().lower() not in ('gtaiv.exe','gtaiv'):continue
+                fields=(process/'stat').read_text().rsplit(')',1)[1].split()
+                starts.append(boot+int(fields[19])/ticks) # field 22; fields starts at state (3)
+            except (OSError,ValueError,IndexError):continue
+        return max(starts) if starts else None
+    except (OSError,ValueError,StopIteration):return None
+
 def update_opt_in(game):
     import configparser
     try:
@@ -412,7 +428,7 @@ def update_status(game,state,installed=None):
     record={'schema':2,'code':state,'state':STATUS_TEXT[state],'sha':sha,'build':build,
             'updated_at':utc,'updated_local':installed}
     atomic(game/'GTAIV-QoL-update-status.json',json.dumps(record).encode())
-    receipt='[Update]\nState='+state+'\n[Installed]\nSha='+sha+'\nBuild='+build+'\nUpdatedLocal='+installed+'\nUpdatedUtc='+utc+'\n'
+    receipt='[Update]\nStaged='+('1' if (pending_directory(game)/'candidate.json').is_file() else '0')+'\nState='+state+'\n[Installed]\nSha='+sha+'\nBuild='+build+'\nUpdatedLocal='+installed+'\nUpdatedUtc='+utc+'\n'
     atomic(game/'GTAIV-QoL-update-info.ini',receipt.encode('ascii'))
 
 
@@ -435,6 +451,7 @@ def stage_game_update(game):
     if channel=='beta' and current and next_version and current>next_version:
         if not uploader_files_intact():raise RuntimeError('Installed beta is newer, but diagnostics need repair; no update was staged.')
         update_status(game,'up_to_date');return False
+    if not update_opt_in(game):return False
     update_status(game,'downloading')
     data=request(token,candidate['route'],binary=True)
     manifest,files=validate_archive(data,candidate)
@@ -451,9 +468,9 @@ def stage_game_update(game):
 def apply_game_update(game):
     folder=pending_directory(game);candidate_file=folder/'candidate.json';payload=folder/'payload.zip'
     if not candidate_file.is_file():return False
-    if game_running():return False
     if not update_opt_in(game):
         candidate_file.unlink();payload.unlink(missing_ok=True);update_status(game,'cancelled');return False
+    if game_running():return False
     if candidate_file.is_symlink() or payload.is_symlink() or payload.stat().st_size>MAX_ARCHIVE:raise RuntimeError('Invalid staged payload.')
     candidate=json.loads(candidate_file.read_text())
     saved=json.loads((ROOT/'installed.json').read_text()) if (ROOT/'installed.json').is_file() else {}
@@ -478,10 +495,27 @@ def _game_update_tick(game):
         except BlockingIOError:return False
         if selected_game()!=game.resolve() or not (game/'GTAIV.exe').is_file():return False
         request_file=game/'GTAIV-QoL-update-request.txt'
-        if update_opt_in(game) and request_file.is_file() and not request_file.is_symlink():
+        running=game_running()
+        if not running or not update_opt_in(game):
+            request_file.unlink(missing_ok=True)
+            (game/'GTAIV-QoL-update-request.tmp').unlink(missing_ok=True)
+        if running and update_opt_in(game) and request_file.is_file() and not request_file.is_symlink():
             if request_file.stat().st_size>96:raise RuntimeError('Invalid update request.')
-            request_file.unlink() # One network check per startup / Off->On edge.
+            started=game_start_time()
+            if started is not None and request_file.stat().st_mtime<started:
+                request_file.unlink();return apply_game_update(game)
+            # Publish busy before consuming: native polling cannot see an idle
+            # receipt after the request disappears while a check is in flight.
+            update_status(game,'checking')
+            request_file.unlink()
             stage_game_update(game)
+        elif running:
+            # The lock is held and no check is executing here. Recover a stale
+            # busy receipt left by a killed/restarted worker, without a popup.
+            status=game/'GTAIV-QoL-update-status.json'
+            try:busy=json.loads(status.read_text()).get('code') in ('checking','downloading','applying')
+            except (OSError,ValueError):busy=False
+            if busy:update_status(game,'failed')
         return apply_game_update(game)
 
 def game_update_tick(game):

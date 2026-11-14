@@ -306,3 +306,5 @@ BOOL WINAPI DllMain(HINSTANCE instance, DWORD reason, LPVOID) {
 extern "C" __declspec(dllexport) void QoLSettings_RefreshMenu(unsigned paused){qolsettings::RefreshMenu(paused!=0);}
 
 extern "C" __declspec(dllexport) void QoLSettings_FooterSeen(){qolupdatemenu::footerSeen.store(true);}
+
+extern "C" __declspec(dllexport) void QoLUpdates_Session(unsigned active){ingameupdates::Session(active!=0);}

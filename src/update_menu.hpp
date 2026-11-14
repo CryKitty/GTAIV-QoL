@@ -14,6 +14,17 @@ inline unsigned fileAge(const wchar_t* file){
     b.LowPart=attributes.ftLastWriteTime.dwLowDateTime;b.HighPart=attributes.ftLastWriteTime.dwHighDateTime;
     return a.QuadPart>b.QuadPart?static_cast<unsigned>(std::min<ULONGLONG>((a.QuadPart-b.QuadPart)/10000000,86400)):0;
 }
+inline Receipt readReceipt(const wchar_t* path){
+    // Bounded direct reads avoid Windows profile-cache staleness after an
+    // atomic Linux-side replacement. Sharing DELETE permits that replacement.
+    const auto file=CreateFileW(path,GENERIC_READ,FILE_SHARE_READ|FILE_SHARE_WRITE|FILE_SHARE_DELETE,nullptr,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,nullptr);
+    Receipt parsed;
+    if(file!=INVALID_HANDLE_VALUE){char bytes[4097]{};DWORD count=0;
+        const bool ok=ReadFile(file,bytes,4097,&count,nullptr)!=0;CloseHandle(file);
+        if(ok)parsed=parse(std::string(bytes,count));
+    }
+    return parsed;
+}
 inline std::wstring label(bool enabled){
     wchar_t receipt[MAX_PATH]{},request[MAX_PATH]{};const auto length=GetModuleFileNameW(nullptr,receipt,MAX_PATH);
     if(!length||length>=MAX_PATH)return format(QOL_VERSION_WIDE,QOL_BUILD_WIDE,"failed",L"");
@@ -22,18 +33,12 @@ inline std::wstring label(bool enabled){
     wcscpy_s(end+1,MAX_PATH-static_cast<std::size_t>(end+1-receipt),L"GTAIV-QoL-update-info.ini");
     wcscpy_s(request,receipt);auto requestEnd=wcsrchr(request,L'\\');
     wcscpy_s(requestEnd+1,MAX_PATH-static_cast<std::size_t>(requestEnd+1-request),L"GTAIV-QoL-update-request.txt");
-    // Bounded direct reads avoid Windows profile-cache staleness after an
-    // atomic Linux-side replacement. Sharing DELETE permits that replacement.
-    const auto file=CreateFileW(receipt,GENERIC_READ,FILE_SHARE_READ|FILE_SHARE_WRITE|FILE_SHARE_DELETE,nullptr,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,nullptr);
-    Receipt parsed;
-    if(file!=INVALID_HANDLE_VALUE){char bytes[4097]{};DWORD count=0;
-        const bool ok=ReadFile(file,bytes,4097,&count,nullptr)!=0;CloseHandle(file);
-        if(ok)parsed=parse(std::string(bytes,count));
-    }
+    const auto parsed=readReceipt(receipt);
+    const bool exists=GetFileAttributesW(receipt)!=INVALID_FILE_ATTRIBUTES;
     const std::string compiled=QOL_SOURCE_SHA;
     const bool matching=compiled.size()==40&&compiled==parsed.sha;
     std::wstring date=matching?parsed.updated:L"";
-    std::string code=file==INVALID_HANDLE_VALUE?"idle":parsed.valid?parsed.state:"failed";
+    std::string code=!exists?"idle":parsed.valid?parsed.state:"failed";
     if(!matching&&code=="updated")code="idle";
     const bool queued=enabled&&GetFileAttributesW(request)!=INVALID_FILE_ATTRIBUTES;
     code=pendingState(code,queued,requestFailed.load(),fileAge(request),fileAge(receipt));

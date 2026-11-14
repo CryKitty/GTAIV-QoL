@@ -104,7 +104,7 @@ class InGameUpdates(unittest.TestCase):
    import shutil
    with patch.object(u,'ROOT',state):shutil.rmtree(u.pending_directory(game))
    request.write_text('retry')
-   with patch.dict(sys.modules,{'fcntl':Mock(LOCK_EX=2,LOCK_NB=4)}),patch.object(u,'ROOT',state),patch.object(u,'CONFIG',config),patch.object(u,'beta_candidate',side_effect=RuntimeError('fixture-secret response /private/path')):
+   with patch.dict(sys.modules,{'fcntl':Mock(LOCK_EX=2,LOCK_NB=4)}),patch.object(u,'ROOT',state),patch.object(u,'CONFIG',config),patch.object(u,'beta_candidate',side_effect=RuntimeError('fixture-secret response /private/path')),patch.object(u,'game_running',return_value=True):
     with self.assertRaises(RuntimeError):u.game_update_tick(game)
     self.assertEqual(code(),'failed')
     data=(game/'GTAIV-QoL-update-status.json').read_text();self.assertNotIn('fixture-secret',data);self.assertNotIn('/private',data)
@@ -145,3 +145,67 @@ class InGameUpdates(unittest.TestCase):
     stage=u.pending_directory(game);u.atomic(stage/'candidate.json',json.dumps({'channel':'beta','installed_sha':'a'*40}).encode());u.atomic(stage/'payload.zip',b'ZIP')
     with self.assertRaises(RuntimeError):u.game_update_tick(game)
     record=json.loads((game/'GTAIV-QoL-update-status.json').read_text());self.assertEqual(record['code'],'failed');self.assertEqual(record['updated_local'],saved['updated_local']);self.assertEqual(record['sha'],saved['sha']);self.assertTrue((stage/'candidate.json').exists())
+
+ @unittest.skipIf(sys.platform=='win32','Deck user-service lock uses fcntl')
+ def test_periodic_mid_session_check_uses_existing_request_and_live_states(self):
+  with tempfile.TemporaryDirectory() as folder:
+   game,state,config=self.fixture(folder);queued=game/'GTAIV-QoL-update-request.txt'
+   candidate={'channel':'beta','sha':'b'*40,'route':'/fixture'}
+   (state/'installed.json').write_text(json.dumps({'sha':'a'*40}))
+   def code():return json.loads((game/'GTAIV-QoL-update-status.json').read_text())['code']
+   def download(*args,**kwargs):self.assertEqual(code(),'downloading');return b'ZIP'
+   def select(token):self.assertFalse(queued.exists());self.assertEqual(code(),'checking');return candidate
+   with patch.object(u,'ROOT',state),patch.object(u,'CONFIG',config),patch.object(u,'game_running',return_value=True),patch.object(u,'beta_candidate',return_value={'sha':'a'*40}) as lookup,patch.object(u,'uploader_files_intact',return_value=True),patch.object(u,'game_start_time',return_value=None):
+    queued.write_text('startup');u.game_update_tick(game);self.assertEqual(code(),'up_to_date')
+    u.game_update_tick(game);self.assertEqual(lookup.call_count,1) # worker has no independent timer
+    # Native clock reaches ten minutes and writes the same shared request.
+    queued.write_text('periodic')
+    with patch.object(u,'beta_candidate',side_effect=select),patch.object(u,'request',side_effect=download),patch.object(u,'validate_archive',return_value=({'sha':'b'*40},{})):
+     u.game_update_tick(game)
+    self.assertEqual(code(),'staged');self.assertFalse(queued.exists())
+    self.assertIn('Staged=1',(game/'GTAIV-QoL-update-info.ini').read_text())
+    # Even a duplicate request cannot cause another network check while staged.
+    queued.write_text('duplicate');u.game_update_tick(game);self.assertEqual(lookup.call_count,1)
+    (game/'GTAIV-QoL.ini').write_text('[Updates]\nCheckForUpdates=0\n')
+    u.game_update_tick(game);self.assertEqual(code(),'cancelled')
+    self.assertFalse((u.pending_directory(game)/'candidate.json').exists())
+
+ @unittest.skipIf(sys.platform=='win32','Deck user-service lock uses fcntl')
+ def test_exit_and_fast_relaunch_discard_queued_requests_without_network(self):
+  import os
+  with tempfile.TemporaryDirectory() as folder:
+   game,state,config=self.fixture(folder);queued=game/'GTAIV-QoL-update-request.txt';temporary=game/'GTAIV-QoL-update-request.tmp'
+   with patch.object(u,'ROOT',state),patch.object(u,'CONFIG',config),patch.object(u,'beta_candidate') as lookup,patch.object(u,'apply_update') as apply:
+    queued.write_text('periodic');temporary.write_text('incomplete')
+    with patch.object(u,'game_running',return_value=False):u.game_update_tick(game)
+    self.assertFalse(queued.exists());self.assertFalse(temporary.exists());lookup.assert_not_called();apply.assert_not_called()
+    queued.write_text('old session');os.utime(queued,(100,100))
+    with patch.object(u,'game_running',return_value=True),patch.object(u,'game_start_time',return_value=200):u.game_update_tick(game)
+    self.assertFalse(queued.exists());lookup.assert_not_called()
+    queued.write_text('new startup');os.utime(queued,(300,300))
+    with patch.object(u,'game_running',return_value=True),patch.object(u,'game_start_time',return_value=200),patch.object(u,'beta_candidate',return_value=None) as new_check:u.game_update_tick(game)
+    new_check.assert_called_once()
+
+ @unittest.skipIf(sys.platform=='win32','Deck user-service lock uses fcntl')
+ def test_periodic_failure_can_retry_and_busy_receipt_is_committed_before_consume(self):
+  with tempfile.TemporaryDirectory() as folder:
+   game,state,config=self.fixture(folder);queued=game/'GTAIV-QoL-update-request.txt';queued.write_text('periodic')
+   original=u.update_status;observed=[]
+   def status(game,code,*args):
+    if code=='checking':observed.append(queued.exists())
+    return original(game,code,*args)
+   with patch.object(u,'ROOT',state),patch.object(u,'CONFIG',config),patch.object(u,'game_running',return_value=True),patch.object(u,'game_start_time',return_value=None),patch.object(u,'update_status',side_effect=status):
+    with patch.object(u,'beta_candidate',side_effect=RuntimeError('private fixture')):
+     with self.assertRaises(RuntimeError):u.game_update_tick(game)
+    self.assertTrue(observed[0]);self.assertFalse(queued.exists())
+    self.assertEqual(json.loads((game/'GTAIV-QoL-update-status.json').read_text())['code'],'failed')
+    queued.write_text('next interval')
+    with patch.object(u,'beta_candidate',return_value=None) as retry:u.game_update_tick(game)
+    retry.assert_called_once();self.assertEqual(json.loads((game/'GTAIV-QoL-update-status.json').read_text())['code'],'no_release')
+
+ @unittest.skipIf(sys.platform=='win32','Deck process identity uses Linux /proc')
+ def test_live_process_start_uses_linux_start_ticks_including_parenthesized_names(self):
+  proc=Mock();proc.__truediv__=Mock(side_effect=lambda name:Mock(read_text=Mock(return_value='GTAIV.exe' if name=='comm' else '42 (GTA IV (test)) S '+'0 '*18+'1234 0')))
+  original=Path.read_text
+  def read(path,*args,**kwargs):return 'btime 1000\n' if str(path)=='/proc/stat' else original(path,*args,**kwargs)
+  with patch.object(Path,'read_text',read),patch.object(Path,'glob',return_value=[proc]),patch.object(u.os,'sysconf',return_value=100):self.assertEqual(u.game_start_time(),1012.34)
