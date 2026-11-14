@@ -14,7 +14,8 @@ release, but did not fix delivery of release from the paused menu.
 The settings owner now invokes the companion's QoLCompass_SetEnabled export on
 a successful saved Compass setting. It passes one event tick, logs begin/finish
 and the returned mask state. The companion logs the same event, thread ID and
-mask before/after. This path only restores existing HUD geometry/hooks: no
+mask before/after, raw layout/live sentinel read-backs and pending restores.
+Failed restoration writes retain their baseline for the next Off tick. This path only restores existing HUD geometry/hooks: no
 player, camera, entity or initialization natives run. A mutex serializes it with
 mask updates; Off also prevents a stale On tick from re-enabling the mask. On
 allows activation from the normal safe gameplay path again. The verified

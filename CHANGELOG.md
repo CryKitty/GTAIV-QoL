@@ -1,7 +1,7 @@
 GTAIV-QoL beta — restore the radar when switching the compass Off in pause
 
 - Compass HUD Off now releases the existing radar mask directly from the pause-menu setting change, without waiting for the gameplay script to run again. A stale tick cannot turn the mask back on after Off. On permits normal gameplay activation again; existing radar visibility and opacity preferences remain untouched.
-- Automatic logs tie each saved Compass choice to its immediate mask transition using the same event number, including mask on-to-off and completion. The b84 logs show continued masking but did not record the toggle itself, so they cannot prove its exact timing; this trace removes that gap for the retest.
+- Automatic logs tie each saved Compass choice to its immediate mask transition using the same event number, including mask on-to-off, actual radar-position read-back and completion. Failed restoration writes are retried. The b84 logs show continued masking but did not record the toggle itself, so they cannot prove its exact timing; this trace removes that gap for the retest.
 - Use the normal updater after approval/merge and successful main CI. In Pause → QoL switch Compass HUD Off, unpause once and check the full vanilla radar and health/armour are back immediately. Repeat On/Off on foot and driving; no second pause cycle should be needed. Exit normally for automatic logs. No file edits, new settings or release-version change; Deck retest remains outstanding.
 
 GTAIV-QoL beta — higher Medium camera and opt-in beta enemy line

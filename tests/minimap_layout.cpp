@@ -79,7 +79,7 @@ int main(){
         mask.enable(nullptr,base);assert(mask.active());image[0x5400]=1;
         assert(mask.preference(false,200+cycle,CaptureLog)==0&&!mask.active());
         assert(info[8].pos.x==.1f&&!minimaplayout::displaced(*reinterpret_cast<minimaplayout::Point*>(radar+0x18)));
-        assert(lastLog.find("mask=1->0")!=std::string::npos&&lastLog.find("source=pause-setting")!=std::string::npos);
+        assert(lastLog.find("mask=1->0")!=std::string::npos&&lastLog.find("source=pause-setting")!=std::string::npos&&lastLog.find("layout-hidden=0 live-hidden=0 restore-pending=0")!=std::string::npos);
         image[0x5400]=0;mask.enable(nullptr,base);assert(!mask.active()); // stale On work rejected
     }
     // Alternate CE resolution: the generic table signature is absent, but

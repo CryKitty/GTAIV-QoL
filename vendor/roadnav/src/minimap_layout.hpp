@@ -26,7 +26,18 @@ class MinimapLayout {
     MinimapRing ring_;
     template<class T> static bool read(std::uintptr_t address,T& value){SIZE_T count=0;return address>=0x10000&&ReadProcessMemory(GetCurrentProcess(),reinterpret_cast<const void*>(address),&value,sizeof(value),&count)&&count==sizeof(value);}
     template<class T> static bool write(std::uintptr_t address,const T& value){SIZE_T count=0;return WriteProcessMemory(GetCurrentProcess(),reinterpret_cast<void*>(address),&value,sizeof(value),&count)&&count==sizeof(value);}
-    static void restore(Saved& saved){minimaplayout::Point current{};if(saved.address&&read(saved.address,current)&&minimaplayout::displaced(current))write(saved.address,saved.point);saved={};}
+    static void restore(Saved& saved){
+        if(!saved.address)return;
+        minimaplayout::Point current{};
+        if(!read(saved.address,current))return;
+        if(minimaplayout::displaced(current)&&!write(saved.address,saved.point))return;
+        saved={}; // Retain failed restores for the next Off tick instead of forgetting them.
+    }
+    int layoutHidden()const{minimaplayout::Point point{};return info_&&read(info_+8*sizeof(minimaplayout::Info)+offsetof(minimaplayout::Info,pos),point)?(minimaplayout::displaced(point)?1:0):-1;}
+    int liveHidden()const{
+        minimaplayout::Info info{};std::uint32_t component=0;minimaplayout::Point point{};
+        return read(info_+8*sizeof(info),info)&&minimaplayout::radar(info)&&read(components_+info.slot*4,component)&&read(static_cast<std::uintptr_t>(component)+0x18,point)?(minimaplayout::displaced(point)?1:0):-1;
+    }
     static void move(std::uintptr_t address,Saved& saved){
         if(saved.address&&saved.address!=address)restore(saved);
         minimaplayout::Point current{};if(!read(address,current)||!minimaplayout::valid(current))return;
@@ -82,7 +93,7 @@ public:
         std::lock_guard<std::recursive_mutex> guard(mutex_);
         const bool before=installed_;enabled_=enabled;
         if(!enabled_)release(); // Pure geometry/hook cleanup: no game natives.
-        if(log){char text[220];std::snprintf(text,sizeof(text),"Compass mask transition: event=%lu thread=%lu enabled=%u mask=%u->%u geometry-updates=%u source=pause-setting",event,GetCurrentThreadId(),enabled?1u:0u,before?1u:0u,installed_?1u:0u,count());log(text);}
+        if(log){char text[300];std::snprintf(text,sizeof(text),"Compass mask transition: event=%lu thread=%lu enabled=%u mask=%u->%u geometry-updates=%u layout-hidden=%d live-hidden=%d restore-pending=%u source=pause-setting",event,GetCurrentThreadId(),enabled?1u:0u,before?1u:0u,installed_?1u:0u,count(),layoutHidden(),liveHidden(),(layout_.address?1u:0u)+(live_.address?1u:0u));log(text);}
         return installed_?1u:0u;
     }
     void enable(void(*log)(const char*),std::uintptr_t testImage=0,std::uintptr_t testWanted=0){
