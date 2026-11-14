@@ -9,8 +9,8 @@ using Status=HRESULT(WINAPI*)(void*,DWORD*);
 using CreateBuffer=HRESULT(WINAPI*)(void*,const DSBUFFERDESC*,void**,IUnknown*);
 using Duplicate=HRESULT(WINAPI*)(void*,void*,void**);
 using Factory=HRESULT(WINAPI*)(LPCGUID,void**,IUnknown*);
-struct Interface {void* object=nullptr;void* table[24]{};Play play=nullptr;Stop stop=nullptr;Status status=nullptr;void* setVolume=nullptr;};
-struct Buffer {Interface views[2];LONG baseVolume=0;bool resume=false;DWORD reserved=0,priority=0,flags=0;};
+struct Interface {void* object=nullptr;void* table[24]{};Play play=nullptr;Stop stop=nullptr;Status status=nullptr;void* setVolume=nullptr;void* getVolume=nullptr;};
+struct Buffer {Interface views[2];LONG baseVolume=0,lastVolume=0;bool volumeTracked=false,resume=false;DWORD reserved=0,priority=0,flags=0;};
 struct Device {void* object=nullptr;void* table[12]{};CreateBuffer create=nullptr;Duplicate duplicate=nullptr;};
 Buffer buffers[128]{};Device devices[8]{};unsigned bufferCount=0,deviceCount=0;
 bool paused=false,overflow=false;
@@ -42,19 +42,40 @@ HRESULT WINAPI GuardStatus(void* object,DWORD* status){
 using SetVolume=HRESULT(WINAPI*)(void*,LONG);
 HRESULT WINAPI GuardVolume(void* object,LONG value){
     AcquireSRWLockExclusive(&operation);Interface* view=nullptr;Buffer* b=Find(object,&view);HRESULT result=E_FAIL;
-    if(b){b->baseVolume=value;result=reinterpret_cast<SetVolume>(view->setVolume)(object,cutscenemix::decibels(value,cutsceneoutput::gain.load()));}
+    if(b){const auto target=cutscenemix::decibels(value,cutsceneoutput::gain.load());result=reinterpret_cast<SetVolume>(view->setVolume)(object,target);
+        if(SUCCEEDED(result)){b->baseVolume=value;b->lastVolume=target;b->volumeTracked=true;}}
     ReleaseSRWLockExclusive(&operation);return result;
 }
 HRESULT WINAPI GuardGetVolume(void* object,LONG* value){
     AcquireSRWLockShared(&operation);Buffer* b=Find(object);if(b&&value)*value=b->baseVolume;ReleaseSRWLockShared(&operation);return b?DS_OK:E_FAIL;
 }
-void ApplyVolume(){
-    AcquireSRWLockExclusive(&operation);for(unsigned i=0;i<bufferCount;++i){auto& b=buffers[i];auto& v=b.views[0];if(v.object)reinterpret_cast<SetVolume>(v.setVolume)(v.object,cutscenemix::decibels(b.baseVolume,cutsceneoutput::gain.load()));}ReleaseSRWLockExclusive(&operation);
+struct VolumeEvidence {unsigned buffers=0,verified=0,failed=0,limited=0;LONG base=0,target=0,actual=0;};
+VolumeEvidence ApplyVolume(){
+    VolumeEvidence proof;const float gain=cutsceneoutput::gain.load();
+    using GetVolume=HRESULT(WINAPI*)(void*,LONG*);
+    AcquireSRWLockExclusive(&operation);
+    for(unsigned i=0;i<bufferCount;++i){auto& b=buffers[i];auto& v=b.views[0];if(!v.object)continue;
+        ++proof.buffers;LONG actual=0;
+        if(FAILED(reinterpret_cast<GetVolume>(v.getVolume)(v.object,&actual))){++proof.failed;continue;}
+        if(!b.volumeTracked||actual!=b.lastVolume)b.baseVolume=actual;
+        const auto target=cutscenemix::decibels(b.baseVolume,gain);
+        HRESULT result=DS_OK;if(actual!=target)result=reinterpret_cast<SetVolume>(v.setVolume)(v.object,target);
+        const auto read=reinterpret_cast<GetVolume>(v.getVolume)(v.object,&actual);
+        if(SUCCEEDED(result)&&SUCCEEDED(read)&&actual==target)++proof.verified;else ++proof.failed;
+        if(gain>1&&static_cast<double>(b.baseVolume)+2000.0*std::log10(static_cast<double>(gain))>0)++proof.limited; // DirectSound cannot exceed 0 dB.
+        b.lastVolume=actual;b.volumeTracked=SUCCEEDED(read);proof.base=b.baseVolume;proof.target=target;proof.actual=actual;
+    }
+    ReleaseSRWLockExclusive(&operation);
+    static float reportedGain=1;static DWORD reportedAt=0;const auto now=GetTickCount();
+    if(gain!=reportedGain||(gain!=1&&now-reportedAt>=5000)){
+        reportedGain=gain;reportedAt=now;char line[240];sprintf_s(line,"Cutscene audio DirectSound: gain=%.2f buffers=%u verified=%u failed=%u headroom-limited=%u base-db=%ld target-db=%ld actual-db=%ld",gain,proof.buffers,proof.verified,proof.failed,proof.limited,proof.base,proof.target,proof.actual);Log(line);
+    }
+    return proof;
 }
 bool Prepare(Interface& v,void* object,unsigned methods){
     void** table=nullptr;if(!Read(object,&table,sizeof(table))||!Read(table,v.table,methods*sizeof(void*))||!Executable(v.table[12])||!Executable(v.table[18])||!Executable(v.table[9]))return false;
     v.object=object;v.play=reinterpret_cast<Play>(v.table[12]);v.stop=reinterpret_cast<Stop>(v.table[18]);v.status=reinterpret_cast<Status>(v.table[9]);
-    v.setVolume=v.table[15];v.table[15]=reinterpret_cast<void*>(&GuardVolume);v.table[6]=reinterpret_cast<void*>(&GuardGetVolume);
+    v.getVolume=v.table[6];v.setVolume=v.table[15];v.table[15]=reinterpret_cast<void*>(&GuardVolume);v.table[6]=reinterpret_cast<void*>(&GuardGetVolume);
     v.table[12]=reinterpret_cast<void*>(&GuardPlay);v.table[18]=reinterpret_cast<void*>(&GuardStop);v.table[9]=reinterpret_cast<void*>(&GuardStatus);
     if(!SwapTable(object,table,v.table)){v.object=nullptr;return false;}return true;
 }
@@ -76,7 +97,8 @@ void CaptureBuffer(void* object){
         // The controlling base interface remains usable; it pauses the shared buffer.
         extended->Release();Log("DirectSound extended interface restart guard unavailable");
     }
-    reinterpret_cast<SetVolume>(entry.views[0].setVolume)(object,cutscenemix::decibels(entry.baseVolume,cutsceneoutput::gain.load()));
+    entry.lastVolume=cutscenemix::decibels(entry.baseVolume,cutsceneoutput::gain.load());
+    entry.volumeTracked=SUCCEEDED(reinterpret_cast<SetVolume>(entry.views[0].setVolume)(object,entry.lastVolume));
     ++bufferCount;
     if(extended==object)extended->Release(); // base reference is sufficient here
     char line[160];sprintf_s(line,"DirectSound secondary buffer captured object=%p bytes=%lu count=%u",object,caps.dwBufferBytes,bufferCount);Log(line);

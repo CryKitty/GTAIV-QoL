@@ -1,3 +1,9 @@
+GTAIV-QoL beta — cutscene audio output checks and exact restoration
+
+- Cutscene Audio now checks the real captured output each gameplay tick, instead of writing only when the slider changes. It reapplies the selected multiplier if the engine replaces it, keeps the underlying game volume separate, and restores that volume when the cutscene ends, is skipped/interrupted, or the script stops. Back-to-back scenes do not multiply an earlier boost again.
+- The session pause log records cutscene audio engaged/adjusted/restored, the slider amount, actual output read-back and restoration results. The old audio-layout file is an installer inventory, not a live-session log. Missing/failed outputs are reported explicitly; DirectSound buffers at their 0 dB ceiling cannot be amplified further and are labelled headroom-limited. This change does not claim to overcome that backend limit or prove Deck audibility before retesting.
+- Receive through the normal updater after approval/merge and successful main CI; no file edits, new controls or release-version change. In Pause → QoL compare Cutscene Audio at 100% and 200% on the same cutscene with fixed game/system volume. Finish normally, skip another scene, and interrupt/pause/resume one; gameplay volume must return each time. Test two scenes back-to-back and a mid-scene slider change. Exit normally for automatic session logs. Deck audio acceptance remains outstanding.
+
 GTAIV-QoL beta — restore the radar when switching the compass Off in pause
 
 - Compass HUD Off now releases the existing radar mask directly from the pause-menu setting change, without waiting for the gameplay script to run again. A stale tick cannot turn the mask back on after Off. On permits normal gameplay activation again; existing radar visibility and opacity preferences remain untouched.
