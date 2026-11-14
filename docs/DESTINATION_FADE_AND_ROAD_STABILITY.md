@@ -2,7 +2,7 @@
 
 ## Scope and baseline
 
-Separate branch from main f5cd7f1; no PR #18 commits are included. This addresses destination glyphs and road presentation only. The b64 loading repair must be reviewed/deployed separately; this PR is not a replacement for it. VERSION stays unchanged. Existing updater packaging, saved choices, pause controls, GPS ownership and recovery timings are unchanged. No new native discovery/hooks or installation files are introduced.
+Originally branched from f5cd7f1; now rebased onto main dc951fa4a2b898f1c48d59b6ddeb234922018202, including merged PR #18. Only PR #19's four commits were replayed. The sole conflict was the changelog introduction: both entries are retained, with the fade/stability entry first. RoadNav auto-merged its independent runtime guards and frame-speed changes. This addresses destination glyphs and road presentation while preserving the b64 load repair. VERSION stays unchanged. Existing updater packaging, saved choices, pause controls, GPS ownership and recovery timings are unchanged. No new native discovery/hooks or installation files are introduced.
 
 ## Vanilla comparison: what is verified
 
@@ -33,4 +33,8 @@ The deterministic moving-player reproduction observes the old cropped-profile he
 
 The PR records complete local and CI results. C++ tests exercise smooth monotonic fade, high-speed distance, early GPS loss, new-goal replacement, explicit clear, clock wrap, cropped bend retention and immediate replan/elevation changes. Windows D3D tests check the actual endpoint's full/half/zero pixel brightness. Existing route retention/recovery and surface tests remain.
 
-After the loading hotfix and this change are approved and main CI succeeds, update normally with the existing updater; no file edits. In Pause → QoL enable Road Line and Turn Arrows. Approach waypoint and mission destinations slowly and at speed; check fading and Off cleanup. Drive/stop/restart through bends, slopes, bridges and S-curves, looking around and comparing with stationary road markings. Check waypoint replacement, wrong-way recovery and enemy/police lines. Deck visual acceptance is outstanding; no new uploaded reproduction evidence is claimed.
+After this change is approved/merged and main CI succeeds, update normally with the existing updater; no file edits. In Pause → QoL enable Road Line and Turn Arrows. Approach waypoint and mission destinations slowly and at speed; check fading and Off cleanup. Drive/stop/restart through bends, slopes, bridges and S-curves, looking around and comparing with stationary road markings. Check waypoint replacement, wrong-way recovery and enemy/police lines. Deck visual acceptance is outstanding; no new uploaded reproduction evidence is claimed.
+
+## Rebase safety verification
+
+The final diff against dc951fa changes no host builder/seed, ExtraInfo patching, core settings/footer callback, camera discovery or world-load gate files. The regenerated bundled FusionFix host is byte-identical to b56: SHA-256 `972a01435fed1272c109580eabe70cf0cbf88e300ebc67d2d2039e99f5933134`. The load guard still precedes compass initialization, rendering and scheduler startup; the optional footer callback remains inert and build identity stays on the update row. Both changelog entries remain; VERSION is unchanged. Exact-head tests and CI are recorded in the PR.
