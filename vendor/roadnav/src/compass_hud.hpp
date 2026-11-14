@@ -406,7 +406,7 @@ public:
     explicit CompassHud(void (*log)(const char*)=nullptr,compass::NoticeRenderer* noticeRenderer=nullptr):noticeRenderer_(noticeRenderer),log_(log){}
     void start(){
         heightActive_=heightScript_=heightInterpolation_=nullptr;heightResolveAt_=0;heightResolveTried_=false;heightNativeState_=~0u;
-        heightLoggedCm_=-1;heightLoggedGate_=~0u;heightLogAt_=0;heightApplies_=heightReleases_=0;
+        heightLoggedCm_=-1;heightLoggedGate_=~0u;heightLogAt_=0;
         if(log_){char message[120];const int cm=qolclient::Get(QOL_DRIVING_CAMERA_HEIGHT,0);std::snprintf(message,sizeof(message),"Driving camera loaded: preset=%d cm=%d",qolcamera::heightPreset(cm),cm);log_(message);}
         char path[MAX_PATH]{};GetModuleFileNameA(nullptr,path,MAX_PATH);
         char* slash=std::strrchr(path,'\\');if(slash){slash[1]=0;strcat_s(path,"GTAIV-QoL.ini");}
