@@ -58,7 +58,11 @@ inline void Tick(bool enabled,std::uint64_t now=GetTickCount64()){
         (paths&&!state.valid&&GetFileAttributesW(receipt)!=INVALID_FILE_ATTRIBUTES);
     // An unclaimed request already shown as failed is replaceable at the
     // normal interval. Never replace a request owned by an active worker.
-    if(pending&&!busy&&qolupdatemenu::fileAge(request)>120){DeleteFileW(request);pending=GetFileAttributesW(request)!=INVALID_FILE_ATTRIBUTES;}
+    if(pending&&!busy&&qolupdatemenu::fileAge(request)>120){
+        // A failed delete can mean the worker just consumed it. Keep blocking
+        // this tick; read its busy/terminal receipt again before any retry.
+        if(DeleteFileW(request))pending=false;
+    }
     if(schedule.due(true,now,pending,busy,state.staged||state.state=="staged"))
         qolupdatemenu::requestFailed.store(!Request());
     ReleaseSRWLockExclusive(&timerLock);
