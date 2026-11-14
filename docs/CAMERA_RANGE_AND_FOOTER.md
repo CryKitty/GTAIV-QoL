@@ -1,3 +1,5 @@
+> Current load hotfix: native QoL footer extension is held back; the exact b56 FusionFix host is restored and build identity remains on the QoL update row. See [load investigation](B64_WORLD_LOAD_HOTFIX.md). The text below records the earlier implementation.
+
 # Camera presets, radar-range ribbons and native version footer
 
 ## Camera

@@ -16,6 +16,9 @@ int main(){
     const auto queued=[&]{return GetFileAttributesW(path)!=INVALID_FILE_ATTRIBUTES;};
     const auto sentinel=[&]{FILE* file=nullptr;assert(_wfopen_s(&file,path,L"wb")==0);std::fputs("sentinel",file);std::fclose(file);};
     const auto unchanged=[&]{FILE* file=nullptr;assert(_wfopen_s(&file,path,L"rb")==0);char data[128]{};assert(std::fread(data,1,sizeof(data)-1,file)>0);std::fclose(file);assert(std::strcmp(data,"sentinel")==0);};
+    sentinel();ingameupdates::Tick(true,600000);unchanged();assert(!ingameupdates::schedule.started);
+    ingameupdates::Session(false);assert(!queued()); // unloaded world cancels without a timer tick
+    ingameupdates::Session(true); // exact same scheduler tests, but only after world readiness
     sentinel();ingameupdates::Tick(false,0);assert(!queued()); // previous-session cleanup
     ingameupdates::Tick(true,100);assert(queued());
     assert(qolupdatemenu::label(true).find(L"Checking")!=std::wstring::npos);

@@ -73,4 +73,28 @@ class BundleInstallTests(unittest.TestCase):
         self.assertEqual(helper.merge_preferences(b'broken ini',fresh),fresh)
 
 
+    def test_hotfix_installs_over_b56_rollback_with_b64_receipt_and_preserves_choices(self):
+        import types,json,configparser
+        spec=importlib.util.spec_from_file_location('hotfix_host',ROOT/'tools/restore-verified-menu-host.py');host=importlib.util.module_from_spec(spec);spec.loader.exec_module(host)
+        spec=importlib.util.spec_from_file_location('hotfix_assets',ROOT/'tools/steam-deck/bundle_assets.py');assets=importlib.util.module_from_spec(spec);spec.loader.exec_module(assets)
+        raw=host.navigation_menu(zlib.decompress((ROOT/'vendor/fusionfix-menu/verified-build91.asi.zlib').read_bytes()))
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);package=root/'package';(package/'tools/steam-deck').mkdir(parents=True);(package/'build').mkdir()
+            (package/'tools/steam-deck/enable-qol-logs.py').write_bytes((ROOT/'tools/steam-deck/enable-qol-logs.py').read_bytes())
+            (package/'tools/steam-deck/qol-updater.py').write_text('BUILD_SHA = \'\'\nBUILD_NUMBER = \'\'\n')
+            (package/'build/GTAIV.EFLC.FusionFix.asi').write_bytes(raw)
+            (package/'build/FusionFix-GPL-3.0.txt').write_text('GNU GENERAL PUBLIC LICENSE')
+            installer=types.ModuleType('rollback_hotfix');exec(compile(assets.render_helper(package),'<packaged helper>','exec'),installer.__dict__)
+            installer.INGAME_UPDATER={}
+            game=root/'game';(game/'plugins').mkdir(parents=True)
+            (game/'plugins/GTAIV.EFLC.FusionFix.asi').write_bytes(raw)
+            (game/'GTAIV-QoL-bundle-state.json').write_text(json.dumps({'fusionfix_sha256':'cbe36bcce4abc858d30faf1b478567819f6d566fe56278cb7300bd38534db072'}))
+            (game/'GTAIV-QoL.ini').write_text('[Camera]\nDrivingHeightCm=120\n[Updates]\nCheckForUpdates=0\n')
+            bundle=files();fresh=(ROOT/'GTAIV-QoL.ini.example').read_bytes();bundle['GTAIV-QoL.ini']={'data':base64.b64encode(fresh).decode(),'sha256':hashlib.sha256(fresh).hexdigest()}
+            installer.install_bundle(game,bundle)
+            self.assertEqual((game/'plugins/GTAIV.EFLC.FusionFix.asi').read_bytes(),raw)
+            ini=configparser.ConfigParser();ini.read(game/'GTAIV-QoL.ini')
+            self.assertEqual(ini.getint('Camera','DrivingHeightCm'),120);self.assertEqual(ini.getint('Updates','CheckForUpdates'),0)
+            self.assertEqual(json.loads((game/'GTAIV-QoL-bundle-state.json').read_text())['fusionfix_sha256'],hashlib.sha256(raw).hexdigest())
+
 if __name__=='__main__':unittest.main()

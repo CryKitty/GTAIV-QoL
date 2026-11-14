@@ -278,6 +278,7 @@ BOOL CALLBACK Initialize(PINIT_ONCE, PVOID, PVOID*) {
     memcpy(logPath, exe, prefix); strcpy_s(logPath+prefix, MAX_PATH-prefix, "GTAIV-QoL.log");
     logging = GetPrivateProfileIntA("Diagnostics", "LogToFile", 1, ini) == 1;
     if (logging) { FILE* f = nullptr; if (fopen_s(&f, logPath, "w") == 0 && f) std::fclose(f); }
+    Log("Load hotfix: b56 FusionFix host; QoL build identity stays on update row");
     Log("GTAIV-QoL 300% native interactive-map zoom; failed cutscene focus probe removed. No code detours or exception observers.");
     Log("Cutscene focus probe removed: synthetic activation minimized the game without pausing the cutscene.");
     diagnostics::Start(ini, exe, prefix);
@@ -306,6 +307,14 @@ BOOL WINAPI DllMain(HINSTANCE instance, DWORD reason, LPVOID) {
 
 extern "C" __declspec(dllexport) void QoLSettings_RefreshMenu(unsigned paused){qolsettings::RefreshMenu(paused!=0);}
 
-extern "C" __declspec(dllexport) void QoLSettings_FooterSeen(){qolupdatemenu::footerSeen.store(true);}
+extern "C" __declspec(dllexport) void QoLSettings_FooterSeen(){ /* native footer held back by load hotfix */ }
 
-extern "C" __declspec(dllexport) void QoLUpdates_Session(unsigned active){ingameupdates::Session(active!=0);}
+extern "C" __declspec(dllexport) void QoLUpdates_Session(unsigned active){
+    ingameupdates::Session(active!=0);
+    Log(active?"World load gate: ready; runtime features and update checks enabled":"World load gate: waiting/stopped; runtime features and checks deferred");
+}
+
+extern "C" __declspec(dllexport) void QoLUpdates_LoadStage(unsigned stage){
+    const char* phases[]={"usable world confirmed","runtime initialisation begin","compass initialisation finished","first runtime tick begin","first runtime tick finished","camera resolution begin","camera resolution finished","camera query begin","camera query finished"};
+    if(stage<sizeof(phases)/sizeof(phases[0])){char message[128];sprintf_s(message,"World load stage: %s",phases[stage]);Log(message);}
+}

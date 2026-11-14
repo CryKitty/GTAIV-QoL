@@ -10,6 +10,7 @@
 #endif
 
 #include "../../../src/primary_gps_recovery.hpp"
+#include "../../../src/world_load_gate.hpp"
 #include <windows.h>
 #include <array>
 #include <cstdint>
@@ -904,9 +905,10 @@ class RoadNavScript final : public ScriptThread {
         service->RemoveDeviceHook(&gCompassNoticeRenderer);service->AddDeviceHook(&gCompassNoticeRenderer);
         attached_=true;event("Turn chevron renderer attached to D3DHook");
     }
+    worldload::Gate worldGate_;bool firstRuntime_=true;
 protected:
     void OnStart() override{
-        qolclient::UpdateSession(true);
+        worldGate_.reset();firstRuntime_=true;qolclient::UpdateSession(false);
         const auto ini=executableFolder()+"GTAIV-QoL.ini";
         navigationDiagnostics=GetPrivateProfileIntA("Diagnostics","LogToFile",0,ini.c_str())!=0;
         loggedLineMode_=-1;
@@ -916,15 +918,11 @@ protected:
         {char settings[240];std::snprintf(settings,sizeof(settings),"Road GPS Line: view-bend strength=%d%% max-degrees=%d response=%d%% (%s; primary and escape ribbons, not turn cues)",
             static_cast<int>(std::lround(viewBend_.strength*100)),static_cast<int>(viewBend_.maxDegrees),static_cast<int>(std::lround(viewBend_.response*100)),
             viewBend_.strength>0&&viewBend_.maxDegrees>0?"enabled":"off; original banking");event(settings);}
-        passivecrash::Install(executableFolder().c_str());
-        compass_.start();
-        compass_.configureTaxi(static_cast<float>(GetPrivateProfileIntA("Camera","TaxiRearFOV",70,(executableFolder()+"GTAIV-QoL.ini").c_str())));
-        clearChase();chaseEnabled_=GetPrivateProfileIntA("RoadNav","ChaseGuidance",1,(executableFolder()+"GTAIV-QoL.ini").c_str())!=0;
         previousTick_=lastServiceTry_=lastCueLog_=0;primaryReplanned_=false;primaryWrongWay_={};
         tickLogged_=attached_=wasVisible_=haveArrival_=false;lastCueCount_=0;lastDestination_=false;hide();
         if(navigationDiagnostics){char text[180];std::snprintf(text,sizeof(text),"RoadNav | build=%s | compiled=%s %s",ROADNAV_BUILD_ID,__DATE__,__TIME__);event(text);}
     }
-    void OnKill() override{qolclient::UpdateSession(false);finishForwardRoute(GetTickCount());clearChase();compass_.stop();hide();haveArrival_=false;attached_=false;event("ScriptHook script stopped");}
+    void OnKill() override{qolclient::UpdateSession(false);if(!worldGate_.entered){worldGate_.reset();return;}worldGate_.reset();finishForwardRoute(GetTickCount());clearChase();compass_.stop();hide();haveArrival_=false;attached_=false;event("ScriptHook script stopped");}
     void RunScript() override{
         using Dispatcher=void (__thiscall*)(ScriptThread*);
         auto module=GetModuleHandleA("ScriptHook.dll");
@@ -933,9 +931,31 @@ protected:
         event("Delegating to installed ScriptHook default RunScript dispatcher");dispatch(this);
     }
     void RunTick() override{
+        using namespace Scripting;
+        worldload::State world;
+        if(!worldGate_.entered){
+            // Only old, read-only bootstrap natives before readiness. No camera
+            // discovery, entity pruning, hooks, or renderer attachment yet.
+            world.fadedIn=IsScreenFadedIn()!=0;
+            if(world.fadedIn){
+                const auto player=ConvertIntToPlayerIndex(GetPlayerId());
+                world.playing=IsPlayerPlaying(player)!=0;world.control=IsPlayerControlOn(player)!=0;
+                if(world.playing&&world.control){Ped ped{};GetPlayerChar(player,&ped);world.ped=ped.IsValid()&&DoesCharExist(ped);}
+            }
+        }
+        if(!worldGate_.allow(world,[&]{
+            qolclient::LoadStage(0);qolclient::LoadStage(1);
+            passivecrash::Install(executableFolder().c_str());
+            compass_.start();qolclient::LoadStage(2);
+            compass_.configureTaxi(static_cast<float>(GetPrivateProfileIntA("Camera","TaxiRearFOV",70,(executableFolder()+"GTAIV-QoL.ini").c_str())));
+            clearChase();chaseEnabled_=GetPrivateProfileIntA("RoadNav","ChaseGuidance",1,(executableFolder()+"GTAIV-QoL.ini").c_str())!=0;
+            qolclient::UpdateSession(true);event("World load gate: usable player; deferred runtime starting");
+        }))return;
+        if(firstRuntime_)qolclient::LoadStage(3);
         const DWORD renderNow=GetTickCount();attachRenderer(renderNow);
         using namespace Scripting;
         compass_.tick();
+        if(firstRuntime_){qolclient::LoadStage(4);firstRuntime_=false;}
         const bool arrows=qolclient::Enabled(QOL_ROADNAV),lineEnabled=qolclient::Enabled(QOL_GPS_LINE,true);
         viewBend_.strength=std::clamp(qolclient::Get(QOL_GPS_VIEW_BEND,100),0,100)/100.0f;
         if(!arrows){cues_={};gTurnRenderer.clear();}

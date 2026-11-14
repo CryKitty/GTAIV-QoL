@@ -14,7 +14,16 @@ inline void RefreshMenu(bool paused){
     const auto refresh=module?reinterpret_cast<Refresh>(GetProcAddress(module,"QoLSettings_RefreshMenu")):nullptr;
     if(refresh)refresh(paused?1u:0u);
 }
+inline unsigned loadStages=0;
+inline void LoadStage(unsigned stage){
+    if(stage>=16||(loadStages&(1u<<stage)))return;loadStages|=1u<<stage;
+    using Stage=void(__cdecl*)(unsigned);
+    const auto module=GetModuleHandleA("GTAIV-QoL.asi");
+    const auto report=module?reinterpret_cast<Stage>(GetProcAddress(module,"QoLUpdates_LoadStage")):nullptr;
+    if(report)report(stage);
+}
 inline void UpdateSession(bool active){
+    if(!active)loadStages=0;
     using Session=void(__cdecl*)(unsigned);
     const auto module=GetModuleHandleA("GTAIV-QoL.asi");
     const auto session=module?reinterpret_cast<Session>(GetProcAddress(module,"QoLUpdates_Session")):nullptr;

@@ -28,4 +28,23 @@ class NavigationStartupTests(unittest.TestCase):
         self.assertIn('resolveHeightNatives();',camera)
         start=source.split('    void start(){',1)[1].split('    void requestNavigationRoute',1)[0]
         self.assertNotIn('resolveHeightNatives();',start)
+    def test_new_runtime_work_is_after_world_gate_and_startup_is_native_free(self):
+        source=(ROOT/'vendor/roadnav/src/roadnav.cpp').read_text()
+        start=source.split('    void OnStart() override{',1)[1].split('    void OnKill()',1)[0]
+        self.assertNotIn('compass_.start()',start)
+        self.assertNotIn('UpdateSession(true)',start)
+        tick=source.split('    void RunTick() override{',1)[1]
+        gate=tick.index('worldGate_.allow')
+        self.assertLess(gate,tick.index('compass_.start()'))
+        self.assertLess(gate,tick.index('attachRenderer(renderNow)'))
+        self.assertLess(gate,tick.index('compass_.tick()'))
+        bootstrap=tick[:gate]
+        for forbidden in ('GetNativeAddress','resolveHeightNatives','prune(','GetScriptDrawCam','UpdateSession(true)'):
+            self.assertNotIn(forbidden,bootstrap)
+        hud=(ROOT/'vendor/roadnav/src/compass_hud.hpp').read_text()
+        camera=hud.split('void drivingCameraHeightTick(bool stopping=false){',1)[1].split('void clearCompassWaypoint',1)[0]
+        self.assertLess(camera.index('state.gate(desired)==qolcamera::HeightGate::Ready'),camera.index('resolveHeightNatives();'))
+        scheduler=(ROOT/'src/ingame_updates.hpp').read_text().split('inline void Tick(',1)[1]
+        self.assertLess(scheduler.index('if(!worldReady.load())return'),scheduler.index('AcquireSRWLockExclusive'))
+
 if __name__=='__main__':unittest.main()

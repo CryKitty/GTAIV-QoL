@@ -33,7 +33,9 @@ def render_helper(root):
             notice += '\n\n'+relative+'\n'+path.read_text(encoding='utf-8')
     bundle = {'data': base64.b64encode(zlib.compress(data, 9)).decode(),
               'sha256': hashlib.sha256(data).hexdigest(),
-              'supported_sha256': ['14f6ac879bcc7df5fb18ce7b410bc436e16675b0dad640378dcb1e6dd3be98b3'],
+              'supported_sha256': ['14f6ac879bcc7df5fb18ce7b410bc436e16675b0dad640378dcb1e6dd3be98b3',
+                  '972a01435fed1272c109580eabe70cf0cbf88e300ebc67d2d2039e99f5933134',
+                  'cbe36bcce4abc858d30faf1b478567819f6d566fe56278cb7300bd38534db072'],
               'notice': notice}
     worker=(root/'tools/steam-deck/qol-updater.py').read_bytes()
     worker=worker.replace(b"BUILD_SHA = ''",('BUILD_SHA = '+repr(os.environ.get('GITHUB_SHA',''))).encode()).replace(b"BUILD_NUMBER = ''",('BUILD_NUMBER = '+repr(os.environ.get('GITHUB_RUN_NUMBER',''))).encode())

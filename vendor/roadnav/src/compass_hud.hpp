@@ -287,8 +287,7 @@ class CompassHud {
         using namespace Scripting;
         const int desired=stopping?0:qolclient::Get(QOL_DRIVING_CAMERA_HEIGHT,0);
         qolcamera::DrivingState state;state.stopping=stopping;
-        if(desired&&!stopping)resolveHeightNatives();
-        state.natives=heightOffset_&&heightActive_&&heightScript_;
+
         bool active=false;Ped ped{};Vehicle car{};Ped driver{};
         if(desired&&!stopping){
             const auto player=ConvertIntToPlayerIndex(GetPlayerId());GetPlayerChar(player,&ped);
@@ -297,13 +296,20 @@ class CompassHud {
             state.driver=state.player&&car.IsValid()&&driver.Get()==ped.Get();
             state.cutscene=NativeInvoke::Invoke<NATIVE_HAS_CUTSCENE_LOADED,b8>()&&!NativeInvoke::Invoke<NATIVE_HAS_CUTSCENE_FINISHED,b8>();
             state.paused=IsPauseMenuActive()!=0;state.fadedIn=IsScreenFadedIn()!=0;state.control=IsPlayerControlOn(player)!=0;
-            state.interpolating=IsCamInterpolating();
-            // GET_GAME_CAM_CHILD describes a node inside the ordinary gameplay
-            // graph, not proof of a propagating script camera. Reject an actual
-            // scripted draw camera instead; no child-handle prerequisite.
-            Camera scripted{};if(heightScript_){NativeContext query;query.Push(&scripted);heightScript_(&query);}
-            state.scriptCamera=scripted.IsValid()&&DoesCamExist(scripted)&&IsCamActive(scripted)&&IsCamPropagating(scripted);
-            if(heightActive_){HeightQuery query;heightActive_(&query);active=query.GetResult<u32>()!=0;}
+            // A loaded ScriptHook tick alone does not imply a usable follow
+            // camera. Never resolve/query cameras on a loading/non-driver frame.
+            if(state.gate(desired)==qolcamera::HeightGate::Ready){
+                qolclient::LoadStage(5);resolveHeightNatives();qolclient::LoadStage(6);state.natives=heightOffset_&&heightActive_&&heightScript_;
+                qolclient::LoadStage(7);
+                state.interpolating=IsCamInterpolating();
+                // GET_GAME_CAM_CHILD describes a node inside the ordinary gameplay
+                // graph, not proof of a propagating script camera. Reject an actual
+                // scripted draw camera instead; no child-handle prerequisite.
+                Camera scripted{};if(heightScript_){NativeContext query;query.Push(&scripted);heightScript_(&query);}
+                state.scriptCamera=scripted.IsValid()&&DoesCamExist(scripted)&&IsCamActive(scripted)&&IsCamPropagating(scripted);
+                if(heightActive_){HeightQuery query;heightActive_(&query);active=query.GetResult<u32>()!=0;}
+                qolclient::LoadStage(8);
+            }
         }
         const auto command=qolcamera::applyHeight(drivingHeight_,state,desired,active,[&](bool enabled,float x,float y,float z){
             if(!heightOffset_)return;
@@ -316,7 +322,7 @@ class CompassHud {
             // Fixed numeric state only, no player/session identifiers. Record
             // transitions plus a bounded heartbeat instead of per-frame spam.
             Camera child{};bool childValid=false,childPropagating=false;
-            if(desired&&!stopping){GetGameCamChild(&child);childValid=child.IsValid()&&DoesCamExist(child);childPropagating=childValid&&IsCamPropagating(child);}
+            if(gate==static_cast<unsigned>(qolcamera::HeightGate::Ready)){GetGameCamChild(&child);childValid=child.IsValid()&&DoesCamExist(child);childPropagating=childValid&&IsCamPropagating(child);}
             char message[288];std::snprintf(message,sizeof(message),"Driving camera state: preset=%d cm=%d gate=%u driver=%u scripted=%u active=%u owned=%u command=%u apply=%u release=%u natives=%u old-child-valid=%u old-child-propagating=%u",
                 qolcamera::heightPreset(desired),desired,gate,state.driver?1u:0u,state.scriptCamera?1u:0u,active?1u:0u,drivingHeight_.owned?1u:0u,
                 static_cast<unsigned>(command),heightApplies_,heightReleases_,state.natives?1u:0u,childValid?1u:0u,childPropagating?1u:0u);log_(message);

@@ -22,7 +22,8 @@ inline bool Request(){
 }
 inline Schedule schedule;
 inline SRWLOCK timerLock=SRWLOCK_INIT;
-inline bool stopped=false,initialized=false;
+inline bool stopped=true,initialized=false;
+inline std::atomic<bool> worldReady{false};
 inline std::uint64_t lastRead=0;
 inline bool PathFor(wchar_t (&path)[MAX_PATH],const wchar_t* name){
     const auto n=GetModuleFileNameW(nullptr,path,MAX_PATH);if(!n||n>=MAX_PATH)return false;
@@ -37,11 +38,13 @@ inline void Clear(){
 }
 inline void Session(bool active){
     AcquireSRWLockExclusive(&timerLock);
+    worldReady.store(active);
     if(!active){stopped=true;schedule={};lastRead=0;Clear();}
     else if(stopped){stopped=false;schedule={};lastRead=0;}
     ReleaseSRWLockExclusive(&timerLock);
 }
 inline void Tick(bool enabled,std::uint64_t now=GetTickCount64()){
+    if(!worldReady.load())return; // No scheduler/file work on the loading screen.
     AcquireSRWLockExclusive(&timerLock);
     if(!initialized){Clear();initialized=true;}
     if(stopped||!enabled){if(schedule.enabled)Clear();schedule={};lastRead=0;ReleaseSRWLockExclusive(&timerLock);return;}

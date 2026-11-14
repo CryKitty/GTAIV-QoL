@@ -84,7 +84,7 @@ class LineTypeMenuTests(unittest.TestCase):
   self.assertEqual(new[table:table+count*40],old[table:table+count*40])
   self.assertEqual(new[optional+96:optional+224],old[optional+96:optional+224]) # all directories incl relocations/exports
   allowed=set(range(pe+6,pe+8))|set(range(optional+4,optional+12))|set(range(optional+56,optional+60))|set(range(optional+64,optional+68))|set(range(table+count*40,table+(count+2)*40))
-  for site,length in [(0xd709a,5),(0xd70bc,6),(0xd70e1,9),(0xd7229,10),(0xd6fc8,5),(0xd8268,5),(0xdf570,6),(0xd70ea,18),(0xd712e,8),(0xd719a,8),(0xd7986,12),(0x72b1e,6),(0x72b66,6)]:allowed.update(range(site,site+length))
+  for site,length in [(0xd709a,5),(0xd70bc,6),(0xd70e1,9),(0xd7229,10),(0xd6fc8,5),(0xd8268,5),(0xdf570,6),(0xd70ea,18),(0xd712e,8),(0xd719a,8),(0xd7986,12)]:allowed.update(range(site,site+length))
   self.assertTrue(all(i in allowed for i,(a,b) in enumerate(zip(old,new)) if a!=b))
   self.assertEqual(new[0xd7229],0xe9)
  def test_registration_order_nests_all_children_immediately_beneath_master(self):
@@ -168,27 +168,8 @@ class LineTypeMenuTests(unittest.TestCase):
      self.assertEqual(u.reg_read(UC_X86_REG_ESP),0x804008)
      self.assertEqual(u.reg_read(UC_X86_REG_ESI),0x11223344)
 
- def test_native_footer_callback_preserves_context_and_old_api_fallback_after_rebase(self):
-  for base in [0x10000000,0x30000000]:
-   for api_size,callback,result in [(20,False,0),(28,True,0x80d800),(32,False,0),(32,True,0),(32,True,0x80d800)]:
-    for site,offset in [(0x7371e,0x98),(0x73766,0x8c)]:
-     u=self.machine(base,0)
-     u.mem_write(0x80c000,struct.pack('<8I',api_size,1,0,0,0,0,0,0x80d000 if callback else 0))
-     u.reg_write(UC_X86_REG_ESI,0x80c000);u.emu_start(base+0xd7bc8,base+0xd7bcd,count=100)
-     u.mem_write(0x80d000,b'\x0f\x57\xc0\xf8\xb8'+struct.pack('<I',result)+b'\xc3')
-     u.reg_write(UC_X86_REG_EAX,0x80b000);u.reg_write(UC_X86_REG_EDI,0x809800)
-     u.reg_write(UC_X86_REG_ESI,0x11223344);u.reg_write(UC_X86_REG_EDX,0x55667788)
-     u.reg_write(UC_X86_REG_EFLAGS,0x203);u.reg_write(UC_X86_REG_XMM0,0x112233445566778899aabbccddeeff00)
-     calls=[]
-     def inspect(machine,address,size,unused):
-      if address==0x80d000:calls.append(struct.unpack('<I',machine.mem_read(machine.reg_read(UC_X86_REG_ESP)+4,4))[0])
-     u.hook_add(unicorn.UC_HOOK_CODE,inspect);u.emu_start(base+site,base+site+6,count=150)
-     self.assertEqual(calls,[0x80b000] if api_size>=32 and callback else [])
-     expected=result if api_size>=32 and callback and result else 0x80b000
-     self.assertEqual(struct.unpack('<I',u.mem_read(0x809800+offset,4))[0],expected)
-     self.assertEqual(u.reg_read(UC_X86_REG_ESP),0x804000)
-     self.assertEqual(u.reg_read(UC_X86_REG_EBP),0x808000)
-     self.assertEqual(u.reg_read(UC_X86_REG_EDX),0x55667788)
-     self.assertEqual(u.reg_read(UC_X86_REG_ESI),0x11223344)
-     self.assertEqual(u.reg_read(UC_X86_REG_EFLAGS)&0x201,0x201)
-     self.assertEqual(u.reg_read(UC_X86_REG_XMM0),0x112233445566778899aabbccddeeff00)
+ def test_load_hotfix_restores_exact_b56_host_without_extra_info_calls(self):
+  import hashlib
+  self.assertEqual(hashlib.sha256(self.image).hexdigest(),'972a01435fed1272c109580eabe70cf0cbf88e300ebc67d2d2039e99f5933134')
+  self.assertEqual(self.image[0x72b1e:0x72b24],bytes.fromhex('898798000000'))
+  self.assertEqual(self.image[0x72b66:0x72b6c],bytes.fromhex('89878c000000'))
