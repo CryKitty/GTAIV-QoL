@@ -24,13 +24,13 @@ if __name__ == '__main__':
 """
 
 class HelperTests(unittest.TestCase):
-    def test_individual_line_choices_survive_updates_and_new_installs_default_on(self):
+    def test_line_choices_survive_updates_and_fresh_enemy_beta_defaults_off(self):
         keys=['ShowPoliceEscape','ShowMission','ShowFriend','ShowEnemy','ShowCustom']
         fresh=(ROOT/'GTAIV-QoL.ini.example').read_bytes()
         import configparser
         def values(data):
             ini=configparser.ConfigParser();ini.read_string(data.decode());return [ini.getint('RoadGPSLine',key) for key in keys]
-        self.assertEqual(values(fresh),[1]*5)
+        self.assertEqual(values(fresh),[1,1,1,0,1])
         for off in range(5):
             old=('[RoadGPSLine]\n'+''.join('%s=%d\n'%(key,int(i!=off)) for i,key in enumerate(keys))).encode()
             expected=[int(i!=off) for i in range(5)]

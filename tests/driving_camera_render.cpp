@@ -47,13 +47,15 @@ int main(){
     qolcamera::Matrix source{},dest{};for(unsigned i=0;i<4;++i)source.v[i*5]=1;source.v[12]=1;source.v[13]=2;source.v[14]=10;
     unsigned char viewport[0x2d0]{};auto currentViewport=reinterpret_cast<std::uintptr_t>(viewport);
     drivingrender::Verifier verifier(reinterpret_cast<std::uintptr_t>(&currentViewport),0);drivingrender::logger=record;
-    for(unsigned cm:{0u,45u,120u})for(auto caller:{front,rear}){
+    for(unsigned cm:{0u,60u,120u})for(auto caller:{front,rear}){
         qolcamera::RenderRequest request;request.at=GetTickCount();request.cm=cm;request.vehicle=77;request.child=3842;request.driving=true;request.allowed=cm!=0;request.player[0]=1;request.player[1]=2;request.player[2]=9;
         drivingrender::publish(request);
         for(unsigned frame=0;frame<100;++frame){request.at=GetTickCount();drivingrender::publish(request);assert(caller(&dest,nullptr,&source)==&dest);assert(std::fabs(dest.v[14]-(10+cm*.01f))<.0001f);}
         setViewport(viewport,dest);verifier.OnRender(nullptr);
         assert(lastEvidence.find("verified=1")!=std::string::npos);
         if(cm){setViewport(viewport,source);verifier.OnRender(nullptr);assert(lastEvidence.find("verified=0")!=std::string::npos);}
+        std::uintptr_t missing=0;drivingrender::Verifier unavailable(reinterpret_cast<std::uintptr_t>(&missing),0);unavailable.OnRender(nullptr);
+        assert(lastEvidence.find("verified=unavailable")!=std::string::npos);
         assert(source.v[14]==10);for(unsigned i=0;i<16;++i)if(i!=14)assert(dest.v[i]==source.v[i]);
         auto measured=drivingrender::sample;float eye[]={dest.v[12],dest.v[13],dest.v[14]};
         assert(qolcamera::renderedEvidence(measured,eye,GetTickCount(),true).verified);
@@ -71,6 +73,6 @@ int main(){
     qolcamera::RenderRequest active;active.at=GetTickCount();active.cm=120;active.driving=active.allowed=true;drivingrender::publish(active);
     gameCopy(&dest,nullptr,&source);assert(dest.v[14]==10);
     MH_DisableHook(drivingrender::targets[0]);MH_RemoveHook(drivingrender::targets[0]);VirtualFree(code,0,MEM_RELEASE);
-    std::puts("Driving camera: real x86 front/rear copy chaining, per-frame 0/.45/1.2m world Z, no accumulation and readback failure detection passed");
+    std::puts("Driving camera: real x86 front/rear copy chaining, per-frame 0/.60/1.2m world Z, no accumulation and readback failure detection passed");
 }
 IService::~IService(){}

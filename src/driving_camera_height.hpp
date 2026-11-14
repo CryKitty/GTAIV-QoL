@@ -4,10 +4,10 @@
 namespace qolcamera {
 // Nearest preset wins; midpoint ties choose the lower camera.
 inline int heightPreset(int centimeters){
-    if(centimeters<=22)return 0;
-    return centimeters<=82?1:2;
+    if(centimeters<=30)return 0;
+    return centimeters<=90?1:2;
 }
-inline int presetHeight(int preset){return preset==1?45:preset==2?120:0;}
+inline int presetHeight(int preset){return preset==1?60:preset==2?120:0;}
 inline const wchar_t* presetName(int preset){return preset==1?L"Medium":preset==2?L"High":L"Low (Default)";}
 // Camera APIs use signed 32-bit IDs, not object addresses. A positive ID is
 // only a candidate: arbitrary native output must never be dereferenced.

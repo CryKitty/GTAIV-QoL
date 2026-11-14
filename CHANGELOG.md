@@ -1,3 +1,9 @@
+GTAIV-QoL beta — higher Medium camera and opt-in beta enemy line
+
+- Driving Camera Height Medium is now 60 cm above default. Low stays the game default and High stays +120 cm. Existing Medium selections at 45 cm become the new Medium; older custom heights still choose the nearest preset. The camera read-back now says unavailable when it cannot sample the rendered viewport, rather than reporting a failed verification from missing data.
+- Enemy Line is labelled Beta and starts Off for fresh settings. Existing saved On choices stay On so updates preserve deliberate preferences; you can disable or enable it in Pause → QoL. Other road-line types keep their settings.
+- Receive through the normal updater after approval/merge and successful main CI; no file edits or release-version change. In Pause → QoL cycle Low → Medium → High while driving past a fixed roofline and check the larger Medium step. With Road Line On, check Enemy Line (Beta) can be enabled and disabled and retains its choice after relaunch. Fresh installs should start it Off.
+
 GTAIV-QoL beta — driving-camera render-path trial (Deck read-back proof pending)
 
 - Replaces the legacy camera-offset flag with a height adjustment to the normal vehicle-follow camera's freshly computed view transform. The game still controls follow motion, rotation and zoom. Low adds nothing, Medium requests +45 cm and High +120 cm in world height; the adjustment is made per camera copy without accumulating frame after frame. No extra camera is created and no follow-camera mode is forced.

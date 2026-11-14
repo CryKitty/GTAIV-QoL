@@ -44,7 +44,7 @@ FallbackRadiusMeters = 300
 ; All compass distances use miles. Legacy MetricDistances is ignored.
 
 [Camera]
-; Pause -> QoL -> Driving Camera Height: Low (0), Medium (45), High (120 cm).
+; Pause -> QoL -> Driving Camera Height: Low (0), Medium (60), High (120 cm).
 ; Legacy values map to the nearest preset; Low leaves the camera untouched.
 DrivingHeightCm=0
 TaxiFovSliderVersion = 1
@@ -56,7 +56,7 @@ TaxiRearFOV = 70
 ShowPoliceEscape=1
 ShowMission=1
 ShowFriend=1
-ShowEnemy=1
+ShowEnemy=0
 ShowCustom=1
 ; Independent experimental route ribbon, following native GPS rather than turn cues.
 Enabled = 1

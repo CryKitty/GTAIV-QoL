@@ -138,7 +138,7 @@ int main(){
         using namespace qolcamera;
         Matrix baseline{};for(unsigned i=0;i<4;++i)baseline.v[i*5]=1;baseline.v[14]=10;
         RenderRequest request;request.at=100;request.driving=request.allowed=true;request.player[2]=9;
-        for(unsigned cm:{0u,45u,120u}){
+        for(unsigned cm:{0u,60u,120u}){
             request.cm=cm;auto next=baseline;const bool changed=prepareHeight(next,request,100);
             assert(changed==(cm!=0)&&std::fabs(next.v[14]-10-cm*.01f)<.0001f);
             MatrixSample sample{baseline,next,request,100,0,changed,123};
@@ -162,9 +162,9 @@ int main(){
             const int p=heightPreset(cm),target=presetHeight(p);
             for(int other=0;other<3;++other)assert(std::abs(cm-target)<=std::abs(cm-presetHeight(other)));
         }
-        assert(heightPreset(0)==0&&heightPreset(22)==0&&heightPreset(23)==1);
-        assert(heightPreset(45)==1&&heightPreset(82)==1&&heightPreset(83)==2&&heightPreset(120)==2&&heightPreset(200)==2);
-        assert(presetHeight(0)==0&&presetHeight(1)==45&&presetHeight(2)==120);
+        assert(heightPreset(0)==0&&heightPreset(30)==0&&heightPreset(31)==1);
+        assert(heightPreset(45)==1&&heightPreset(90)==1&&heightPreset(91)==2&&heightPreset(120)==2&&heightPreset(200)==2);
+        assert(presetHeight(0)==0&&presetHeight(1)==60&&presetHeight(2)==120);
         assert(std::wcscmp(presetName(0),L"Low (Default)")==0);
     }
     {

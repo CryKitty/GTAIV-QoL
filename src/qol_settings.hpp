@@ -18,7 +18,7 @@ constexpr Definition definitions[QOL_SETTING_COUNT]={
     {"Compass","Enabled",1,1},{"RoadNav","DestinationColours",1,1},{"RoadGPSLine","Enabled",1,1},{"Camera","TaxiRearFOV",70,120},
     {"RoadGPSLine","ViewBendStrengthPercent",100,100},
     {"RoadGPSLine","ShowPoliceEscape",1,1},{"RoadGPSLine","ShowMission",1,1},
-    {"RoadGPSLine","ShowFriend",1,1},{"RoadGPSLine","ShowEnemy",1,1},{"RoadGPSLine","ShowCustom",1,1},
+    {"RoadGPSLine","ShowFriend",1,1},{"RoadGPSLine","ShowEnemy",0,1},{"RoadGPSLine","ShowCustom",1,1},
     {"Updates","CheckForUpdates",0,1},{"Camera","DrivingHeightCm",0,200}
 };
 std::atomic<int> values[QOL_SETTING_COUNT];
