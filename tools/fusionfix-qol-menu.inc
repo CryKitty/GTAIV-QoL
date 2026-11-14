@@ -12,7 +12,7 @@
         qolApi=api;
         if(api->size>=offsetof(QolSettingsApi,Footer)&&api->SetMenuRefresh)api->SetMenuRefresh([]{ FillMenu(0); });
         const char* keys[] = { "QOL_ROADNAV", "QOL_AUTOZOOM", "QOL_CSPAUSE", "QOL_TAXI", "QOL_GPSLINE", "QOL_CUTVOICE", "QOL_COMPASS", "QOL_ESCAPE", "QOL_MISSION", "QOL_FRIEND", "QOL_ENEMY", "QOL_CUSTOM", "QOL_UPDATES", "QOL_CAMHEIGHT" };
-        const wchar_t* labels[] = { L"Turn Arrows", L"Map Autozoom", L"Pause During Cutscenes", L"Taxi FOV (degrees)", L"Road Line", L"Cutscene Audio (%)", L"Compass HUD", L"Police Escape Line", L"Mission Line", L"Friend Line", L"Enemy Line", L"Custom Line", L"Check for QoL Updates", L"Driving Camera Height" };
+        const wchar_t* labels[] = { L"Turn Arrows", L"Map Autozoom", L"Pause During Cutscenes", L"Taxi FOV (degrees)", L"Road Line", L"Cutscene Audio (%)", L"Compass HUD", L"Police Escape Line", L"Mission Line", L"Friend Line", L"Enemy Line (Beta)", L"Custom Line", L"Check for QoL Updates", L"Driving Camera Height" };
         const auto qolScreen = AddScreen("QoL", MenuScreen::Audio);
         uint32_t rows = 0;
         const uint32_t order[]={0,1,2,3,13,4,7,8,9,10,11,5,6,12};

@@ -95,8 +95,8 @@ public:
         const auto proof=qolcamera::renderedEvidence(s,xyz,now,projection.valid);
         if(s.request.cm==0&&proof.verified)calibratedVehicle_=s.request.vehicle;
         const bool baseline=calibratedVehicle_==s.request.vehicle&&calibratedVehicle_!=0;
-        if(logger){char text[440];std::snprintf(text,sizeof(text),"Driving camera rendered readback: cm=%u driver=%u allowed=%u child=%u copy-before-z=%.4f copy-after-z=%.4f copy-dz=%.4f rendered-z=%.4f rendered-dz=%.4f expected-dz=%.4f pair=%u low-baseline=%u verified=%u viewport=%u side=%u copies=%u writes=%u age=%lu",
-            s.request.cm,s.request.driving?1u:0u,s.request.allowed?1u:0u,s.request.child,s.before.v[14],s.after.v[14],proof.copyDelta,eye.z,proof.renderDelta,proof.requested,proof.paired?1u:0u,baseline?1u:0u,proof.verified&&(s.request.cm==0||baseline)?1u:0u,projection.valid?1u:0u,s.side,n,w,now-s.at);logger(text);}
+        if(logger){char text[440];std::snprintf(text,sizeof(text),"Driving camera rendered readback: cm=%u driver=%u allowed=%u child=%u copy-before-z=%.4f copy-after-z=%.4f copy-dz=%.4f rendered-z=%.4f rendered-dz=%.4f expected-dz=%.4f pair=%u low-baseline=%u verified=%s viewport=%u side=%u copies=%u writes=%u age=%lu",
+            s.request.cm,s.request.driving?1u:0u,s.request.allowed?1u:0u,s.request.child,s.before.v[14],s.after.v[14],proof.copyDelta,eye.z,proof.renderDelta,proof.requested,proof.paired?1u:0u,baseline?1u:0u,!projection.valid?"unavailable":proof.verified&&(s.request.cm==0||baseline)?"1":"0",projection.valid?1u:0u,s.side,n,w,now-s.at);logger(text);}
     }
 };
 }

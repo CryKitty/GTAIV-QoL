@@ -816,7 +816,7 @@ class RoadNavScript final : public ScriptThread {
         }
         // A residual native GPS buffer is not an authoritative destination.
         // Manual waypoints and live fixed mission goals were handled above.
-        const bool chaseEnabled=compass::chaseEnabled(chaseEnabled_,qolclient::Enabled(QOL_GPS_LINE,true),qolclient::Enabled(QOL_LINE_ENEMY,true));
+        const bool chaseEnabled=compass::chaseEnabled(chaseEnabled_,qolclient::Enabled(QOL_GPS_LINE,true),qolclient::Enabled(QOL_LINE_ENEMY,false));
         if(!compass::allowChase(chaseEnabled||mission.IsValid(),waypoint,owns,mission.IsValid()&&!movingMission)){clearChase();return;}
         auto target=movingMission?mission:compass_.chaseTarget(player,ped,chaseTarget_);
         if(!mission.IsValid()&&!chaseEnabled){clearChase();return;}
@@ -1090,8 +1090,8 @@ protected:
             const bool wasPlanning=escapePlanning_;
             // A live enemy owns the automatic guidance slot before police escape.
             // Fixed player/mission destinations still retain their priority.
-            const bool enemyRequested=compass::enemyOwnsAutomaticGps(fixedPrimary,lineEnabled,qolclient::Enabled(QOL_LINE_ENEMY,true),
-                !fixedPrimary&&lineEnabled&&qolclient::Enabled(QOL_LINE_ENEMY,true)&&compass_.chaseTarget(player,ped,chaseTarget_).IsValid());
+            const bool enemyRequested=compass::enemyOwnsAutomaticGps(fixedPrimary,lineEnabled,qolclient::Enabled(QOL_LINE_ENEMY,false),
+                !fixedPrimary&&lineEnabled&&qolclient::Enabled(QOL_LINE_ENEMY,false)&&compass_.chaseTarget(player,ped,chaseTarget_).IsValid());
             if(enemyRequested&&escapeActive_)clearChase();
             if((enemyRequested||!updateEscape(ped,player,existingEscape,escapeNative,haveReplanVehicle?(motionSpeed_>=2.5f?velocity:travelHeading):roadnav::Vec3{}))&&!forwardRouteHelper_.IsValid())
                 updateChase(ped,player,waypoint,readPrimary,route);
@@ -1221,7 +1221,7 @@ protected:
             if(!std::isfinite(nearClip)||nearClip<.01f||nearClip>5)nearClip=.15f;
             if(!std::isfinite(farClip)||farClip<=nearClip||farClip>20000)farClip=1500;
             const awareness::LineTypes types{qolclient::Enabled(QOL_LINE_ESCAPE,true),qolclient::Enabled(QOL_LINE_MISSION,true),
-                qolclient::Enabled(QOL_LINE_FRIEND,true),qolclient::Enabled(QOL_LINE_ENEMY,true),qolclient::Enabled(QOL_LINE_CUSTOM,true)};
+                qolclient::Enabled(QOL_LINE_FRIEND,true),qolclient::Enabled(QOL_LINE_ENEMY,false),qolclient::Enabled(QOL_LINE_CUSTOM,true)};
             const unsigned typeMask=(types.escape?1u:0u)|(types.mission?2u:0u)|(types.friendLine?4u:0u)|(types.enemy?8u:0u)|(types.custom?16u:0u);
             if(typeMask!=loggedLineTypes_){char state[160];std::snprintf(state,sizeof(state),"Road line type switches: escape=%u mission=%u friend=%u enemy=%u custom=%u",types.escape?1u:0u,types.mission?1u:0u,types.friendLine?1u:0u,types.enemy?1u:0u,types.custom?1u:0u);event(state);loggedLineTypes_=typeMask;}
             const bool primaryShown=types.visible(lineEnabled,routeKind_);

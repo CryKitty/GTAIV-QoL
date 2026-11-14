@@ -44,3 +44,8 @@ Local synthetic read-back and executable x86 copy tests establish the implementa
 PR records exact head and CI. Tests cover real x86 shared-target front/rear chaining and return/stack ABI, unrelated caller pass-through, hundreds of non-accumulating copies, untouched fields, invalid/stale policy, 0/.45/1.2 m, source-copy baseline, production viewport read-back, and rejecting a successful memory write whose rendered view stays unchanged. Existing PR #21 junk-handle/probe safety tests remain.
 
 Updater only after independent verification/explicit merge instruction and successful main CI. Cold load, drive Low on a fixed stretch with a roofline/landmark; repeat Medium and High on the same vehicle, cycle while moving, enter/exit and pause/resume, then test ordinary no-route entry and wanted carjacking/escape. Exit for automatic diagnostics upload; no manual files. Compare read-back rows and visuals. VERSION and payload shape stay unchanged; host/load/fades/stabilizers are not replaced. Help-prompt investigation is separate and must not be represented as fixed by this camera change.
+
+The b84 user retest confirms visible height changes and exact copy-level deltas.
+Its viewport sample remained unavailable; this is now logged as
+`verified=unavailable`, not a measured verification failure. It is not claimed
+to be independent rendered-position proof.

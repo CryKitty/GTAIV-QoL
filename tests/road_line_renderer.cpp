@@ -92,6 +92,7 @@ int main(){
             Renderer renderer(Log);draw(renderer,device,frame);assert(drawn&&renderer.renderedFrames()==1);
             if(kind!=D3DDEVTYPE_NULLREF)assert(colouredPixels(device)>20);
             const awareness::RouteKind types[]={awareness::RouteKind::Escape,awareness::RouteKind::Mission,awareness::RouteKind::Friend,awareness::RouteKind::Enemy,awareness::RouteKind::Custom};
+            for(unsigned type=0;type<5;++type)assert(qolsettings::api.Set(QOL_LINE_ESCAPE+type,1)); // Explicit opt-in, including Enemy (Beta).
             for(unsigned off=0;off<5;++off){
                 assert(qolsettings::api.Set(QOL_LINE_ESCAPE+off,0));
                 for(unsigned type=0;type<5;++type){auto typed=frame;typed.kind=types[type];

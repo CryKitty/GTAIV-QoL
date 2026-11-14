@@ -11,12 +11,13 @@ int main(){
     assert(qolsettings::uiApi.Set(12,1));assert(qolsettings::api.Get(QOL_CHECK_UPDATES)==1);
     assert(qolsettings::uiApi.Set(12,0));
     for(unsigned row=7;row<12;++row){const auto id=row+4;
-        assert(qolsettings::uiApi.Get(row)==1&&qolsettings::api.Get(id)==1);
+        assert(qolsettings::uiApi.Get(row)==(row==10?0:1)&&qolsettings::api.Get(id)==(row==10?0:1));
         assert(qolsettings::uiApi.Set(row,0));assert(qolsettings::api.Get(id)==0);
         qolsettings::Load();assert(qolsettings::uiApi.Get(row)==0);
         assert(qolsettings::uiApi.Set(row,1));assert(qolsettings::api.Get(id)==1);
         assert(!qolsettings::uiApi.Set(row,2));
     }
+    qolsettings::Load();assert(qolsettings::api.Get(QOL_LINE_ENEMY)==1); // Saved On remains deliberate opt-in.
     // Disabling the master changes presentation/interactivity, never children.
     for(unsigned row=7;row<12;++row)assert(qolsettings::uiApi.Set(row,static_cast<int>(row%2)));
     assert(qolsettings::uiApi.Set(4,0));
@@ -31,6 +32,7 @@ int main(){
     for(unsigned row=7;row<12;++row){
         wchar_t label[60]{};assert(qolsettings::uiApi.MenuLabel(keys[row-7],label,60));
         assert(std::wcsncmp(label,L"    ",4)==0&&!std::wcsstr(label,L"~c~"));
+        if(row==10)assert(std::wcsstr(label,L"Beta"));
         assert(qolsettings::uiApi.Get(row)==static_cast<int>(row%2));
         assert(qolsettings::uiApi.Set(row,1));
     }
@@ -49,7 +51,7 @@ int main(){
     wchar_t untouched[60]=L"stock";
     assert(!qolsettings::uiApi.MenuLabel("QOL_TAXI",untouched,60));assert(std::wcscmp(untouched,L"stock")==0);
     assert(!qolsettings::uiApi.MenuLabel(keys[0],untouched,2));assert(std::wcscmp(untouched,L"stock")==0);
-    for(int old:{0,5,22,23,45,82,83,125,200}){
+    for(int old:{0,5,30,31,45,60,90,91,125,200}){
         assert(qolsettings::api.Set(QOL_DRIVING_CAMERA_HEIGHT,old));qolsettings::Load();
         assert(qolsettings::uiApi.Get(13)==qolcamera::heightPreset(old));
         assert(qolsettings::api.Get(QOL_DRIVING_CAMERA_HEIGHT)==qolcamera::presetHeight(qolcamera::heightPreset(old)));
@@ -57,7 +59,7 @@ int main(){
     assert(qolsettings::uiApi.Set(13,0));
     assert(qolsettings::api.Get(QOL_DRIVING_CAMERA_HEIGHT)==0);
     assert(qolsettings::api.Set(QOL_DRIVING_CAMERA_HEIGHT,125));qolsettings::Load();assert(qolsettings::api.Get(QOL_DRIVING_CAMERA_HEIGHT)==120&&qolsettings::uiApi.Get(13)==2);
-    assert(qolsettings::uiApi.Set(13,1));assert(qolsettings::api.Get(QOL_DRIVING_CAMERA_HEIGHT)==45);
+    assert(qolsettings::uiApi.Set(13,1));assert(qolsettings::api.Get(QOL_DRIVING_CAMERA_HEIGHT)==60);
     assert(!qolsettings::uiApi.Set(13,3));assert(qolsettings::uiApi.Set(13,0));
     qolsettings::uiApi.MenuReady(0x3fff);
     for(unsigned id=QOL_LINE_ESCAPE;id<QOL_SETTING_COUNT;++id)assert(qolsettings::menuRows.load()&(1u<<id));
