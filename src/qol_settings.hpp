@@ -4,6 +4,7 @@
 #include "qol_settings_api.h"
 #include "qol_menu_labels.hpp"
 #include "update_menu.hpp"
+#include "driving_camera_height.hpp"
 namespace qolsettings {
 struct Definition {const char* section;const char* key;int initial;int maximum;};
 constexpr Definition definitions[QOL_SETTING_COUNT]={
@@ -26,6 +27,7 @@ void Load(){
         const int read=static_cast<int>(GetPrivateProfileIntA(d.section,d.key,d.initial,path));
         values[i].store(read>=0&&read<=d.maximum?read:d.initial);
     }
+    values[QOL_DRIVING_CAMERA_HEIGHT].store(qolcamera::presetHeight(qolcamera::heightPreset(values[QOL_DRIVING_CAMERA_HEIGHT].load())));
     // Legacy Flat and Twisted both become On; Off remains Off.
     if(values[QOL_GPS_LINE].load())values[QOL_GPS_VIEW_BEND].store(100);
 }
@@ -58,10 +60,12 @@ const QolSettingsApi api{sizeof(QolSettingsApi),1,Get,Set,MenuReady,nullptr,null
 // Appended UI rows 7..11 map to the five new IDs 11..15.
 unsigned UiId(unsigned id){return id==13?QOL_DRIVING_CAMERA_HEIGHT:id>=7&&id<13?id+4:id==3?QOL_TAXI_FOV:id==4?QOL_GPS_LINE:id;}
 int32_t __cdecl UiGet(uint32_t id){
+    if(id==13)return qolcamera::heightPreset(Get(QOL_DRIVING_CAMERA_HEIGHT));
     if(id==QOL_GAMEPLAY_VOICE)return Get(QOL_GPS_LINE)?1:0;
     return Get(UiId(id));
 }
 int32_t __cdecl UiSet(uint32_t id,int32_t value){
+    if(id==13){if(value<0||value>2)return 0;return Set(QOL_DRIVING_CAMERA_HEIGHT,qolcamera::presetHeight(value));}
     if(id>=7&&id<12&&!Get(QOL_GPS_LINE))return 0; // Disabled children retain their own choices.
     if(id==QOL_GAMEPLAY_VOICE){
         if(value<0||value>1)return 0;

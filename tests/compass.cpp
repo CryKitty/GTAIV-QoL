@@ -1,5 +1,6 @@
 #include "../src/compass.hpp"
 #include "../src/update_status_format.hpp"
+#include "../src/version_footer_text.hpp"
 #include "../src/compass_outings.hpp"
 #include "../src/driving_camera_height.hpp"
 #include "../src/compass_notifications.hpp"
@@ -65,6 +66,32 @@ struct FakeGps {
     void configure(unsigned){}
 };
 int main(){
+    {
+        using namespace qolcamera;
+        for(int cm=0;cm<=200;++cm){
+            const int p=heightPreset(cm),target=presetHeight(p);
+            for(int other=0;other<3;++other)assert(std::abs(cm-target)<=std::abs(cm-presetHeight(other)));
+        }
+        assert(heightPreset(0)==0&&heightPreset(22)==0&&heightPreset(23)==1);
+        assert(heightPreset(45)==1&&heightPreset(82)==1&&heightPreset(83)==2&&heightPreset(120)==2&&heightPreset(200)==2);
+        assert(presetHeight(0)==0&&presetHeight(1)==45&&presetHeight(2)==120);
+        assert(std::wcscmp(presetName(0),L"Low (Default)")==0);
+    }
+    {
+        const std::wstring original=L"Help~n~                        ~p~GTAIV.exe: v1.2.0.59 / Fusion Fix: v5.1.2.1 / ASI Loader: v9~n~                        ~r~Warning";
+        const auto text=qolfooter::extend(original,L"0.1.0-beta.1",L"b47");
+        assert(text.find(L"~p~CryKitty QoL: 0.1.0-beta.1 b47")!=std::wstring::npos);
+        assert(text.find(L"CryKitty QoL:")<text.find(L"~r~Warning"));
+        assert(qolfooter::extend(text,L"0.1.0-beta.1",L"b47")==text);
+        assert(qolfooter::extend(L"Graphics memory",L"x",L"b47")==L"Graphics memory");
+        assert(qolfooter::extend(L"Fusion Fix: v5.1.2",L"x",L"b47")==L"Fusion Fix: v5.1.2");
+        assert(qolfooter::extend(std::wstring(4097,L'x'),L"x",L"b47")==std::wstring(4097,L'x'));
+        for(const char* state:{"idle","checking","downloading","staged","applying","up_to_date","failed","updated"}){
+            const auto label=qolupdatemenu::format(L"0.1.0-beta.1",L"b47",state,L"2026-11-13 18:30",true);
+            assert(label.find(L"Check for QoL Updates")==0&&label.find(L"b47")==std::wstring::npos&&label.size()<60);
+        }
+    }
+
     {
         using namespace qolupdatemenu;
         const auto receipt=parse("[Update]\nState=staged\n[Installed]\nSha="+std::string(40,'a')+"\nBuild=47\nUpdatedLocal=2026-11-13 16:00\n");

@@ -1,6 +1,7 @@
 #pragma once
 #include <cstddef>
 #include <cwchar>
+#include "driving_camera_height.hpp"
 #include "../vendor/minhook/include/MinHook.h"
 
 namespace menuvalue {
@@ -27,7 +28,7 @@ void __cdecl Update(unsigned rowOffset,wchar_t* buffer){
        (std::memcmp(option.label,"QOL_TAXI\0",9)!=0&&std::memcmp(option.label,"QOL_CAMHEIGHT\0",14)!=0))return;
     if(std::memcmp(option.label,"QOL_CAMHEIGHT\0",14)==0){
         const int height=qolclient::Get(QOL_DRIVING_CAMERA_HEIGHT,0);if(height<0||height>200)return;
-        wchar_t text[16]{};swprintf_s(text,16,L"%d cm",height);SIZE_T written=0;
+        const auto text=qolcamera::presetName(qolcamera::heightPreset(height));SIZE_T written=0;
         WriteProcessMemory(GetCurrentProcess(),buffer,text,(std::wcslen(text)+1)*sizeof(wchar_t),&written);return;
     }
     const int value=qolclient::Get(QOL_TAXI_FOV,-1);

@@ -112,3 +112,8 @@ beta on that channel); toggling while already current cannot manufacture an
 update. This PR publishes no release. Offline testing may fail immediately or
 wait for the network timeout. After reconnecting, Off → On explicitly retries.
 No Deck acceptance result is claimed by the automated tests.
+
+The native Game-menu version-footer extension now owns the identity display once
+that footer has actually been shown this launch. The QoL update row then keeps
+only its control name and live status/timestamp. Until then, or when unavailable,
+it retains the build identity described above. See [camera/range/footer notes](CAMERA_RANGE_AND_FOOTER.md).

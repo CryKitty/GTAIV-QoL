@@ -316,6 +316,14 @@ class CompassHud {
     }
 
 public:
+    float radarRange(bool* live=nullptr)const{
+        using Range=float (__cdecl*)();
+        const auto ff=GetModuleHandleA("GTAIV.EFLC.FusionFix.asi");
+        const auto getRange=ff?reinterpret_cast<Range>(GetProcAddress(ff,"QoLCompassRadarRange")):nullptr;
+        const float range=getRange?getRange():0;
+        const bool valid=std::isfinite(range)&&range>=10&&range<=5000;if(live)*live=valid;
+        return valid?range:fallbackRange_;
+    }
     explicit CompassHud(void (*log)(const char*)=nullptr,compass::NoticeRenderer* noticeRenderer=nullptr):noticeRenderer_(noticeRenderer),log_(log){}
     void start(){
         char path[MAX_PATH]{};GetModuleFileNameA(nullptr,path,MAX_PATH);
@@ -499,10 +507,7 @@ public:
             if(log_)log_("Compass waypoint: cleared on arrival");
         }
         u32 policeStars=0;StoreWantedLevel(player,&policeStars);awareness_.policeSample(player,policeStars,playerPoint);
-        using Range=float (__cdecl*)();Range getRange=nullptr;
-        const auto ff=GetModuleHandleA("GTAIV.EFLC.FusionFix.asi");if(ff)getRange=reinterpret_cast<Range>(GetProcAddress(ff,"QoLCompassRadarRange"));
-        const float liveRange=getRange?getRange():0;const bool live=std::isfinite(liveRange)&&liveRange>=10&&liveRange<=5000;
-        const float range=live?liveRange:fallbackRange_;
+        bool live=false;const float range=radarRange(&live);
         const bool mission=GetMissionFlag()!=0;
         if(!socialAt_||now-socialAt_>=1000){
             socialAt_=now;
