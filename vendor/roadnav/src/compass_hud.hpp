@@ -263,7 +263,23 @@ class CompassHud {
         Scripting::DisplayTextWithLiteralString(x,y,"STRING",value);
     }
 
-    RadarNative heightOffset_=nullptr,heightActive_=nullptr;
+    RadarNative heightOffset_=nullptr,heightActive_=nullptr,heightScript_=nullptr;
+    DWORD heightResolveAt_=0;bool heightResolveTried_=false;unsigned heightNativeState_=~0u;
+    void resolveHeightNatives(){
+        if(heightOffset_&&heightActive_&&heightScript_)return;
+        const DWORD now=GetTickCount();if(heightResolveTried_&&now-heightResolveAt_<1000)return;
+        heightResolveTried_=true;heightResolveAt_=now;
+        using Lookup=void* (__cdecl*)(unsigned);using Names=void* (__cdecl*)(const char*);
+        const auto module=GetModuleHandleA("ScriptHook.dll");
+        const auto lookup=module?reinterpret_cast<Lookup>(GetProcAddress(module,"?GetNativeAddressFromHash@Game@@SAPAXI@Z")):nullptr;
+        const auto names=module?reinterpret_cast<Names>(GetProcAddress(module,"?GetNativeAddress@Game@@SAPAXPBD@Z")):nullptr;
+        const auto native=[&](unsigned hash,const char* name){auto fn=lookup?lookup(hash):nullptr;if(!fn&&names)fn=names(name);return reinterpret_cast<RadarNative>(fn);};
+        heightOffset_=native(Scripting::NATIVE_SET_FOLLOW_VEHICLE_CAM_OFFSET,"SET_FOLLOW_VEHICLE_CAM_OFFSET");
+        heightActive_=native(Scripting::NATIVE_IS_FOLLOW_VEHICLE_CAM_OFFSET_ACTIVE,"IS_FOLLOW_VEHICLE_CAM_OFFSET_ACTIVE");
+        heightScript_=native(Scripting::NATIVE_GET_SCRIPT_DRAW_CAM,"GET_SCRIPT_DRAW_CAM");
+        const unsigned available=(heightOffset_?1u:0u)|(heightActive_?2u:0u)|(heightScript_?4u:0u);
+        if(log_&&available!=heightNativeState_){char message[120];std::snprintf(message,sizeof(message),"Driving camera native resolution: set=%u active=%u draw=%u",heightOffset_?1u:0u,heightActive_?1u:0u,heightScript_?1u:0u);log_(message);heightNativeState_=available;}
+    }
     struct HeightQuery:NativeContext {HeightQuery(){*static_cast<u32*>(m_pReturn)=0;}};
     int heightLoggedCm_=-1;unsigned heightLoggedGate_=~0u;DWORD heightLogAt_=0;
     unsigned heightApplies_=0,heightReleases_=0;
@@ -271,7 +287,8 @@ class CompassHud {
         using namespace Scripting;
         const int desired=stopping?0:qolclient::Get(QOL_DRIVING_CAMERA_HEIGHT,0);
         qolcamera::DrivingState state;state.stopping=stopping;
-        state.natives=heightOffset_&&heightActive_;
+        if(desired&&!stopping)resolveHeightNatives();
+        state.natives=heightOffset_&&heightActive_&&heightScript_;
         bool active=false;Ped ped{};Vehicle car{};Ped driver{};
         if(desired&&!stopping){
             const auto player=ConvertIntToPlayerIndex(GetPlayerId());GetPlayerChar(player,&ped);
@@ -284,7 +301,7 @@ class CompassHud {
             // GET_GAME_CAM_CHILD describes a node inside the ordinary gameplay
             // graph, not proof of a propagating script camera. Reject an actual
             // scripted draw camera instead; no child-handle prerequisite.
-            Camera scripted{};NativeInvoke::Invoke<NATIVE_GET_SCRIPT_DRAW_CAM,ScriptVoid>(&scripted);
+            Camera scripted{};if(heightScript_){NativeContext query;query.Push(&scripted);heightScript_(&query);}
             state.scriptCamera=scripted.IsValid()&&DoesCamExist(scripted)&&IsCamActive(scripted)&&IsCamPropagating(scripted);
             if(heightActive_){HeightQuery query;heightActive_(&query);active=query.GetResult<u32>()!=0;}
         }
@@ -358,6 +375,7 @@ public:
     }
     explicit CompassHud(void (*log)(const char*)=nullptr,compass::NoticeRenderer* noticeRenderer=nullptr):noticeRenderer_(noticeRenderer),log_(log){}
     void start(){
+        heightOffset_=heightActive_=heightScript_=nullptr;heightResolveAt_=0;heightResolveTried_=false;heightNativeState_=~0u;
         heightLoggedCm_=-1;heightLoggedGate_=~0u;heightLogAt_=0;heightApplies_=heightReleases_=0;
         if(log_){char message[120];const int cm=qolclient::Get(QOL_DRIVING_CAMERA_HEIGHT,0);std::snprintf(message,sizeof(message),"Driving camera loaded: preset=%d cm=%d",qolcamera::heightPreset(cm),cm);log_(message);}
         char path[MAX_PATH]{};GetModuleFileNameA(nullptr,path,MAX_PATH);
@@ -372,10 +390,6 @@ public:
         using Lookup=void* (__cdecl*)(std::uint32_t);using Names=void* (__cdecl*)(const char*);
         const auto lookup=module?reinterpret_cast<Lookup>(GetProcAddress(module,"?GetNativeAddressFromHash@Game@@SAPAXI@Z")):nullptr;
         const auto names=module?reinterpret_cast<Names>(GetProcAddress(module,"?GetNativeAddress@Game@@SAPAXPBD@Z")):nullptr;
-        const auto cameraNative=[&](unsigned hash,const char* name){auto fn=lookup?lookup(hash):nullptr;if(!fn&&names)fn=names(name);return reinterpret_cast<RadarNative>(fn);};
-        heightOffset_=cameraNative(Scripting::NATIVE_SET_FOLLOW_VEHICLE_CAM_OFFSET,"SET_FOLLOW_VEHICLE_CAM_OFFSET");
-        heightActive_=cameraNative(Scripting::NATIVE_IS_FOLLOW_VEHICLE_CAM_OFFSET_ACTIVE,"IS_FOLLOW_VEHICLE_CAM_OFFSET_ACTIVE");
-        if(log_){char message[100];std::snprintf(message,sizeof(message),"Driving camera native resolution: set=%u active=%u",heightOffset_?1u:0u,heightActive_?1u:0u);log_(message);}
         const auto init=MH_Initialize();if(init!=MH_OK&&init!=MH_ERROR_ALREADY_INITIALIZED)return;
         auto install=[&](unsigned hash,const char* name,void* detour,RadarNative& original,void*& target){
             if(target)return;auto address=lookup?lookup(hash):nullptr;if(!address&&names)address=names(name);

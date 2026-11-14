@@ -23,4 +23,9 @@ class NavigationStartupTests(unittest.TestCase):
         self.assertLess(activation,hud.index('GetPlayerChar(player,&ped)'))
         self.assertLess(activation,hud.index('!IsScreenFadedIn()'))
         self.assertEqual(hud.count('awareness_.activate()'),1)
+        source=(ROOT/'vendor/roadnav/src/compass_hud.hpp').read_text()
+        camera=source.split('void drivingCameraHeightTick(bool stopping=false){',1)[1].split('void clearCompassWaypoint',1)[0]
+        self.assertIn('resolveHeightNatives();',camera)
+        start=source.split('    void start(){',1)[1].split('    void requestNavigationRoute',1)[0]
+        self.assertNotIn('resolveHeightNatives();',start)
 if __name__=='__main__':unittest.main()
