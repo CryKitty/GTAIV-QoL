@@ -1,6 +1,7 @@
 #pragma once
 #include "d3d_hook_service.hpp"
 #include "tracked_destination.hpp"
+#include "cue_geometry.hpp"
 #include "scene_depth.hpp"
 #include "scene_camera.hpp"
 #include <cstdio>
@@ -9,13 +10,13 @@
 #include "road_line_depth_shader.hpp"
 #include "../../../src/navigation_awareness.hpp"
 namespace roadnav {
-struct LineFrame {RoadLine line{};CameraFrame camera{};DWORD at=0;Vec3 player{};awareness::RouteKind kind=awareness::RouteKind::Blue;bool colours=true;float nearClip=.15f,farClip=1500;float widthScale=1;RoadLineViewBend viewBend{};};
+struct LineFrame {RoadLine line{};CameraFrame camera{};DWORD at=0;Vec3 player{};awareness::RouteKind kind=awareness::RouteKind::Blue;bool colours=true;float nearClip=.15f,farClip=1500;float widthScale=1;RoadLineViewBend viewBend{};float speed=0;};
 // Inject only the read-only scene providers in tests; geometry, projection,
 // depth shader and draw submission remain the production implementation.
 template<class Depth=RoadSceneDepth,class Camera=RoadSceneCamera>
 class RoadLineRendererWithScene final:public ID3DDeviceHook {
     SRWLOCK lock_=SRWLOCK_INIT;LineFrame frame_{};void(*log_)(const char*)=nullptr;bool logged_=false;
-    Depth sceneDepth_;Camera sceneCamera_;RoadLineViewHeading viewHeading_{};IDirect3DPixelShader9* occlusion_=nullptr;bool missingLogged_=false;
+    Depth sceneDepth_;Camera sceneCamera_;RoadLineViewHeading viewHeading_{};DestinationMarkerFade destination_{};IDirect3DPixelShader9* occlusion_=nullptr;bool missingLogged_=false;
     std::atomic<bool> invalidateScene_{false};
     DWORD reportAt_=0;unsigned drawFrames_=0,emptyFrames_=0,outsideFrames_=0,depthMissingFrames_=0,authoredFrames_=0;
     void report(const char* status,const LineFrame& frame,unsigned vertices=0){
@@ -46,10 +47,12 @@ public:
     void OnRender(ID3DDevice* device)override{
         // Scene providers are render-thread-owned. Script/toggle callbacks only
         // request invalidation; never race discovery or cached viewport reads.
-        if(invalidateScene_.exchange(false)){sceneDepth_.invalidate();sceneCamera_.invalidate();viewHeading_={};missingLogged_=false;}
+        if(invalidateScene_.exchange(false)){sceneDepth_.invalidate();sceneCamera_.invalidate();viewHeading_={};destination_.clear();missingLogged_=false;}
         AcquireSRWLockShared(&lock_);const auto f=frame_;ReleaseSRWLockShared(&lock_);
-        if(!f.line.visible()){report("no route geometry",f);return;}
-        if(GetTickCount()-f.at>1200){report("expired script snapshot",f);return;}
+        const auto now=GetTickCount();
+        if(now-f.at>1200){destination_.clear();report("expired script snapshot",f);return;}
+        const auto marker=destination_.update(f.line.visible()&&f.line.endsAtDestination,roadLineDestination(f.line),f.player,f.speed,now);
+        if(!f.line.visible()&&marker.opacity<=0){report("no route geometry",f);return;}
         if(device->TestCooperativeLevel()!=D3D_OK){report("device unavailable",f);return;}
         D3DVIEWPORT9 viewport{};if(FAILED(device->GetViewport(&viewport))){report("viewport unavailable",f);return;}
         auto rendered=sceneCamera_.acquire(f.camera);
@@ -78,7 +81,7 @@ public:
         device->SetTextureStageState(0,D3DTSS_COLOROP,D3DTOP_SELECTARG1);device->SetTextureStageState(0,D3DTSS_COLORARG1,D3DTA_DIFFUSE);device->SetTextureStageState(0,D3DTSS_ALPHAOP,D3DTOP_SELECTARG1);device->SetTextureStageState(0,D3DTSS_ALPHAARG1,D3DTA_DIFFUSE);device->SetTextureStageState(1,D3DTSS_COLOROP,D3DTOP_DISABLE);
         // Ground-reference banking, not the bouncing vehicle body's Z.
         const auto bankAnchor=roadLineGroundAnchor(f.line,f.player);
-        const auto lift=roadLineLift(f.line.points,f.line.bank,bankAnchor);
+        const auto lift=roadLineLift(f.line,bankAnchor);
         const float yaw=f.camera.rotation.z*.01745329252f;
         const Vec3 forward=viewHeading_.update(rendered.valid?rendered.forward():Vec3{-std::sin(yaw),std::cos(yaw),0},GetTickCount());
         const Vec3 geometryCamera=rendered.valid?rendered.eye():f.camera.position;
@@ -101,12 +104,12 @@ public:
                 }
                 if(valid)for(unsigned n:{0u,1u,2u,0u,2u,3u})vertices.push_back(v[n]);
             }
-            if(f.line.endsAtDestination&&!f.line.points.empty()){
+            if(marker.opacity>0){
                 constexpr float shape[6][2]={{-.60f,.65f},{-.05f,.65f},{.60f,0},{-.05f,-.65f},{-.60f,-.65f},{.05f,0}};
                 constexpr unsigned triangles[12]={0,1,5,1,2,5,5,2,3,5,3,4};
-                const auto end=roadLineDestination(f.line);
+                const auto end=marker.position;
                 const Vec3 right{std::cos(yaw),std::sin(yaw),0};const float scale=layer?.72f:.88f;
-                const float fade=std::clamp((distance2D(f.player,end)-2)/3,0.0f,1.0f);
+                const float fade=marker.opacity;
                 const DWORD alpha=static_cast<DWORD>((layer?210:145)*fade);
                 std::array<Vertex,6> projected{};bool valid=alpha!=0;
                 for(unsigned n=0;n<6;++n){

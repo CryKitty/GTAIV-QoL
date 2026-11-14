@@ -27,6 +27,10 @@ inline bool trackLineEndpoint(RoadLine& line,Vec3 target){
     }
     if(!segment)return false;
     // Preserve all previously fitted cross-sections before the short live tail.
+    if(line.stations.size()==line.points.size()){
+        const float station=line.stations[segment-1]+distance2D(line.points[segment-1],target);
+        line.stations.resize(segment);line.stations.push_back(station);
+    }
     line.points.resize(segment);line.points.push_back(target);
     if(!line.edges.empty()){line.edges.resize(segment);line.edges.push_back({target.z,target.z});}
     line.bank=roadLineBank(line.points);line.ahead=routeLength2D(line.points);pinDestination(line,target);return true;

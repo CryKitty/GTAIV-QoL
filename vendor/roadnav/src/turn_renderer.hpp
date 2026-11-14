@@ -86,7 +86,7 @@ public:
                     points[v]={destination.position.x+right.x*across,destination.position.y+right.y*across,
                                destination.position.z+0.85f-shape[v][0]*scale};
                 }
-                const float fade=std::clamp((73-destination.distanceAhead)/15.0f,0.0f,1.0f)*approachOpacity(distance2D(frame.player,destination.position),frame.speed);
+                const float fade=std::clamp((73-destination.distanceAhead)/15.0f,0.0f,1.0f)*destinationOpacity(distance2D(frame.player,destination.position),frame.speed);
                 append(points,static_cast<DWORD>(230*fade*opacity));
             }
         }

@@ -12,6 +12,32 @@ inline float approachOpacity(float distance,float speed){
     const float t=std::clamp((distance-finish)/(start-finish),0.0f,1.0f);
     return t*t*(3.0f-2.0f*t);
 }
+// GPS/mission scripts commonly clear a destination around the 12 m arrival
+// gate. Be fully transparent before that removal, with a visible approach ramp.
+inline float destinationOpacity(float distance,float speed){
+    const float finish=12.0f,start=finish+std::max(16.0f,std::max(0.0f,speed)*.65f);
+    const float t=std::clamp((distance-finish)/(start-finish),0.0f,1.0f);
+    return t*t*(3-2*t);
+}
+struct DestinationMarker {Vec3 position{};float opacity=0;};
+// A native route can disappear before its coordinate marker is removed. Retire
+// only the glyph at its last world position, never retain/fabricate a road tail.
+struct DestinationMarkerFade {
+    DestinationMarker marker{};unsigned lostAt=0;bool held=false,retiring=false;
+    void clear(){*this={};}
+    DestinationMarker update(bool visible,Vec3 position,Vec3 player,float speed,unsigned now){
+        if(visible){marker={position,destinationOpacity(distance2D(player,position),speed)};held=true;retiring=false;return marker;}
+        if(!held)return {};
+        if(!retiring){lostAt=now;retiring=true;}
+        const float t=std::clamp(static_cast<float>(now-lostAt)/300.0f,0.0f,1.0f);
+        auto result=marker;
+        result.opacity*=1-t*t*(3-2*t);
+        // Approaching a retired glyph must never make it brighter again.
+        result.opacity=std::min(result.opacity,destinationOpacity(distance2D(player,marker.position),speed));
+        if(t>=1)clear();
+        return result;
+    }
+};
 // Retire only cues removed by GPS. Remaining/new maneuvers keep their slots.
 inline NavigationCues departingCues(const NavigationCues& before,const NavigationCues& after){
     NavigationCues result{};result.lookAhead=before.lookAhead;
