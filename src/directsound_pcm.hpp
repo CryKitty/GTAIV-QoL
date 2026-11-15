@@ -7,8 +7,8 @@ using CursorPcm=HRESULT(WINAPI*)(void*,DWORD*,DWORD*);
 struct PcmState {
     pcmgain::Format format{};std::vector<unsigned char> original,scratch,observed;
     std::uintptr_t storage=0;void* first=nullptr;void* second=nullptr;DWORD firstBytes=0,secondBytes=0,offset=0,lastCursor=0;
-    bool ready=false,locked=false,readback=false,advanced=false;float applied=1;
-    unsigned writes=0;HRESULT formatHr=S_OK,lastLock=S_OK,lastUnlock=S_OK;pcmgain::Levels levels{};DWORD logged=0;
+    bool ready=false,locked=false,readback=false,advanced=false;float applied=1,requested=1;
+    unsigned writes=0;HRESULT formatHr=S_OK,lastLock=S_OK,lastUnlock=S_OK;pcmgain::Levels levels{};DWORD logged=0,retried=0;
 };
 PcmState pcm[128]{};unsigned pcmBytes=0;
 inline bool pcmCopy(void* destination,const void* source,DWORD bytes){SIZE_T done=0;return !bytes||(WriteProcessMemory(GetCurrentProcess(),destination,source,bytes,&done)&&done==bytes);}
@@ -22,7 +22,7 @@ inline bool pcmRead(PcmState& p,void* first,DWORD one,void* second,DWORD two,DWO
         return std::memcmp(p.scratch.data()+at,p.observed.data()+at,bytes)==0;
     };
     const bool ok=block(first,one,offset)&&block(second,two,0);
-    p.readback=ok;if(one+two==size)p.applied=cutsceneoutput::gain.load();
+    p.readback=ok;if(ok&&one+two==size)p.applied=cutsceneoutput::gain.load();
     if(ok){p.levels=pcmgain::transform(p.original.data(),nullptr,size,p.format,1);
         auto after=pcmgain::transform(p.observed.data(),nullptr,size,p.format,1);
         p.levels.outputPeak=after.inputPeak;p.levels.outputRms=after.inputRms;
@@ -86,8 +86,8 @@ HRESULT WINAPI GuardUnlockPcm(void* object,void* first,DWORD one,void* second,DW
 inline bool reconcilePcm(Buffer& b,PcmState& p,float gain){
     if(!p.ready||p.locked)return false;
     auto& v=b.views[0];
-    const bool changed=p.applied!=gain;if(changed)p.logged=0;
-    if(changed){void* first=nullptr;void* second=nullptr;DWORD one=0,two=0;
+    const auto now=GetTickCount();const bool changed=p.requested!=gain;if(changed)p.logged=0;p.requested=gain;
+    if((p.applied!=gain||!p.readback)&&(changed||now-p.retried>=500)){p.retried=now;void* first=nullptr;void* second=nullptr;DWORD one=0,two=0;
         p.lastLock=reinterpret_cast<LockPcm>(v.lockPcm)(v.object,0,static_cast<DWORD>(p.original.size()),&first,&one,&second,&two,DSBLOCK_ENTIREBUFFER);
         if(SUCCEEDED(p.lastLock)){
             p.readback=pcmRead(p,first,one,second,two,0,false);
@@ -97,7 +97,6 @@ inline bool reconcilePcm(Buffer& b,PcmState& p,float gain){
     }
     DWORD play=0,write=0,status=0;const auto cursor=reinterpret_cast<CursorPcm>(v.getCursor)(v.object,&play,&write);
     const auto playing=v.status(v.object,&status);if(SUCCEEDED(cursor)&&play!=p.lastCursor)p.advanced=true;p.lastCursor=play;
-    const auto now=GetTickCount();
     if(now-p.logged>=5000){p.logged=now;char line[480];sprintf_s(line,"Cutscene PCM source: id=%u multiplier=%.2f percent=%.0f playing=%u cursor-advanced=%u source-writes=%u input-peak=%.6f output-peak=%.6f input-rms=%.6f output-rms=%.6f clipped=%u pcm-readback=%u restored=%u lock-hr=%08lX unlock-hr=%08lX",static_cast<unsigned>(&b-buffers),gain,gain*100,SUCCEEDED(playing)&&(status&DSBSTATUS_PLAYING)?1u:0u,p.advanced?1u:0u,p.writes,p.levels.inputPeak,p.levels.outputPeak,p.levels.inputRms,p.levels.outputRms,p.levels.clipped,p.readback?1u:0u,gain==1&&p.readback?1u:0u,static_cast<unsigned long>(p.lastLock),static_cast<unsigned long>(p.lastUnlock));Log(line);p.advanced=false;}
     return p.readback;
 }
