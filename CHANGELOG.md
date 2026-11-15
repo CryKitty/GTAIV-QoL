@@ -1,3 +1,9 @@
+GTAIV-QoL beta — mission guidance colours follow the current episode
+
+- Mission road lines now use yellow in GTA IV, bright coral red in The Lost and Damned, and bright pink in The Ballad of Gay Tony. The game’s episode identity is read automatically at world load; no save-name or marker guesses. Mission turn arrows and destination chevrons share the palette and follow it too.
+- Police escape keeps its flashing red/blue, enemies keep their deeper red, and friend/custom lines retain their colours. TLAD uses a lighter coral red to distinguish its steady mission line from the police flash and enemy red. Existing ribbon contrast stays in place.
+- After approval/merge and successful main CI, use the normal updater. In Pause → QoL keep Road Line and Mission Line On; start a mission in each episode, switching through the game menu, and check yellow/red/pink in daylight and at night. Check custom waypoints and police guidance retain their colours. One automatic session record reports the episode and palette. No new setting, file edits or release-version change; Deck visual acceptance remains outstanding.
+
 GTAIV-QoL beta — cutscene audio output checks and exact restoration
 
 - Cutscene Audio now checks the real captured output each gameplay tick, instead of writing only when the slider changes. It reapplies the selected multiplier if the engine replaces it, keeps the underlying game volume separate, and restores that volume when the cutscene ends, is skipped/interrupted, or the script stops. Back-to-back scenes do not multiply an earlier boost again.

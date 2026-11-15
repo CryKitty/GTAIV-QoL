@@ -974,6 +974,9 @@ protected:
         if(!worldGate_.allow(world,[&]{
             qolclient::LoadStage(0);qolclient::LoadStage(1);
             passivecrash::Install(executableFolder().c_str());
+            const auto episode=Scripting::GetCurrentEpisode();awareness::missionEpisode.store(episode<=2?episode:0);
+            const auto rgb=awareness::missionColour(episode);
+            {char text[200];std::snprintf(text,sizeof(text),"Mission palette: episode=%u name=%s rgb=%u,%u,%u source=GET_CURRENT_EPISODE session-load",episode,episode==0?"GTA IV":episode==1?"TLAD":episode==2?"TBoGT":"unknown; GTA IV fallback",rgb[0],rgb[1],rgb[2]);event(text);}
             compass_.start();qolclient::LoadStage(2);
             compass_.configureTaxi(static_cast<float>(GetPrivateProfileIntA("Camera","TaxiRearFOV",70,(executableFolder()+"GTAIV-QoL.ini").c_str())));
             clearChase();chaseEnabled_=GetPrivateProfileIntA("RoadNav","ChaseGuidance",1,(executableFolder()+"GTAIV-QoL.ini").c_str())!=0;

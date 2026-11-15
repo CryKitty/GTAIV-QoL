@@ -1,5 +1,6 @@
 #pragma once
 #include <array>
+#include <atomic>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -31,10 +32,14 @@ struct LineTypes {
     }
 };
 inline RouteKind activeRoute(RouteKind matched,bool chase,bool waypointMatches){return chase?RouteKind::Enemy:waypointMatches?RouteKind::Custom:matched;}
+inline std::atomic<unsigned> missionEpisode{0};
+inline std::array<unsigned,3> missionColour(unsigned episode){
+    switch(episode){case 1:return {255,95,80};case 2:return {255,105,200};default:return {245,205,55};}
+}
 inline std::array<unsigned,3> routeColour(RouteKind kind,bool enabled,unsigned now=0){
     if(kind==RouteKind::Escape)return (now/400)%2?std::array<unsigned,3>{35,110,255}:std::array<unsigned,3>{245,45,45};
     if(!enabled)return {25,180,255};
-    switch(kind){case RouteKind::Custom:return {85,210,95};case RouteKind::Mission:return {245,205,55};case RouteKind::Enemy:return {235,55,45};default:return {25,180,255};}
+    switch(kind){case RouteKind::Custom:return {85,210,95};case RouteKind::Mission:return missionColour(missionEpisode.load());case RouteKind::Enemy:return {235,55,45};default:return {25,180,255};}
 }
 struct PedPool {std::uint32_t storage,flags,size,stride;};
 inline bool validPool(const PedPool& p,unsigned player,unsigned flag){
