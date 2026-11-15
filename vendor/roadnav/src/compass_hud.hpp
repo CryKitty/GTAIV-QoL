@@ -12,6 +12,7 @@
 #include "../../minhook/include/MinHook.h"
 
 #include "minimap_layout.hpp"
+#include "radar_mode_link.hpp"
 #include "phone_notifications.hpp"
 #include "compass_notice_renderer.hpp"
 #include "compass_controller.hpp"
@@ -19,14 +20,15 @@
 #include "../../../src/compass_waypoint.hpp"
 #include "../../../src/compass_feedback.hpp"
 
-// Change only the minimap layout position. Keep all native preferences and
-// visibility answers intact, including those used by wanted stars and messages.
+// Keep native geometry immutable. Dedicated presentation filters and the
+// transition-only Radar preference link leave message/lifetime work running.
 static_assert(Scripting::BLIP_DATE==54,"Compass date classification follows the supported SDK");
 static_assert(Scripting::BLIP_GARAGE==79&&Scripting::BLIP_LAWYER==80&&Scripting::BLIP_CAR_WASH==91&&
     Scripting::BLIP_UNITED_LIBERTY_PAPER==92&&Scripting::BLIP_BOSS==93,"Compass people/POI IDs follow the bundled SDK");
 class CompassHud {
     using RadarNative=void (__cdecl*)(GameTypes::scrNativeCallContext*);
     MinimapLayout minimap_;
+    RadarModeLink radarLink_;
     PhoneNotifications messages_;
     compass::NoticeRenderer* noticeRenderer_=nullptr;
     compass::WaypointHold waypointHold_{};
@@ -405,6 +407,7 @@ public:
     }
     explicit CompassHud(void (*log)(const char*)=nullptr,compass::NoticeRenderer* noticeRenderer=nullptr):noticeRenderer_(noticeRenderer),log_(log){}
     void preparePresentation(){
+        radarLink_.session(qolclient::Enabled(QOL_COMPASS,compassDefault_));
         if(log_){char text[180];std::snprintf(text,sizeof(text),"Compass presentation: t=%lu phase=world-ready enabled=%u",GetTickCount(),qolclient::Enabled(QOL_COMPASS,compassDefault_)?1u:0u);log_(text);}
         if(qolclient::Enabled(QOL_COMPASS,compassDefault_))minimap_.enable(log_);
     }
@@ -415,6 +418,7 @@ public:
         char path[MAX_PATH]{};GetModuleFileNameA(nullptr,path,MAX_PATH);
         char* slash=std::strrchr(path,'\\');if(slash){slash[1]=0;strcat_s(path,"GTAIV-QoL.ini");}
         compassDefault_=GetPrivateProfileIntA("Compass","Enabled",1,path)!=0;
+        radarLink_.start(path,log_);
         // Defer preference resolution until the initialized ScriptHook tick.
         awareness_.start(log_);
         messages_.start(log_);
@@ -533,9 +537,10 @@ public:
         return result;
     }
     bool policeCircle(unsigned player,unsigned stars,roadnav::Vec3& center,float& radius){return awareness_.policeCircle(player,stars,center,radius);}
-    unsigned preference(bool enabled,DWORD event){return minimap_.preference(enabled,event,log_);}
+    unsigned preference(bool enabled,DWORD event){radarLink_.preference(enabled,event);return minimap_.preference(enabled,event,log_);}
     void releaseRadar(){minimap_.release();hidden_=false;focused_=0;if(noticeRenderer_)noticeRenderer_->clear();}
     void stop(){
+        radarLink_.stop();
         drivingCameraHeightTick(true);CompassInput::stop();
         awareness_.stop();messages_.stop();clearCompassWaypoint();waypointHold_={};vehicleGate_={};inputShooting_=false;inputReportAt_=0;
         releaseRadar();
@@ -553,6 +558,7 @@ public:
     void configureTaxi(float fov){awareness_.configureTaxi(fov);}
     void tick(){
         using namespace Scripting;
+        radarLink_.service();
         qolclient::RefreshMenu(IsPauseMenuActive()!=0);
         awareness_.prune([&](unsigned blip,unsigned ped){std::lock_guard<std::mutex> lock(hostilityMutex_);return hostility_.friendly(blip,ped);});
         for(auto it=enemies_.begin();it!=enemies_.end();){

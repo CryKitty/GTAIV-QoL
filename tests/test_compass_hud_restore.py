@@ -25,6 +25,19 @@ class CompassHudRestore(unittest.TestCase):
         self.assertNotIn('PRINT_HELP', observer)
         self.assertNotIn('CLEAR_HELP', observer)
 
+    def test_native_radar_link_only_acts_at_ready_start_or_setting_transitions(self):
+        hud = (ROOT/'vendor/roadnav/src/compass_hud.hpp').read_text()
+        self.assertIn('radarLink_.session(qolclient::Enabled', hud)
+        self.assertIn('radarLink_.preference(enabled,event)', hud)
+        self.assertIn('radarLink_.stop()', hud)
+        link = (ROOT/'vendor/roadnav/src/radar_mode_link.hpp').read_text()
+        self.assertIn('if(!ready_||!haveDesired_)return;', link)
+        self.assertIn('if(ready_&&haveDesired_&&!address_)', link)
+        self.assertNotIn('DisplayRadar(', link)
+        bridge = (ROOT/'vendor/roadnav/src/roadnav.cpp').read_text()
+        init = bridge.split('if(!worldGate_.allow(world,[&]{',1)[1].split('}))return;',1)[0]
+        self.assertLess(init.index('compass_.start()'), init.index('preparePresentation()'))
+
     def test_pause_setting_dispatch_does_not_wait_for_script_tick(self):
         settings = (ROOT / 'src/qol_settings.hpp').read_text()
         layout = (ROOT / 'vendor/roadnav/src/minimap_layout.hpp').read_text()

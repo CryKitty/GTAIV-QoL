@@ -37,6 +37,8 @@ CutscenePercent = 100
 ; Top-mounted camera-relative compass replaces the minimap; toggle in QoL.
 ; Health left, armour right. A centered marker reveals its distance only.
 [Compass]
+; Internal saved native Radar mode for Compass save/restore; managed automatically.
+RadarRestoreMode=-1
 Enabled = 1
 ; Used only if the live FusionFix radar range is unavailable.
 FallbackRadiusMeters = 300
