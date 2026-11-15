@@ -55,7 +55,7 @@ HRESULT WINAPI GuardGetVolume(void* object,LONG* value){
     using GetVolume=HRESULT(WINAPI*)(void*,LONG*);const auto result=b?reinterpret_cast<GetVolume>(v->getVolume)(object,value):E_FAIL;
     if(SUCCEEDED(result)&&value)*value=b->baseVolume;ReleaseSRWLockShared(&operation);return result;
 }
-struct VolumeEvidence {unsigned buffers=0,verified=0,failed=0,limited=0,pcmSources=0,controlReadbacks=0;HRESULT readHr=S_OK,writeHr=S_OK;LONG base=0,target=0,actual=0;};
+struct VolumeEvidence {unsigned buffers=0,verified=0,failed=0,limited=0,pcmSources=0,controlReadbacks=0;bool setAttempted=false;HRESULT readHr=E_PENDING,writeHr=E_PENDING;LONG base=0,target=0,actual=0;};
 VolumeEvidence ApplyVolume(){
     VolumeEvidence proof;const float gain=cutsceneoutput::gain.load();
     using GetVolume=HRESULT(WINAPI*)(void*,LONG*);
@@ -70,7 +70,7 @@ VolumeEvidence ApplyVolume(){
         if(FAILED(proof.readHr=reinterpret_cast<GetVolume>(v.getVolume)(v.object,&actual))){++proof.failed;continue;}
         if(!b.volumeTracked||actual!=b.lastVolume)b.baseVolume=actual;
         const auto target=cutscenemix::decibels(b.baseVolume,gain);
-        HRESULT result=DS_OK;if(actual!=target)result=reinterpret_cast<SetVolume>(v.setVolume)(v.object,target);proof.writeHr=result;
+        HRESULT result=DS_OK;if(actual!=target){proof.setAttempted=true;result=reinterpret_cast<SetVolume>(v.setVolume)(v.object,target);proof.writeHr=result;}
         const auto read=reinterpret_cast<GetVolume>(v.getVolume)(v.object,&actual);
         if(SUCCEEDED(result)&&SUCCEEDED(read)&&actual==target)++proof.controlReadbacks;
         ++proof.failed; // A property-only fallback is not measured source gain.
@@ -80,7 +80,7 @@ VolumeEvidence ApplyVolume(){
     ReleaseSRWLockExclusive(&operation);
     static float reportedGain=1;static DWORD reportedAt=0;const auto now=GetTickCount();
     if(gain!=reportedGain||(gain!=1&&now-reportedAt>=5000)){
-        reportedGain=gain;reportedAt=now;char line[340];sprintf_s(line,"Cutscene audio DirectSound: gain=%.2f buffers=%u pcm-sources=%u readback-ok=%u failed=%u headroom-limited=%u get-hr=%08lX set-hr=%08lX base-db=%ld target-db=%ld actual-db=%ld",gain,proof.buffers,proof.pcmSources,proof.verified,proof.failed,proof.limited,static_cast<unsigned long>(proof.readHr),static_cast<unsigned long>(proof.writeHr),proof.base,proof.target,proof.actual);Log(line);
+        reportedGain=gain;reportedAt=now;char line[340];sprintf_s(line,"Cutscene audio DirectSound: gain=%.2f buffers=%u pcm-sources=%u readback-ok=%u failed=%u headroom-limited=%u get-hr=%08lX set-attempted=%u set-hr=%08lX base-db=%ld target-db=%ld actual-db=%ld",gain,proof.buffers,proof.pcmSources,proof.verified,proof.failed,proof.limited,static_cast<unsigned long>(proof.readHr),proof.setAttempted?1u:0u,static_cast<unsigned long>(proof.writeHr),proof.base,proof.target,proof.actual);Log(line);
     }
     return proof;
 }
