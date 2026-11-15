@@ -1,6 +1,5 @@
 #pragma once
 #include "../../../src/minimap_layout.hpp"
-#include "minimap_ring.hpp"
 #include "../../minhook/include/MinHook.h"
 #include "../../minhook/src/hde/hde32.h"
 #include <array>
@@ -10,97 +9,58 @@
 #include <atomic>
 #include <cstring>
 #include <cstdio>
-#include <utility>
 #include <mutex>
 
-// No native visibility changes and no Radar Off preference overrides. Keep all
-// visibility answers intact; displace only HUD_RADAR's own layout geometry.
+// Keep native HUD geometry immutable. Only the mapped radar's display answer
+// changes during gameplay; all other components and native content work remain.
 class MinimapLayout {
+    using Display=bool(__thiscall*)(void*);
+    inline static Display original_=nullptr;
+    inline static std::atomic<MinimapLayout*> owner_{nullptr};
     std::uintptr_t info_=0,components_=0,frontend_=0,target_=0;
-    bool installed_=false,attempted_=false,enabled_=true;
+    bool installed_=false,attempted_=false;std::atomic<bool> enabled_{true},queryLogged_{false};
+    DWORD attemptedAt_=0;
     mutable std::recursive_mutex mutex_;
-    const char* status_="not initialized";
-    std::atomic<unsigned> queries_{0};
-    struct Saved {std::uintptr_t address=0;minimaplayout::Point point{};};
-    Saved layout_{},live_{};
-    MinimapRing ring_;
+    const char* status_="not initialized";void(*log_)(const char*)=nullptr;
+    std::atomic<unsigned> queries_{0},hidden_{0};
     template<class T> static bool read(std::uintptr_t address,T& value){SIZE_T count=0;return address>=0x10000&&ReadProcessMemory(GetCurrentProcess(),reinterpret_cast<const void*>(address),&value,sizeof(value),&count)&&count==sizeof(value);}
-    template<class T> static bool write(std::uintptr_t address,const T& value){SIZE_T count=0;return WriteProcessMemory(GetCurrentProcess(),reinterpret_cast<void*>(address),&value,sizeof(value),&count)&&count==sizeof(value);}
-    static void restore(Saved& saved){
-        if(!saved.address)return;
-        minimaplayout::Point current{};
-        if(!read(saved.address,current))return;
-        if(minimaplayout::displaced(current)&&!write(saved.address,saved.point))return;
-        saved={}; // Retain failed restores for the next Off tick instead of forgetting them.
-    }
-    int layoutHidden()const{minimaplayout::Point point{};return info_&&read(info_+8*sizeof(minimaplayout::Info)+offsetof(minimaplayout::Info,pos),point)?(minimaplayout::displaced(point)?1:0):-1;}
-    int liveHidden()const{
-        minimaplayout::Info info{};std::uint32_t component=0;minimaplayout::Point point{};
-        return read(info_+8*sizeof(info),info)&&minimaplayout::radar(info)&&read(components_+info.slot*4,component)&&read(static_cast<std::uintptr_t>(component)+0x18,point)?(minimaplayout::displaced(point)?1:0):-1;
-    }
-    static void move(std::uintptr_t address,Saved& saved){
-        if(saved.address&&saved.address!=address)restore(saved);
-        minimaplayout::Point current{};if(!read(address,current)||!minimaplayout::valid(current))return;
-        if(!minimaplayout::displaced(current))saved={address,current};
-        if(saved.address)write(address,minimaplayout::Point{-10000,-10000});
-    }
-    // The engine can copy our displaced layout into a replacement radar
-    // component. Preserve the last native baseline instead of treating the
-    // inherited sentinel as a new original (or losing its restore address).
-    void live(std::uintptr_t address,bool mask){
-        const bool have=live_.address||layout_.address;
-        const auto baseline=live_.address?live_.point:layout_.point;
-        if(live_.address&&live_.address!=address)restore(live_);
-        minimaplayout::Point current{};if(!read(address,current)||!minimaplayout::valid(current))return;
-        if(!minimaplayout::displaced(current)){if(mask)live_={address,current};}
-        else if(!live_.address&&have)live_={address,baseline};
-        if(mask&&live_.address)write(address,minimaplayout::Point{-10000,-10000});
-    }
-    void recoverCurrent(){
-        minimaplayout::Info info{};std::uint32_t component=0;
-        if(read(info_+8*sizeof(info),info)&&minimaplayout::radar(info)&&read(components_+info.slot*4,component)&&component>=0x10000)
-            live(static_cast<std::uintptr_t>(component)+0x18,false);
-    }
-    void update(){
+    std::uintptr_t component()const{minimaplayout::Info info{};std::uint32_t pointer=0;return read(info_+8*sizeof(info),info)&&minimaplayout::radar(info)&&read(components_+info.slot*4,pointer)?pointer:0;}
+    static bool __fastcall displaying(void* queried,void*){
+        const bool native=original_?original_(queried):false;
+        auto* self=owner_.load(std::memory_order_acquire);if(!self||!self->enabled_.load())return native;
         unsigned char frontend=1;
-        if(!installed_)return;
-        if(!read(frontend_,frontend)||frontend!=0){recoverCurrent();restore(live_);restore(layout_);return;}
-        minimaplayout::Info info{};std::uint32_t component=0;
-        if(!read(info_+8*sizeof(info),info)||!minimaplayout::radar(info)||!read(components_+info.slot*4,component)||component<0x10000)return;
-        queries_.fetch_add(1,std::memory_order_relaxed);
-        move(info_+8*sizeof(info)+offsetof(minimaplayout::Info,pos),layout_);
-        live(static_cast<std::uintptr_t>(component)+0x18,true);
+        if(!read(self->frontend_,frontend)||frontend||reinterpret_cast<std::uintptr_t>(queried)!=self->component())return native;
+        ++self->queries_;if(native)++self->hidden_;
+        if(!self->queryLogged_.exchange(true)&&self->log_){char text[200];std::snprintf(text,sizeof(text),"Compass presentation: t=%lu phase=first-radar-query native=%u masked=%u geometry-writes=0",GetTickCount(),native?1u:0u,native?1u:0u);self->log_(text);}
+        return false;
     }
-
 public:
     bool active()const{std::lock_guard<std::recursive_mutex> guard(mutex_);return installed_;}
     std::uintptr_t frontendAddress()const{return frontend_;}
-    unsigned count()const{return queries_.load(std::memory_order_relaxed);}
+    unsigned count()const{return queries_.load();}
     const char* status()const{std::lock_guard<std::recursive_mutex> guard(mutex_);return status_;}
-    const char* ringStatus()const{return ring_.status();}
-    unsigned ringHidden()const{return ring_.hidden();}
-    unsigned ringSelections()const{return ring_.selections();}
-    unsigned fillCalls()const{return ring_.fillCalls();}
-    unsigned fillHidden()const{return ring_.fillHidden();}
+    const char* ringStatus()const{return "native content/borders untouched";}
+    unsigned ringHidden()const{return hidden_.load();}
+    unsigned ringSelections()const{return queries_.load();}
+    unsigned fillCalls()const{return 0;}
+    unsigned fillHidden()const{return 0;}
     void release(){
         std::lock_guard<std::recursive_mutex> guard(mutex_);
-        ring_.release();
-        if(installed_)recoverCurrent();
-        installed_=false;
-        restore(live_);restore(layout_);attempted_=false;status_="released";
+        owner_.store(nullptr,std::memory_order_release);
+        if(installed_){MH_DisableHook(reinterpret_cast<void*>(target_));MH_RemoveHook(reinterpret_cast<void*>(target_));}
+        installed_=false;attempted_=false;queryLogged_=false;status_="released; native geometry unchanged";
     }
     unsigned preference(bool enabled,DWORD event,void(*log)(const char*)){
-        std::lock_guard<std::recursive_mutex> guard(mutex_);
-        const bool before=installed_;enabled_=enabled;
-        if(!enabled_)release(); // Pure geometry/hook cleanup: no game natives.
-        if(log){char text[300];std::snprintf(text,sizeof(text),"Compass mask transition: event=%lu thread=%lu enabled=%u mask=%u->%u geometry-updates=%u layout-hidden=%d live-hidden=%d restore-pending=%u source=pause-setting",event,GetCurrentThreadId(),enabled?1u:0u,before?1u:0u,installed_?1u:0u,count(),layoutHidden(),liveHidden(),(layout_.address?1u:0u)+(live_.address?1u:0u));log(text);}
+        std::lock_guard<std::recursive_mutex> guard(mutex_);const bool before=installed_;enabled_=enabled;
+        if(!enabled_)release();
+        if(log){char text[300];std::snprintf(text,sizeof(text),"Compass mask transition: event=%lu thread=%lu enabled=%u mask=%u->%u visibility-queries=%u layout-hidden=0 live-hidden=0 restore-pending=0 geometry-writes=0 source=pause-setting",event,GetCurrentThreadId(),enabled?1u:0u,before?1u:0u,installed_?1u:0u,count());log(text);}
         return installed_?1u:0u;
     }
     void enable(void(*log)(const char*),std::uintptr_t testImage=0,std::uintptr_t testWanted=0){
         std::lock_guard<std::recursive_mutex> guard(mutex_);
-        if(!enabled_)return; // Reject a tick which read On before the menu changed it.
-        if(installed_){update();return;}
-        if(attempted_)return;attempted_=true;
+        if(!enabled_)return;
+        if(installed_)return;
+        const auto now=GetTickCount();if(attempted_&&now-attemptedAt_<1000)return;attempted_=true;attemptedAt_=now;log_=log;
         const auto base=testImage?testImage:reinterpret_cast<std::uintptr_t>(GetModuleHandleA(nullptr));
         IMAGE_DOS_HEADER dos{};IMAGE_NT_HEADERS32 nt{};
         if(!read(base,dos)||dos.e_magic!=IMAGE_DOS_SIGNATURE||dos.e_lfanew<=0||dos.e_lfanew>4096||!read(base+dos.e_lfanew,nt)||nt.Signature!=IMAGE_NT_SIGNATURE||nt.FileHeader.NumberOfSections>32)return;
@@ -145,6 +105,11 @@ public:
             if(queries.size()==1){target_=queries.front();foundDisplay=1;}
         }
         if(foundInfo!=1||foundComponents!=1||foundFrontend!=1||foundDisplay!=1){status_="layout signatures unavailable";if(log){char text[160];std::snprintf(text,sizeof(text),"Compass minimap: geometry signatures info=%u table=%u frontend=%u query=%u",foundInfo,foundComponents,foundFrontend,foundDisplay);log(text);}return;}
-        installed_=true;status_="radar geometry; native HUD queries untouched";ring_.enable(frontend_,log,testImage);update();if(log)log("Compass minimap: radar geometry polled on script ticks; no shared HUD visibility hook; native opacity/preferences unchanged");
+        const auto init=MH_Initialize();if(init!=MH_OK&&init!=MH_ERROR_ALREADY_INITIALIZED){status_="visibility hook unavailable; native radar retained";return;}
+        if(MH_CreateHook(reinterpret_cast<void*>(target_),reinterpret_cast<void*>(&displaying),reinterpret_cast<void**>(&original_))!=MH_OK){status_="visibility hook unavailable; native radar retained";return;}
+        owner_.store(this,std::memory_order_release);
+        if(MH_EnableHook(reinterpret_cast<void*>(target_))!=MH_OK){owner_=nullptr;MH_RemoveHook(reinterpret_cast<void*>(target_));status_="visibility hook unavailable; native radar retained";return;}
+        installed_=true;status_="mapped radar visibility; native geometry unchanged";
+        if(log){char text[180];std::snprintf(text,sizeof(text),"Compass presentation: t=%lu phase=mask-ready geometry-writes=0 mapped-component=%u source=usable-world",GetTickCount(),component()?1u:0u);log(text);}
     }
 };

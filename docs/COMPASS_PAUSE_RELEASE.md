@@ -1,3 +1,8 @@
+> Current implementation: coordinate displacement described below is historical.
+> The b99 startup follow-up uses only a mapped-radar visibility filter with zero
+> geometry writes; see COMPASS_STARTUP_PRESENTATION.md. The direct pause-setting
+> notification and stale-On guard remain, with immediate filter removal on Off.
+
 # Compass Off during pause
 
 The b84 session logs show radar geometry updates continuing. They contain no

@@ -404,6 +404,10 @@ public:
         return valid?range:fallbackRange_;
     }
     explicit CompassHud(void (*log)(const char*)=nullptr,compass::NoticeRenderer* noticeRenderer=nullptr):noticeRenderer_(noticeRenderer),log_(log){}
+    void preparePresentation(){
+        if(log_){char text[180];std::snprintf(text,sizeof(text),"Compass presentation: t=%lu phase=world-ready enabled=%u",GetTickCount(),qolclient::Enabled(QOL_COMPASS,compassDefault_)?1u:0u);log_(text);}
+        if(qolclient::Enabled(QOL_COMPASS,compassDefault_))minimap_.enable(log_);
+    }
     void start(){
         heightActive_=heightScript_=heightInterpolation_=nullptr;heightResolveAt_=0;heightResolveTried_=false;heightNativeState_=~0u;
         heightLoggedCm_=-1;heightLoggedGate_=~0u;heightLogAt_=0;
@@ -759,7 +763,7 @@ public:
         SetTextCentre(false);SetTextEdge(false,0,0,0,0);SetTextScale(.3f,.3f);SetTextColour(255,255,255,255);
         startupComplete_=true;
         if(!logAt_||now-logAt_>=10000){if(log_){char line[180];std::snprintf(line,sizeof(line),"Compass: blips=%u drawn=%u range=%.1fm (%s) focus=%u hp=%.2f armour=%.2f",static_cast<unsigned>(blips_.size()),static_cast<unsigned>(placed.size()),range,live?"live":"fallback",focused_,hp,ap);log_(line);
-            std::snprintf(line,sizeof(line),"Compass minimap: mask=%s radar-geometry-updates=%u ring=%s frame-calls=%u hidden=%u fill=%u/%u native-visibility=original",minimap_.status(),minimap_.count(),minimap_.ringStatus(),minimap_.ringSelections(),minimap_.ringHidden(),minimap_.fillHidden(),minimap_.fillCalls());log_(line);
+            std::snprintf(line,sizeof(line),"Compass minimap: mask=%s radar-visibility-queries=%u ring=%s frame-calls=%u hidden=%u fill=%u/%u native-visibility=original",minimap_.status(),minimap_.count(),minimap_.ringStatus(),minimap_.ringSelections(),minimap_.ringHidden(),minimap_.fillHidden(),minimap_.fillCalls());log_(line);
             std::snprintf(line,sizeof(line),"Compass messages: observer=%u waiting=%u updates=%u icon-alpha=%u",messages_.active()?1u:0u,message.waiting?1u:0u,messages_.updates(),message.alpha(now));log_(line);
             unsigned focusedSprite=999,focusedObjective=0;for(const auto& item:placed)if(item.marker.handle==focused_){focusedSprite=item.marker.sprite;focusedObjective=item.marker.missionDestination?1u:0u;}
             std::snprintf(line,sizeof(line),"Compass objective: mission=%u social=%u target=%u focused-sprite=%u focused-objective=%u brief-chars=%u",mission?1u:0u,social_?1u:0u,missionTarget.Get(),focusedSprite,focusedObjective,static_cast<unsigned>(missionBrief.size()));log_(line);

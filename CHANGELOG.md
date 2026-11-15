@@ -1,3 +1,9 @@
+GTAIV-QoL beta — clean compass presentation from world load
+
+- Removes the off-screen coordinate mask that could leave a broken radar visible until the first pause cycle. The compass now hides only the mapped radar display during gameplay, keeping native HUD coordinates, opacity and content work intact. Pause maps and other HUD components keep their normal visibility; Compass Off removes the filter immediately.
+- Presentation is prepared as part of the existing safe world-load initialization, before the first compass gameplay tick. If discovery is unavailable, the native radar stays clean and discovery retries without requiring pause. Automatic startup records timestamp the world stages, presentation preparation and first masked radar query, with zero geometry writes.
+- Delivered by the normal updater after approval/merge and successful main CI; no file edits, new settings or release-version change. Cold-load with Compass HUD On and check the HUD before opening pause; set a waypoint and drive to confirm guidance. Then check Pause → QoL → Compass HUD Off/On, native radar restoration, mission help text and another cold load. Deck acceptance remains outstanding.
+
 GTAIV-QoL beta — mission guidance colours follow the current episode
 
 - Mission road lines now use yellow in GTA IV, bright coral red in The Lost and Damned, and bright pink in The Ballad of Gay Tony. The game’s episode identity is read automatically at world load; no save-name or marker guesses. Mission turn arrows and destination chevrons share the palette and follow it too.

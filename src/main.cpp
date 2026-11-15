@@ -317,7 +317,7 @@ extern "C" __declspec(dllexport) void QoLUpdates_Session(unsigned active){
 
 extern "C" __declspec(dllexport) void QoLUpdates_LoadStage(unsigned stage){
     const char* phases[]={"usable world confirmed","runtime initialisation begin","compass initialisation finished","first runtime tick begin","first runtime tick finished","camera resolution begin","camera resolution finished","camera query begin","camera query finished"};
-    if(stage<sizeof(phases)/sizeof(phases[0])){char message[128];sprintf_s(message,"World load stage: %s",phases[stage]);Log(message);}
+    if(stage<sizeof(phases)/sizeof(phases[0])){char message[128];sprintf_s(message,"World load stage: %s t=%lu",phases[stage],GetTickCount());Log(message);}
 }
 
 extern "C" __declspec(dllexport) void QoLRuntime_Stage(unsigned stage,unsigned tick,unsigned value){
