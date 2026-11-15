@@ -6,7 +6,7 @@
 #include <string>
 #include "../vendor/roadnav/src/radar_mode_link.hpp"
 static std::string trace;
-static void Log(const char* text){trace+=text;trace+='\n';}
+static void Log(const char* text){trace+=text;trace+='\n';std::puts(text);}
 int main(){
     auto* image=static_cast<unsigned char*>(VirtualAlloc(nullptr,0x5000,MEM_COMMIT|MEM_RESERVE,PAGE_READWRITE));assert(image);
     const auto base=reinterpret_cast<std::uintptr_t>(image);
@@ -38,6 +38,9 @@ int main(){
         assert(static_cast<int>(GetPrivateProfileIntA("Compass","RadarRestoreMode",9,file))==-1);
         native=1;relaunched.preference(true,1235);assert(native==0);
         relaunched.preference(false,1236);assert(native==1);
+        relaunched.preference(true,1237);assert(native==0);relaunched.stop();
+        RadarModeLink offStartup;offStartup.start(file,Log,base);offStartup.session(false);
+        assert(native==1&&static_cast<int>(GetPrivateProfileIntA("Compass","RadarRestoreMode",9,file))==-1);
     }
     assert(WritePrivateProfileStringA("Compass","RadarRestoreMode","broken",file));native=1;
     RadarModeLink invalid;invalid.start(file,Log,base);invalid.session(true);assert(native==1);
