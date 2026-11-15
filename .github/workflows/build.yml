@@ -103,6 +103,13 @@ jobs:
           if errorlevel 1 exit /b 1
           build\primary-route-replan-tests.exe
           if errorlevel 1 exit /b 1
+      - name: Test native health armour arcs without skipping parent lifecycle
+        shell: cmd
+        run: |
+          cl /nologo /std:c++17 /EHsc /W4 /WX /O2 /MT tests\radar_arcs.cpp build\buffer.obj build\hook.obj build\trampoline.obj build\hde32.obj /Fe:build\radar-arc-tests.exe
+          if errorlevel 1 exit /b 1
+          build\radar-arc-tests.exe
+          if errorlevel 1 exit /b 1
       - name: Test default manual and police escape road-line rendering
         timeout-minutes: 2
         shell: cmd

@@ -1,3 +1,9 @@
+GTAIV-QoL beta — hide the separate native health and armour arc fills
+
+- Covers the health and armour arc fills that still drew at the minimap while Compass HUD was On. The previous fix hid two textured frames, but those frames are separate from the coloured fills. The native HUD coordinates stay untouched, and the game's message/lifetime work continues normally.
+- Logs now identify the texture border, groove/background, health fill and armour fill separately, including whether each is filtered or unavailable. Another render phase using the same radar arc renderer is covered too. The compass's waypoint-hold progress ring stays at the compass; it is not a minimap border.
+- After approval/merge and successful main CI, install with the normal updater. Cold-load with Compass HUD On and check the minimap corner before pausing; no native ring should remain. In Pause → QoL toggle Compass HUD Off/On repeatedly, on foot and driving: Off must immediately restore the complete native radar and ring. Also check a wardrobe help prompt clears after leaving and road guidance still works. Exit normally for automatic per-element draw/restore records. No file edits, new controls or release-version change. The next Deck retest must confirm the remaining pixels are gone; existing logs cannot show the result of this fix.
+
 GTAIV-QoL beta — gentler cutscene audio boost
 
 - Cutscene volume boost is now half as strong at the same slider setting: 100% stays normal, 200% becomes 1.5×, and 1580% becomes about 8.4×. The saved slider value is preserved. The adjustment moves the requested gain halfway towards normal volume, including settings below 100%.

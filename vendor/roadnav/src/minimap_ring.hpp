@@ -1,5 +1,5 @@
 #pragma once
-#include "radar_fill.hpp"
+#include "radar_arcs.hpp"
 #include "../../minhook/include/MinHook.h"
 #include "../../minhook/src/hde/hde32.h"
 #include <windows.h>
@@ -19,6 +19,7 @@ class MinimapRing {
     using Frame=void(__cdecl*)();
     inline static std::array<Frame,3> original_{};
     inline static std::atomic<MinimapRing*> owner_{nullptr};
+    RadarArcs arcs_;
     std::uintptr_t frontend_=0;
     std::array<void*,3> targets_{};
     bool attempted_=false,installed_=false;
@@ -37,7 +38,7 @@ class MinimapRing {
         if(suppress){owner->hidden_.fetch_add(1,std::memory_order_relaxed);if(kind==2)++owner->fillHidden_;}
         const unsigned bit=1u<<(kind*2+(suppress?1:0));
         if(!(owner->traceStates_.fetch_or(bit)&bit)&&owner->log_){char text[320];
-            std::snprintf(text,sizeof(text),"Compass ring draw: t=%lu component=%s suppressed=%u frontend=%u front-calls=%u front-hidden=%u back-calls=%u back-hidden=%u geometry-writes=0",GetTickCount(),kind==0?"health-armour-front":"health-armour-back",suppress?1u:0u,static_cast<unsigned>(frontend),owner->frontCalls_.load(),owner->frontHidden_.load(),owner->backCalls_.load(),owner->backHidden_.load());owner->log_(text);
+            std::snprintf(text,sizeof(text),"Compass ring draw: t=%lu component=%s suppressed=%u frontend=%u front-calls=%u front-hidden=%u back-calls=%u back-hidden=%u geometry-writes=0",GetTickCount(),kind==0?"radar-disc-border-texture":"ring-groove-background-texture",suppress?1u:0u,static_cast<unsigned>(frontend),owner->frontCalls_.load(),owner->frontHidden_.load(),owner->backCalls_.load(),owner->backHidden_.load());owner->log_(text);
         }
         return suppress;
     }
@@ -95,9 +96,10 @@ public:
     unsigned hidden()const{return hidden_.load(std::memory_order_relaxed);}
     unsigned selections()const{return calls_.load(std::memory_order_relaxed);}
     bool active()const{return installed_;}
-    unsigned fillHidden()const{return fillHidden_.load(std::memory_order_relaxed);}
-    unsigned fillCalls()const{return fillCalls_.load(std::memory_order_relaxed);}
+    unsigned fillHidden()const{return arcs_.hidden(0)+arcs_.hidden(1);}
+    unsigned fillCalls()const{return arcs_.calls(0)+arcs_.calls(1);}
     void release(){
+        arcs_.release();
         if(installed_&&log_){char text[220];std::snprintf(text,sizeof(text),"Compass ring release: t=%lu front-calls=%u front-hidden=%u back-calls=%u back-hidden=%u native-draw-restored=1 geometry-writes=0",GetTickCount(),frontCalls_.load(),frontHidden_.load(),backCalls_.load(),backHidden_.load());log_(text);}
         for(auto* target:targets_)if(target){MH_DisableHook(target);MH_RemoveHook(target);}
         targets_={};owner_.store(nullptr,std::memory_order_release);
@@ -157,7 +159,14 @@ public:
             if(MH_CreateHook(target,detours[n],reinterpret_cast<void**>(&original_[n]))!=MH_OK){release();status_="frame hook unavailable";return;}targets_[n]=target;
         }
         for(auto* target:targets_)if(target&&MH_EnableHook(target)!=MH_OK){release();status_="frame hook unavailable";return;}
-        installed_=true;status_="dedicated health/armour frame front+back; native content preserved";
-        if(log)log("Compass minimap: only verified border callbacks filtered; native fill/content and lifetime callbacks never suppressed");
+        installed_=true;
+        std::vector<radarfill::Section> arcSections;
+        for(const auto& section:sections)arcSections.push_back({section.base,section.code,true});
+        // Resolve the middle callback only to inspect its five-argument leaf.
+        // The parent itself is NEVER hooked or skipped (help/lifetime safety).
+        const auto parent=radarfill::resolve(arcSections,frames[0][0],frames[1][0]);
+        arcs_.enable(arcSections,parent.callback,frontend_,base,log);
+        status_=arcs_.active()?"texture border+groove and native health/armour arcs; parent preserved":"texture border+groove only; native arcs unresolved";
+        if(log){char coverage[420];std::snprintf(coverage,sizeof(coverage),"Compass circular coverage: radar-disc-border=radarringfront-filter ring-groove=radarringback-filter health-front-fill=%s armour-back-fill=%s map-disc=mapped-display-query-only own-circle=top-strip-waypoint-hold-not-minimap parent-content=original geometry-writes=0",arcs_.active()?"native-arc-filter":"unfiltered",arcs_.active()?"native-arc-filter":"unfiltered");log(coverage);}
     }
 };

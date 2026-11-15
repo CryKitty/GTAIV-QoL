@@ -44,8 +44,8 @@ public:
     const char* ringStatus()const{std::lock_guard<std::recursive_mutex> guard(mutex_);return ring_.status();}
     unsigned ringHidden()const{return ring_.hidden();}
     unsigned ringSelections()const{return ring_.selections();}
-    unsigned fillCalls()const{return 0;}
-    unsigned fillHidden()const{return 0;}
+    unsigned fillCalls()const{return ring_.fillCalls();}
+    unsigned fillHidden()const{return ring_.fillHidden();}
     void release(){
         std::lock_guard<std::recursive_mutex> guard(mutex_);
         ring_.release();
@@ -112,7 +112,7 @@ public:
         if(MH_CreateHook(reinterpret_cast<void*>(target_),reinterpret_cast<void*>(&displaying),reinterpret_cast<void**>(&original_))!=MH_OK){status_="visibility hook unavailable; native radar retained";return;}
         owner_.store(this,std::memory_order_release);
         if(MH_EnableHook(reinterpret_cast<void*>(target_))!=MH_OK){owner_=nullptr;MH_RemoveHook(reinterpret_cast<void*>(target_));status_="visibility hook unavailable; native radar retained";return;}
-        installed_=true;status_="mapped radar visibility plus dedicated health/armour frame draws; geometry unchanged";
+        installed_=true;status_="mapped radar visibility plus texture frames and native arcs; geometry unchanged";
         ring_.enable(frontend_,log,testImage);
         if(log){char text[180];std::snprintf(text,sizeof(text),"Compass presentation: t=%lu phase=mask-ready geometry-writes=0 mapped-component=%u source=usable-world",GetTickCount(),component()?1u:0u);log(text);}
     }
