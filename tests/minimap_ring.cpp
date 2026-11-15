@@ -104,8 +104,8 @@ int main(){
     image[0x3300]=0;front();nativeFill();assert(fills==3&&mask.fillHidden()==0);assert(meters==5&&mask.hidden()==3);
     std::thread worker([&](){meter();front();});worker.join();assert(meters==6&&mask.hidden()==4);
     mask.release();front();back();nativeFill();assert(fills==4);assert(meters==8&&borders==5&&!mask.active());
-    assert(trace.find("component=health-armour-front suppressed=1")!=std::string::npos);
-    assert(trace.find("component=health-armour-back suppressed=1")!=std::string::npos);
+    assert(trace.find("component=radar-disc-border-texture suppressed=1")!=std::string::npos);
+    assert(trace.find("component=ring-groove-background-texture suppressed=1")!=std::string::npos);
     assert(trace.find("native-draw-restored=1")!=std::string::npos);
     // First draw of each On cycle suppresses both health/armour frames; Off
     // during the frontend restores the originals without another script tick.
