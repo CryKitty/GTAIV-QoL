@@ -745,6 +745,17 @@ int main(){
     assert(awareness::activeRoute(RouteKind::Mission,false,true)==RouteKind::Custom);
     assert(awareness::activeRoute(RouteKind::Custom,true,true)==RouteKind::Enemy);
     assert(awareness::activeRoute(RouteKind::Mission,false,false)==RouteKind::Mission);
+    {
+        const auto escape=awareness::routeColour(RouteKind::Escape,true,0),enemy=awareness::routeColour(RouteKind::Enemy,true),custom=awareness::routeColour(RouteKind::Custom,true),friendLine=awareness::routeColour(RouteKind::Blue,true);
+        const std::array<unsigned,3> colours[]={{245,205,55},{255,95,80},{255,105,200}};
+        for(unsigned episode=0;episode<3;++episode){awareness::missionEpisode.store(episode);
+            assert(awareness::routeColour(RouteKind::Mission,true)==colours[episode]);
+            assert(awareness::routeColour(RouteKind::Escape,true,0)==escape);
+            assert(awareness::routeColour(RouteKind::Enemy,true)==enemy&&awareness::routeColour(RouteKind::Custom,true)==custom&&awareness::routeColour(RouteKind::Blue,true)==friendLine);
+            assert(awareness::routeColour(RouteKind::Mission,false)==friendLine);
+        }
+        assert(awareness::missionColour(99)==colours[0]);awareness::missionEpisode.store(0);
+    }
     assert((awareness::routeColour(RouteKind::Enemy,true)==std::array<unsigned,3>{235,55,45}));
     assert((awareness::routeColour(RouteKind::Custom,true)==std::array<unsigned,3>{85,210,95}));
     assert(awareness::routeColour(RouteKind::Mission,true)!=awareness::routeColour(RouteKind::Custom,true));
