@@ -32,56 +32,33 @@ int main(){
     }
     info[8].slot=31;
     using Display=bool(__thiscall*)(void*);const auto display=reinterpret_cast<Display>(image+0x1000);
-    MinimapLayout mask;mask.enable(nullptr,base);assert(mask.active());
+    MinimapLayout mask;mask.enable(CaptureLog,base);assert(mask.active());
+    // First playable query: mapped radar only is hidden, no first pause needed.
     for(unsigned i=0;i<67;++i){
-        assert(display(reinterpret_cast<void*>(table[i]))); // Every visibility answer is preserved.
-        const auto p=*reinterpret_cast<minimaplayout::Point*>(static_cast<std::uintptr_t>(table[i])+0x18);
-        assert(minimaplayout::displaced(p)==(i==31)); // Only mapped radar geometry moves.
-        if(i!=8)assert(info[i].pos.x==.1f&&info[i].pos.y==.8f&&info[i].alpha==255);
-        const auto* object=reinterpret_cast<const unsigned char*>(table[i]);
-        assert(object[0x59]==255&&object[0x48]==230);
-        assert(object[0x47]==100&&object[0x49]==101); // Adjacent fields and RGB stay intact.
+        assert(display(reinterpret_cast<void*>(table[i]))==(i!=31));
+        const auto point=*reinterpret_cast<minimaplayout::Point*>(static_cast<std::uintptr_t>(table[i])+0x18);
+        assert(point.x==.1f&&point.y==.8f&&info[i].pos.x==.1f&&info[i].pos.y==.8f);
+        assert(info[i].alpha==255&&image[0x5800+i*0x180+0x59]==255);
     }
-    assert(mask.count()>0&&minimaplayout::displaced(info[8].pos));
+    assert(lastLog.find("phase=first-radar-query")!=std::string::npos&&lastLog.find("geometry-writes=0")!=std::string::npos);
+    // Native hidden preferences and unrelated notifications remain unchanged.
+    auto* radar=reinterpret_cast<unsigned char*>(table[31]);
     *reinterpret_cast<unsigned char*>(static_cast<std::uintptr_t>(table[43])+0x11)=0;
-    assert(!display(reinterpret_cast<void*>(table[43]))); // Existing hidden notifications remain hidden, not forced on.
-    // Vehicle/fade updates retain their exact native opacity; this mask never
-    // changes any component alpha, including the mapped radar component.
-    auto* radar=reinterpret_cast<unsigned char*>(table[31]);radar[0x59]=128;radar[0x48]=192;info[8].alpha=200;
-    assert(display(radar)&&radar[0x59]==128&&radar[0x48]==192&&info[8].alpha==200);
-    image[0x5400]=1;mask.enable(nullptr,base);assert(display(reinterpret_cast<void*>(table[31])));
-    assert(radar[0x59]==128&&radar[0x48]==192&&info[8].alpha==200);
-    assert(info[8].pos.x==.1f&&!minimaplayout::displaced(*reinterpret_cast<minimaplayout::Point*>(static_cast<std::uintptr_t>(table[31])+0x18)));
-    image[0x5400]=0;mask.enable(nullptr,base);assert(display(reinterpret_cast<void*>(table[31]))&&minimaplayout::displaced(info[8].pos));
-    mask.release();assert(radar[0x59]==128&&radar[0x48]==192&&info[8].alpha==200);assert(!mask.active()&&info[8].pos.x==.1f&&display(reinterpret_cast<void*>(table[31])));
-    // Replacement components inherit off-screen geometry from the live layout.
-    // Off during pause must recover the new component even before any query/tick.
+    assert(!display(reinterpret_cast<void*>(table[43])));
     for(unsigned cycle=0;cycle<3;++cycle){
-        table[31]=static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(radar));
-        mask.enable(nullptr,base);assert(mask.active());
-        auto* replacement=image+0xb000+cycle*0x180;std::memcpy(replacement,radar,0x180);
-        table[31]=static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(replacement));
-        assert(minimaplayout::displaced(*reinterpret_cast<minimaplayout::Point*>(replacement+0x18)));
-        image[0x5400]=1;mask.release();
-        const auto restored=*reinterpret_cast<minimaplayout::Point*>(replacement+0x18);
-        assert(restored.x==.1f&&restored.y==.8f&&info[8].pos.x==.1f);
-        assert(!minimaplayout::displaced(*reinterpret_cast<minimaplayout::Point*>(radar+0x18)));
-        assert(replacement[0x11]==1&&replacement[0x59]==128); // original native visibility/opacity remain
-        image[0x5400]=0;
+        image[0x5400]=1;assert(display(radar)); // frontend map stays normal
+        mask.preference(false,cycle,CaptureLog);assert(!mask.active()&&display(radar));
+        assert(lastLog.find("mask=1->0")!=std::string::npos);
+        image[0x5400]=0;mask.enable(nullptr,base);assert(!mask.active()&&display(radar));
+        mask.preference(true,cycle,nullptr);mask.enable(nullptr,base);assert(mask.active()&&!display(radar));
     }
+    // A replacement radar is recognized before another script tick; no native
+    // coordinate or alpha was ever displaced/copied into a broken layout.
+    auto* replacement=image+0xb000;std::memcpy(replacement,radar,0x180);
+    table[31]=static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(replacement));
+    assert(!display(replacement)&&display(radar));mask.release();assert(display(replacement));
     table[31]=static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(radar));
-    radar[0x11]=0;mask.enable(nullptr,base);mask.release();assert(radar[0x11]==0);radar[0x11]=1; // user/game-hidden stays hidden
-    // Menu setting dispatch runs while ScriptHook ticks are suspended. Off
-    // synchronously restores geometry; a previously admitted On tick cannot
-    // reacquire the mask. No second pause/unpause or visibility query is needed.
-    for(unsigned cycle=0;cycle<3;++cycle){
-        image[0x5400]=0;assert(mask.preference(true,100+cycle,nullptr)==0);
-        mask.enable(nullptr,base);assert(mask.active());image[0x5400]=1;
-        assert(mask.preference(false,200+cycle,CaptureLog)==0&&!mask.active());
-        assert(info[8].pos.x==.1f&&!minimaplayout::displaced(*reinterpret_cast<minimaplayout::Point*>(radar+0x18)));
-        assert(lastLog.find("mask=1->0")!=std::string::npos&&lastLog.find("source=pause-setting")!=std::string::npos&&lastLog.find("layout-hidden=0 live-hidden=0 restore-pending=0")!=std::string::npos);
-        image[0x5400]=0;mask.enable(nullptr,base);assert(!mask.active()); // stale On work rejected
-    }
+    radar[0x11]=0;mask.enable(nullptr,base);mask.release();assert(!display(radar));radar[0x11]=1;
     // Alternate CE resolution: the generic table signature is absent, but
     // the native's decoded indexed HUD load and display call identify both.
     std::memset(image+0x1080,0xcc,sizeof(componentCode));
@@ -89,8 +66,8 @@ int main(){
     std::memcpy(image+0x1100,wanted,sizeof(wanted));const auto selector=static_cast<std::uint32_t>(base+0x5404);std::memcpy(image+0x1101,&selector,4);std::memcpy(image+0x1108,&tableAddress,4);
     const std::int32_t relative=-0x111;std::memcpy(image+0x110d,&relative,4);
     MinimapLayout fallback;fallback.enable(nullptr,base,base+0x1100);assert(fallback.active());
-    assert(display(reinterpret_cast<void*>(table[31]))&&minimaplayout::displaced(info[8].pos));
+    assert(!display(reinterpret_cast<void*>(table[31]))&&info[8].pos.x==.1f);
     fallback.release();assert(info[8].pos.x==.1f);
     VirtualFree(image,0,MEM_RELEASE);MH_Uninitialize();
-    std::puts("Minimap layout: real x86 visibility answers preserved for all HUD components; radar-only geometry, every native HUD alpha preserved through vehicle/fade changes, live pause and restoration passed");
+    std::puts("Radar visibility: first query, unchanged native geometry, isolated component, frontend and repeat Off/On passed");
 }
