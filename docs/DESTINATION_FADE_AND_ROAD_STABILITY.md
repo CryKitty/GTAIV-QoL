@@ -33,7 +33,7 @@ The deterministic moving-player reproduction observes the old cropped-profile he
 
 The PR records complete local and CI results. C++ tests exercise smooth monotonic fade, high-speed distance, early GPS loss, new-goal replacement, explicit clear, clock wrap, cropped bend retention and immediate replan/elevation changes. Windows D3D tests check the actual endpoint's full/half/zero pixel brightness. Existing route retention/recovery and surface tests remain.
 
-After this change is approved/merged and main CI succeeds, update normally with the existing updater; no file edits. In Pause → QoL enable Road Line and Turn Arrows. Approach waypoint and mission destinations slowly and at speed; check fading and Off cleanup. Drive/stop/restart through bends, slopes, bridges and S-curves, looking around and comparing with stationary road markings. Check waypoint replacement, wrong-way recovery and enemy/police lines. Deck visual acceptance is outstanding; no new uploaded reproduction evidence is claimed.
+After this change is approved/merged and main CI succeeds, update normally with the existing updater; no file edits. In Pause → QoL enable Road Line and Turn Arrows (Beta). Approach waypoint and mission destinations slowly and at speed; check fading and Off cleanup. Drive/stop/restart through bends, slopes, bridges and S-curves, looking around and comparing with stationary road markings. Check waypoint replacement, wrong-way recovery and enemy/police lines. Deck visual acceptance is outstanding; no new uploaded reproduction evidence is claimed.
 
 ## Rebase safety verification
 

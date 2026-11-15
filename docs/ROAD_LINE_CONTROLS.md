@@ -6,7 +6,7 @@ On/Off switches are Police Escape Line, Mission Line, Friend Line, Enemy Line an
 Custom Line. They sit directly beneath Road Line, indented beneath their master.
 While Road Line is Off their labels are grey and changes are blocked; turning
 Road Line On restores interactivity without changing any saved type choice. They all start On, apply live, and survive restart/update. Master Off
-hides every ribbon without overwriting the individual choices. Turn Arrows
+hides every ribbon without overwriting the individual choices. Turn Arrows (Beta)
 and Compass HUD keep their independent controls.
 
 Mission, friendly and hostile destinations use their marker classification;
@@ -49,7 +49,7 @@ Police escape scheduling and sustained wrong-way trigger timings are unchanged.
    initially On, directly under the existing master Road Line control and indented.
    Turn master Off: check grey labels and that click/left/right/confirm cannot
    change the retained choices. Turn it On: check choices can be edited again.
-   Check the separate turn-guidance row reads Turn Arrows.
+   Check the separate turn-guidance row reads Turn Arrows (Beta).
 2. During suitable missions/outing/combat, hide and restore Mission, Friend,
    Enemy and Custom independently. During a chase with a simultaneous manual
    route, hide Police Escape and confirm the manual route stays; hide Custom

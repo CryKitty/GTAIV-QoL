@@ -2,7 +2,7 @@
 
 Update through the existing updater after merge; no manual file edits. Pause →
 QoL → Check for QoL Updates displays the binary's compiled VERSION (currently
-0.1.0-beta.1). A changed VERSION is compiled into the next build and appears on
+1.0.0). A changed VERSION is compiled into the next build and appears on
 its next launch after apply. It is a version label, not a Git commit identifier.
 The build regenerates src/qol_version.hpp before compiling the core menu API.
 

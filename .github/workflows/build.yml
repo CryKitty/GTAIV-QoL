@@ -1,9 +1,9 @@
-name: Build GTAIV-QoL beta bundle
+name: Build GTAIV-QoL bundle
 on:
   workflow_dispatch:
   push:
     branches: [main]
-    tags: ['v*-beta.*']
+    tags: ['v*']
   pull_request:
 permissions:
   contents: read
@@ -15,7 +15,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Validate beta tag against canonical branch
+      - name: Validate release tag against canonical branch
         if: startsWith(github.ref, 'refs/tags/')
         shell: pwsh
         run: python tools/check-beta-tag.py "${{ github.ref_name }}"
@@ -378,7 +378,7 @@ jobs:
           python tools/steam-deck/package-updater.py
           if ($LASTEXITCODE) { throw 'Updater payload packaging failed' }
           python tools/steam-deck/package-nexus.py
-          if ($LASTEXITCODE) { throw 'Nexus beta archive packaging failed' }
+          if ($LASTEXITCODE) { throw 'Nexus archive packaging failed' }
           Copy-Item tools/steam-deck/dist/Install-QoL-Pause-Test.desktop package/
       - uses: actions/upload-artifact@v4
         with:
@@ -399,12 +399,12 @@ jobs:
             tools/steam-deck/dist/START-HERE.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: GTAIV-QoL-Nexus-beta-Deck
-          path: build/GTAIV-QoL-*-beta.*-Deck.zip
+          name: GTAIV-QoL-Nexus-Deck
+          path: build/GTAIV-QoL-*-Deck.zip
           if-no-files-found: error
       - uses: actions/upload-artifact@v4
         with:
-          name: GTAIV-QoL-public-beta-update
+          name: GTAIV-QoL-public-update
           path: build/GTAIV-QoL-update.zip
           if-no-files-found: error
       - uses: actions/upload-artifact@v4

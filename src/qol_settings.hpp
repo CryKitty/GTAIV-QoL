@@ -12,7 +12,7 @@ std::atomic<Report> report{nullptr};
 void LogSetting(const char* text){if(auto log=report.load())log(text);}
 struct Definition {const char* section;const char* key;int initial;int maximum;};
 constexpr Definition definitions[QOL_SETTING_COUNT]={
-    {"RoadNav","Enabled",1,1},{"DefaultMapZoom","Enabled",1,1},
+    {"RoadNav","Enabled",0,1},{"DefaultMapZoom","Enabled",1,1},
     {"CutscenePause","Enabled",1,1},{"VoiceVolume","Enabled",1,1},
     {"VoiceVolume","GameplayPercent",100,400},{"VoiceVolume","CutscenePercent",100,1600},
     {"Compass","Enabled",1,1},{"RoadNav","DestinationColours",1,1},{"RoadGPSLine","Enabled",1,1},{"Camera","TaxiRearFOV",70,120},

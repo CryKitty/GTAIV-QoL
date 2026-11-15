@@ -20,7 +20,8 @@ ExperimentalFocusProbe = 0
 
 ; Managed by the Game menu. Off hides all RoadNav cues immediately.
 [RoadNav]
-Enabled = 1
+; Turn Arrows (Beta): original Sleeping Dogs-inspired guidance; Road Line is the default.
+Enabled = 0
 ; Automatic street guidance to moving red-marked enemies when no route is active.
 ChaseGuidance = 1
 ; QoL toggle: red enemies, green custom waypoints, yellow missions; off = blue.

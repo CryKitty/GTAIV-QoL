@@ -987,7 +987,7 @@ protected:
         using namespace Scripting;
         compass_.tick();
         if(firstRuntime_){qolclient::LoadStage(4);firstRuntime_=false;}
-        const bool arrows=qolclient::Enabled(QOL_ROADNAV),lineEnabled=qolclient::Enabled(QOL_GPS_LINE,true);
+        const bool arrows=qolclient::Enabled(QOL_ROADNAV,false),lineEnabled=qolclient::Enabled(QOL_GPS_LINE,true);
         viewBend_.strength=std::clamp(qolclient::Get(QOL_GPS_VIEW_BEND,100),0,100)/100.0f;
         if(!arrows){cues_={};gTurnRenderer.clear();}
         const int lineMode=lineEnabled?(viewBend_.strength>0?2:1):0;

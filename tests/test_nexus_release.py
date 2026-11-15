@@ -27,7 +27,7 @@ def payload():
         ('install-helper.py',(ROOT/'tools/steam-deck/enable-qol-logs.py').read_bytes()),
         ('qol-updater.py',(ROOT/'tools/steam-deck/qol-updater.py').read_bytes())]}
     manifest={'schema':1,'repository':'CryKitty/GTAIV-QoL','sha':'a'*40,'branch':'feature/beta-review','run_id':7,
-        'release_version':'0.1.0-beta.1','files':{name:hashlib.sha256(data).hexdigest() for name,data in files.items()}}
+        'release_version':(ROOT/'VERSION').read_text().strip(),'files':{name:hashlib.sha256(data).hexdigest() for name,data in files.items()}}
     out=io.BytesIO()
     with zipfile.ZipFile(out,'w',zipfile.ZIP_DEFLATED) as archive:
         for name,data in files.items():archive.writestr(name,data)
@@ -50,6 +50,8 @@ class NexusReleaseTests(unittest.TestCase):
                 self.assertIsNone(archive.testzip());self.assertEqual(archive.read('GTAIV-QoL-update.zip'),data)
                 self.assertEqual((archive.getinfo('Install-GTAIV-QoL.desktop').external_attr>>16)&0o777,0o755)
                 self.assertEqual(len(json.loads(archive.read('release-info.json'))['components']),7)
+                self.assertEqual(result.name,'GTAIV-QoL-1.0.0-Deck.zip')
+                self.assertIn(b'Turn Arrows (Beta)',archive.read('BUNDLE-INVENTORY.md'))
                 self.assertIn(b'Avary Cooney',archive.read('LICENSE'))
                 self.assertIn(b'Map Autozoom',archive.read('BUNDLE-INVENTORY.md'))
                 with zipfile.ZipFile(io.BytesIO(archive.read('GTAIV-QoL-update.zip'))) as update:
@@ -103,5 +105,8 @@ class NexusReleaseTests(unittest.TestCase):
             git('init');(root/'VERSION').write_text('0.1.0-beta.1\n');git('add','VERSION');git('-c','user.name=Fixture','-c','user.email=fixture@example.invalid','commit','-m','fixture')
             git('update-ref','refs/remotes/origin/main','HEAD');tag.check(root,'v0.1.0-beta.1')
             with self.assertRaises(RuntimeError):tag.check(root,'v1.0.0')
+            (root/'VERSION').write_text('1.0.0\n');git('add','VERSION');git('-c','user.name=Fixture','-c','user.email=fixture@example.invalid','commit','-m','stable')
+            git('update-ref','refs/remotes/origin/main','HEAD');tag.check(root,'v1.0.0')
+            with self.assertRaises(RuntimeError):tag.check(root,'v0.1.0-beta.1')
             (root/'other').write_text('not canonical');git('add','other');git('-c','user.name=Fixture','-c','user.email=fixture@example.invalid','commit','-m','unmerged')
-            with self.assertRaises(subprocess.CalledProcessError):tag.check(root,'v0.1.0-beta.1')
+            with self.assertRaises(subprocess.CalledProcessError):tag.check(root,'v1.0.0')

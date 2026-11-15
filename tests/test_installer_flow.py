@@ -166,6 +166,16 @@ class InstallerFlowTests(unittest.TestCase):
         self.assertIsNone(updater.beta_candidate(fetch=lambda *a:[]))
         with self.assertRaises(updater.PublicBetaUnavailable):updater.beta_candidate(fetch=Mock(side_effect=updater.AuthError('private archive')))
 
+    def test_public_channel_accepts_full_1_0_without_changing_channel(self):
+        updater=load('full_release_select','qol-updater.py')
+        def release(version, prerelease, draft=False):
+            return {'tag_name':'v'+version,'draft':draft,'prerelease':prerelease,
+                    'assets':[{'id':7,'name':updater.ASSET,'digest':'sha256:'+'a'*64}]}
+        candidates=[release('0.1.0-beta.1',True),release('1.0.0',False),release('1.0.1',False,True)]
+        found=updater.beta_candidate(fetch=lambda *a:candidates)
+        self.assertEqual(found['version'],'1.0.0')
+        self.assertEqual(found['channel'],'beta')
+
     def test_beta_checks_never_prompt_for_private_authorization(self):
         updater=load('beta_auth','qol-updater.py')
         lock=types.SimpleNamespace(LOCK_EX=1,LOCK_NB=2,flock=lambda *a:None)

@@ -1,3 +1,10 @@
+GTAIV-QoL 1.0.0 — first official release preparation
+
+- Prepares the first official 1.0 release of GTAIV-QoL, with the guided installer, integrated updater and pause-menu settings. Existing known issues and honest Deck/Windows testing limits remain; official release status does not claim that every feature or mod combination has been tested.
+- Names the original Sleeping Dogs-inspired guidance Turn Arrows (Beta), superseded by Road Line. Fresh settings now start it Off; the previous source and installer template actually defaulted it On. Existing saved On/Off choices are preserved. Road Line remains independent and On by default.
+- Recommends Liberty Loadout – Weapon and Radio Wheels by Delusional94 as an optional companion, not a dependency. Installation and updates never require or download it.
+- Prepares stable-version tag validation and 1.0.0 Deck/update packaging. This PR creates no tag, GitHub release or Nexus publication, and leaves the existing beta prerelease untouched. After approval/merge and successful main CI, update normally; check Pause → QoL shows Turn Arrows (Beta), saved choices survive, Road Line still works, and the displayed version is 1.0.0 with a new build identity. For a fresh install, verify arrows start Off and can be enabled in the pause menu. No manual file edits.
+
 GTAIV-QoL beta — optional Liberty Loadout companion recommendation
 
 - The installer's final dependency review now recommends Liberty Loadout – Weapon and Radio Wheels by Delusional94, with its Nexus page. It is clearly optional: QoL installs and updates without it, and the installer does not detect, require or download it.

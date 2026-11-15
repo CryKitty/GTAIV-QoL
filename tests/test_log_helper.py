@@ -141,6 +141,16 @@ class HelperTests(unittest.TestCase):
             self.assertTrue(capture.endswith('EIP_FINAL'))
             self.assertLess(len(capture), 1060000)
 
+    def test_turn_arrows_beta_defaults_off_and_preserves_saved_choice(self):
+        fresh=(ROOT/'GTAIV-QoL.ini.example').read_bytes()
+        import configparser
+        for choice in (None, 0, 1):
+            old=b'' if choice is None else ('[RoadNav]\nEnabled=%d\n'%choice).encode()
+            merged=helper.merge_preferences(old,fresh)
+            ini=configparser.ConfigParser();ini.read_string(merged.decode())
+            self.assertEqual(ini.getint('RoadNav','Enabled'),0 if choice is None else choice)
+            self.assertEqual(ini.getint('RoadGPSLine','Enabled'),1)
+
     def test_native_radar_journal_survives_updater_replacement(self):
         fresh = (ROOT/'GTAIV-QoL.ini.example').read_bytes()
         for value in ('-1', '0', '1', '2'):

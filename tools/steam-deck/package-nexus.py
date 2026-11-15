@@ -1,4 +1,4 @@
-"""Build a self-contained beta download; never upload or publish it."""
+"""Build a self-contained release download; never upload or publish it."""
 import hashlib
 import importlib.util
 import io
@@ -7,7 +7,7 @@ from pathlib import Path
 import re
 import zipfile
 
-COMPONENTS = ['Road Navigation Line', 'RoadNav turn guidance', 'Map Autozoom',
+COMPONENTS = ['Road Navigation Line', 'Turn Arrows (Beta)', 'Map Autozoom',
               'Pause Cutscenes', 'Cutscene Audio', 'Compass HUD', 'Taxi FOV Slider']
 
 def load(name, path):
@@ -17,7 +17,7 @@ def load(name, path):
 def package(root):
     root=Path(root);folder=root/'tools/steam-deck'
     version=(root/'VERSION').read_text().strip()
-    if not re.fullmatch(r'\d+\.\d+\.\d+-beta\.\d+',version):raise RuntimeError('Expected a beta version.')
+    if not re.fullmatch(r'\d+\.\d+\.\d+(?:-beta\.\d+)?',version):raise RuntimeError('Expected a release version.')
     data=(root/'build/GTAIV-QoL-update.zip').read_bytes()
     updater=load('nexus_updater',folder/'qol-updater.py')
     if len(data)>updater.MAX_ARCHIVE:raise RuntimeError('Bundled update exceeds the updater size limit.')
@@ -33,19 +33,19 @@ def package(root):
                         'THIRD-PARTY-NOTICES.txt':'build/FusionFix-GPL-3.0.txt'}.items():
         entries[name]=(root/source).read_bytes()
     entries['START-HERE.txt']=(
-        'GTAIV-QoL '+version+' — Steam Deck beta bundle\n\n'
+        'GTAIV-QoL '+version+' — Steam Deck bundle\n\n'
         'Close GTA IV. Extract this entire ZIP into one folder, then run Install-GTAIV-QoL.desktop '
         'in Desktop Mode (Execute/Trust if prompted). Keep GTAIV-QoL-update.zip beside the launcher. '
-        'The guided installer finds the game, checks dependencies and installs this exact bundled beta. '
+        'The guided installer finds the game, checks dependencies and installs this exact bundled version. '
         'No private-repository or log-upload token is needed for this installation. '
         'The GUI can download verified dependencies or import your completed ZIP/EXE downloads on Retry. '
         'It places the files, runs the verified Microsoft X86 installer in GTA IV\'s selected Proton prefix, '
         'and re-checks everything before enabling Install. No manual game-file or INI editing is required.\n\n'
-        'After installation use the integrated Update GTA IV QoL shortcut for public GitHub beta checks. '
+        'After installation use the integrated Update GTA IV QoL shortcut for public GitHub update checks. '
         'Re-running this installed-version launcher also hands off to the updater. '
         'Existing development users migrate once to the new public main build; their channel/menu choices remain. '
-        'The old GTAIV-QoL-dev archive stays private. No beta release is published yet; until a public beta update asset exists, '
-        'the verified bundled archive can install without private credentials. See README.md.\n' ).encode()
+        'The old GTAIV-QoL-dev archive stays private. Published releases provide public update assets; '
+        'the verified bundled archive installs without private credentials. See README.md.\n' ).encode()
     entries['release-info.json']=json.dumps({'version':version,'commit':manifest['sha'],'run_id':manifest['run_id'],
         'canonical_branch':updater.BRANCH,'source_branch':manifest['branch'],'components':COMPONENTS,
         'payload_sha256':candidate['digest']},indent=2).encode()

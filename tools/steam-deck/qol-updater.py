@@ -142,14 +142,14 @@ def beta_candidate(token='',fetch=None):
     fetch=fetch or request
     try:releases=fetch('','/releases?per_page=100')
     except (AuthError,RuntimeError,urllib.error.URLError) as exc:
-        raise PublicBetaUnavailable('Public beta checks are unavailable. The bundled archive can still install. Check the connection and try again; no private token is requested.') from None
+        raise PublicBetaUnavailable('Public update checks are unavailable. The bundled archive can still install. Check the connection and try again; no private token is requested.') from None
     releases=[r for r in releases if not r.get('draft') and version_key(r.get('tag_name')) is not None]
     for release in sorted(releases,key=lambda r:version_key(r['tag_name']),reverse=True):
         for asset in release.get('assets',[]):
             digest=asset.get('digest','')
             if asset.get('name')==ASSET and re.fullmatch('sha256:[0-9a-f]{64}',digest):
                 return {'channel':'beta','sha':None,'run_id':None,'digest':digest[7:],'route':'/releases/assets/'+str(int(asset['id'])),
-                    'label':'beta channel '+release['tag_name'],'version':release['tag_name'].removeprefix('v'),
+                    'label':'public channel '+release['tag_name'],'version':release['tag_name'].removeprefix('v'),
                     'size':asset.get('size',0),'notes':release.get('body','')}
     return None
 
@@ -281,10 +281,10 @@ def _perform_update():
         select=beta_candidate if channel=='beta' else dev_candidate if channel=='dev' else release_candidate
         try:candidate=select(token)
         except AuthError:
-            if channel=='beta':raise PublicBetaUnavailable('Public beta download is unavailable; no private token is requested.') from None
+            if channel=='beta':raise PublicBetaUnavailable('Public update download is unavailable; no private token is requested.') from None
             token=authorize(config);candidate=select(token)
         if candidate is None:
-            progress(100,'No public beta update has been published yet')
+            progress(100,'No public update has been published yet')
             if game is not None:update_status(game,'no_release')
             return
         if channel=='beta' and (ROOT/'installed.json').is_file() and config.get('game'):
