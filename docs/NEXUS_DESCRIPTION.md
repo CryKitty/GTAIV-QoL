@@ -16,7 +16,7 @@ A guided-install bundle of seven quality-of-life components for GTA IV Complete 
 
 ## Requirements
 
-GTA IV Complete Edition **1.2.0.59**, compatible ASI loader and ScriptHook, Microsoft X86 runtime, and supported **FusionFix 5.1.2 assets/menu host**. The guided installer checks dependencies and supplies the verified modified FusionFix menu host. Unsupported/custom hosts are not blindly replaced. Steam Deck/Linux Desktop Mode needs Python 3 and KDE or Zenity dialogs; missing dependencies require author-hosted downloads. Setup can run the verified Microsoft X86 installer inside GTA IV’s existing Proton prefix; setup detects Steam’s configured compatibility tool automatically and launch the game once from Steam first if its prefix is missing.
+GTA IV Complete Edition **1.2.0.59**, compatible ASI loader and ScriptHook, Microsoft X86 runtime, and supported **FusionFix 5.1.2 assets/menu host**. The guided installer checks dependencies and supplies the verified modified FusionFix menu host. Unsupported/custom hosts are not blindly replaced. Steam Deck/Linux Desktop Mode needs Python 3 and KDE or Zenity dialogs; missing dependencies require author-hosted downloads. On Windows the verified Microsoft X86 installer runs natively. On Deck, setup runs it inside GTA IV’s existing Proton prefix, detects Steam’s configured compatibility tool automatically, and requires a first Steam launch if that prefix is missing.
 
 Recommended optional companion: [Liberty Loadout – Weapon and Radio Wheels](https://www.nexusmods.com/gta4/mods/1226/) by Delusional94. It is not required by GTAIV-QoL and is not downloaded by its installer.
 
@@ -32,7 +32,7 @@ Use GTAIV-QoL-1.0.0-Windows.zip: extract fully, close GTA IV and run Install-GTA
 4. Once all checks pass, click **Install GTA IV QoL**. It installs all seven components and the integrated **Update GTA IV QoL** shortcut, with backups and retained pause-menu settings. No private-repository or log-upload credentials are needed.
 5. Enable Pause → QoL → Check for QoL Updates for future Deck checks/staging (Off by default); apply happens after exiting the game. The installed updater shortcut remains a manual fallback; no separate updater download is needed. Pause → QoL and Audio control the components; Road Line **On (twisted) / Off** applies live, with separate Police Escape, Mission, Friend, Enemy and Custom Line On/Off switches (Enemy starts Off and is labelled Beta; the other line types start On).
 
-Maintainer note: this is the 1.0.0 page draft. Tagging and full GitHub publication require separate approval after the preparation PR merges; the existing 0.1.0-beta.1 prerelease stays unchanged. Nexus publication also requires separate approval. The verified bundled archive remains usable without private credentials.
+Maintainer note: this is the 1.0.0 page draft. The full 1.0.0 GitHub release is published; its additional Windows installer asset requires independent verification and merge of the installer PR; the existing 0.1.0-beta.1 prerelease stays unchanged. Nexus publication also requires separate approval. The verified bundled archive remains usable without private credentials.
 
 ## Known issues
 

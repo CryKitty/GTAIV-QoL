@@ -5,11 +5,11 @@
 - Police escape is a visible-marker proximity heuristic, not police sight-line prediction. Building occlusion, future movement and unmarked police are not modeled. Search areas and mission-zone shapes are omitted from the compass.
 - Native GPS geometry does not guarantee exact lane placement or shortcuts outside its road graph. Mission-specific compass marker behavior needs broader testing.
 - Voiced cutscene pause/resume and vehicle compass waypoints have user-confirmed Steam Deck gameplay coverage. Audio-less pause and independent gameplay/dialogue volume are not implemented. Cutscene Audio changes the whole output mix, with possible distortion at large boosts.
-- The guided installer targets Steam Deck/Linux. Native Windows build/loader tests do not substitute for broad Windows gameplay testing. Existing unknown/custom FusionFix hosts are rejected safely.
+- Guided installer editions target Steam Deck/Linux and Windows 10/11; real Windows fresh-install acceptance remains outstanding. Native Windows build/loader tests do not substitute for broad Windows gameplay testing. Existing unknown/custom FusionFix hosts are rejected safely.
 
 ## Acceptance using only the installer/updater and pause menu
 
-1. With GTA IV closed, run the extracted Nexus guided installer. Check a first install without QoL GitHub credentials and an upgrade retaining all pause-menu settings/backups. Downloaded missing dependencies must be placed by Retry/automatic setup, with runtime and Proton-loader re-checks; failed installation must not report success.
+1. With GTA IV closed, run the extracted Nexus guided installer. Check a first install without QoL GitHub credentials and an upgrade retaining all pause-menu settings/backups. Downloaded missing dependencies must be placed by Retry/automatic setup, with runtime re-checks and, on Deck only, Proton-loader re-checks; failed installation must not report success.
 2. In a car, set a normal map waypoint. Compare Road Line modes 1 Flat and 2 Twisted, then 0 Off and back On; verify the whole leg past a bend. Check roads/crests and foreground occlusion, pause/resume and save reload.
 3. Test independent Turn Arrows (Beta), shallow/linked turns, wrong-way cues and manual/mission routes. During a police escape check the narrower red/blue ribbon alongside a primary route. This is an acceptance check, not a claim that those scenarios have all passed in-game.
 4. Switch Compass HUD off/on. Check minimap restoration, wanted stars, phone/unread messages, activity markers and a fresh D-pad Left waypoint hold on foot/in a car. Enter/exit a car during a hold; it must cancel until release.
