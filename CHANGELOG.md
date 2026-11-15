@@ -1,3 +1,9 @@
+GTAIV-QoL beta — restore episode mission-contact icons in the compass
+
+- Recognises the game’s episode_blip textures as well as radar textures, so episode mission contacts use their real artwork/initials instead of a generic dot or dash. All 15 episode slots are supported, with the game’s own resource names when live table entries are unavailable. No letter is invented or drawn over the native icon.
+- Known icons waiting for their texture retry stay pending instead of being labelled unknown. Generic symbols are reserved for genuinely unknown names. Automatic per-icon records identify the sprite, resolved texture and submitted draw, making the next retest identifiable.
+- Source comparison shows the radar-only name validator was already present in b99 and is identical across PR #27, PR #28 and b112; neither PR introduced that rejection. After approval/merge and successful main CI, update normally. In Pause → QoL keep Compass HUD On; check several mission contacts in TLAD/TBoGT and base IV, including Jim when available. Pause/unpause and relaunch; real icons must remain. Exit normally for automatic glyph records. No file edits, new controls or release-version change; Deck visual acceptance remains outstanding.
+
 GTAIV-QoL beta — measured cutscene source audio instead of an unproven volume flag
 
 - Cutscene Audio now scales supported DirectSound source samples, bypassing unavailable volume controls and their ceiling. Original samples are kept separately so finishing, skipping or interrupting a scene restores them exactly, including after clipping; repeated scenes never multiply a previous boost again. The unproven mastering-output boost is removed.
