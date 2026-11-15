@@ -33,9 +33,12 @@ def main():
     found=[distribution.locate_file(p) for p in distribution.files if p.name.lower() in ('copying.txt','license','license.txt')]
     if not found:raise RuntimeError('PyInstaller licence notice missing.')
     licences.extend(p.read_text() for p in found)
-    tk=list((Path(sys.base_prefix)/'tcl').glob('*/license.terms'))
-    if len(tk)<2:raise RuntimeError('Tcl/Tk licence notices missing.')
-    licences.extend(p.read_text() for p in tk)
+    # CPython's Windows installer omits the upstream licence.terms files.
+    # Retain the identical 8.6.13/8.6.14 upstream terms in the source tree.
+    import tkinter
+    if not str(tkinter.TclVersion).startswith('8.6') or not str(tkinter.TkVersion).startswith('8.6'):
+        raise RuntimeError('Review Tcl/Tk licensing before changing the bundled version.')
+    licences.extend((root/'tools/windows/licenses'/name).read_text(encoding='utf-8') for name in ('Tcl-license.terms','Tk-license.terms'))
     (target/'WINDOWS-RUNTIME-LICENSES.txt').write_text('\n\n'.join(licences),encoding='utf-8')
     spec=importlib.util.spec_from_file_location('nexus_package',root/'tools/steam-deck/package-nexus.py');module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
     print(module.package_windows(root,target/'Install-GTAIV-QoL.exe',payload))
