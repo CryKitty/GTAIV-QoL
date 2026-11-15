@@ -1,4 +1,5 @@
 """CI build only. Frozen Python/Tk is a bootstrap, never part of mod payload."""
+import ast
 import hashlib
 import importlib.metadata
 import importlib.util
@@ -22,11 +23,24 @@ def prepare(root,payload):
     out=root/'build/windows-source';out.mkdir(parents=True,exist_ok=True)
     for name in ('bootstrap.py','platform_adapter.py','progress_ui.py'):(out/name).write_bytes((root/'tools/windows'/name).read_bytes())
     (out/'embedded_sources.py').write_text('SOURCES='+repr(sources)+'\nCANDIDATE='+repr(candidate)+'\n',encoding='utf-8')
+    # Dynamic shared-source exec is deliberately reused by the installer. The
+    # freezer cannot infer imports inside string constants, so collect them
+    # from the exact verified sources (including the payload installer helper).
+    with zipfile.ZipFile(payload) as z:helper=z.read('install-helper.py').decode('utf-8')
+    hidden=set()
+    for source in [*sources.values(),helper]:
+        for node in ast.walk(ast.parse(source)):
+            names=[a.name for a in node.names] if isinstance(node,ast.Import) else [node.module] if isinstance(node,ast.ImportFrom) and node.module else []
+            for name in names:
+                if name.split('.')[0] in sys.stdlib_module_names and name!='fcntl':hidden.add(name)
+    hidden.update(('ctypes.wintypes','tkinter.filedialog','tkinter.messagebox','tkinter.simpledialog'))
+    (out/'hidden-imports.json').write_text(json.dumps(sorted(hidden)))
     return out
 
 def main():
     root=Path(__file__).resolve().parents[2];payload=Path(sys.argv[1]).resolve();out=prepare(root,payload)
-    subprocess.run([sys.executable,'-m','PyInstaller','--noconfirm','--clean','--onefile','--windowed','--name','Install-GTAIV-QoL','--distpath',str(root/'build/windows-launcher'),'--workpath',str(root/'build/windows-pyinstaller'),'--specpath',str(root/'build'),str(out/'bootstrap.py')],check=True)
+    hidden=json.loads((out/'hidden-imports.json').read_text())
+    subprocess.run([sys.executable,'-m','PyInstaller','--noconfirm','--clean','--onefile','--windowed','--name','Install-GTAIV-QoL','--distpath',str(root/'build/windows-launcher'),'--workpath',str(root/'build/windows-pyinstaller'),'--specpath',str(root/'build'),str(out/'bootstrap.py')]+['--hidden-import='+name for name in hidden],check=True)
     target=root/'build/windows-launcher'
     from PyInstaller.archive.readers import CArchiveReader
     names={name.replace('\\','/').lower() for name in CArchiveReader(str(target/'Install-GTAIV-QoL.exe')).toc}

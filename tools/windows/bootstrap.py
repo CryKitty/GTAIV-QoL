@@ -44,15 +44,23 @@ def modules():
 
 def main():
     install_lock_api()
-    if len(sys.argv)==3 and sys.argv[1]=='--self-test':
-        import ctypes
+    if len(sys.argv)==4 and sys.argv[1]=='--self-test':
+        import ctypes,types
+        guide,load=modules()
+        dependency=load('qol_dependencies',SOURCES['dependency'])
+        updater=load('qol_update',SOURCES['updater'])
+        manifest,files=updater.validate_archive(Path(sys.argv[3]).read_bytes(),CANDIDATE)
+        guide.configure_dependencies(dependency,guide.payload_bridge(files))
+        helper=types.ModuleType('frozen_verified_helper')
+        exec(compile(files['install-helper.py'],'<verified frozen helper>','exec'),helper.__dict__)
+        assert callable(helper.install_bundle)
         root=tkinter.Tk();root.withdraw();root.update()
         runtime=Path(sys._MEIPASS).resolve()
         tcl_bundled=runtime in Path(root.tk.eval('info library')).resolve().parents
         tk_bundled=runtime in Path(root.tk.eval('set tk_library')).resolve().parents
         root.destroy()
         shortcut=Path(sys.argv[2]).with_suffix('.lnk');create_shortcut(Path(sys.executable),shortcut)
-        Path(sys.argv[2]).write_text(json.dumps({'tcl_bundled':tcl_bundled,'tk_bundled':tk_bundled,'shortcut':shortcut.is_file(),'frozen':bool(getattr(sys,'frozen',False)),'tk':tkinter.TkVersion,'console':bool(ctypes.windll.kernel32.GetConsoleWindow())}))
+        Path(sys.argv[2]).write_text(json.dumps({'shared_sources_loaded':True,'payload_verified':manifest['sha']==CANDIDATE['sha'],'tcl_bundled':tcl_bundled,'tk_bundled':tk_bundled,'shortcut':shortcut.is_file(),'frozen':bool(getattr(sys,'frozen',False)),'tk':tkinter.TkVersion,'console':bool(ctypes.windll.kernel32.GetConsoleWindow())}))
         return 0
     guide,load=modules()
     if '--watch' in sys.argv:
@@ -75,6 +83,6 @@ if __name__=='__main__':
     try:raise SystemExit(main())
     except Exception as exc:
         if '--self-test' in sys.argv:
-            Path(sys.argv[-1]).write_text(json.dumps({'error':type(exc).__name__+': '+str(exc)}));raise SystemExit(1)
+            Path(sys.argv[2]).write_text(json.dumps({'error':type(exc).__name__+': '+str(exc)}));raise SystemExit(1)
         tkinter.messagebox.showerror('GTA IV QoL setup',str(exc) if isinstance(exc,RuntimeError) else 'Setup could not finish. Existing backups remain available.')
         raise SystemExit(1)

@@ -41,16 +41,17 @@ jobs:
         run: |
           $exe = (Resolve-Path build/windows-launcher/Install-GTAIV-QoL.exe).Path
           $result = Join-Path $env:RUNNER_TEMP 'qol-frozen-proof.json'
+          $payload = (Resolve-Path approved/GTAIV-QoL-update.zip).Path
           $original = $env:PATH
           $env:PATH = "$env:WINDIR\System32;$env:WINDIR"
           try {
-            $process = Start-Process -FilePath $exe -ArgumentList @('--self-test', $result) -PassThru
+            $process = Start-Process -FilePath $exe -ArgumentList @('--self-test', $result, $payload) -PassThru
             if (!$process.WaitForExit(60000)) { $process.Kill(); throw 'Frozen smoke timed out' }
             if ($process.ExitCode -ne 0) { throw 'Frozen smoke failed' }
           } finally { $env:PATH = $original }
           $proof = Get-Content $result | ConvertFrom-Json
           $proof | ConvertTo-Json -Compress | Write-Output
-          if (!$proof.frozen -or !$proof.tk -or !$proof.tcl_bundled -or !$proof.tk_bundled -or !$proof.shortcut -or $proof.console) { throw 'Bundled Python/Tk/windowless proof failed' }
+          if (!$proof.shared_sources_loaded -or !$proof.payload_verified -or !$proof.frozen -or !$proof.tk -or !$proof.tcl_bundled -or !$proof.tk_bundled -or !$proof.shortcut -or $proof.console) { throw 'Bundled Python/Tk/windowless proof failed' }
       - uses: actions/upload-artifact@v4
         with:
           name: GTAIV-QoL-Nexus-Windows

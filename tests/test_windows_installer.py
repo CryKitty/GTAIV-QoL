@@ -60,6 +60,20 @@ class WindowsInstaller(unittest.TestCase):
                 self.assertEqual(z.read('GTAIV-QoL-update.zip'),data)
                 info=json.loads(z.read('release-info.json'));self.assertEqual(info['payload_sha256'],hashlib.sha256(data).hexdigest())
                 self.assertIn(b'No Python',z.read('START-HERE.txt'));self.assertNotIn('Install-GTAIV-QoL.desktop',z.namelist())
+    def test_frozen_build_collects_dynamic_shared_imports(self):
+        builder=load('windows_builder','tools/windows/build_installer.py')
+        data,candidate=fixture.payload()
+        with tempfile.TemporaryDirectory() as tmp:
+            payload=Path(tmp)/'payload.zip';payload.write_bytes(data)
+            with patch.object(builder,'PAYLOAD_SHA256',hashlib.sha256(data).hexdigest()),patch.object(builder,'SOURCE_SHA',candidate['sha']):
+                out=builder.prepare(ROOT,payload)
+            hidden=json.loads((out/'hidden-imports.json').read_text())
+            for name in ('configparser','urllib.request','urllib.error','ssl','ast','ctypes.wintypes'):
+                # ssl is a transitive dependency of urllib.request, not a direct
+                # source import; the explicit root drives freezer traversal.
+                if name!='ssl':self.assertIn(name,hidden)
+            self.assertNotIn('fcntl',hidden)
+
     def test_delivery_cannot_change_deck_payload_or_version(self):
         self.assertEqual((ROOT/'VERSION').read_text().strip(),'1.0.0')
         workflow=(ROOT/'.github/workflows/build.yml').read_text()
