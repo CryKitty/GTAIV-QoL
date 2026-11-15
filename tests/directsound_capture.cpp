@@ -38,7 +38,7 @@ int main(){
     d::GuardVolume(&audio,-2000);assert(audio.volume<-2500);
     LONG requested=0;d::GuardGetVolume(&audio,&requested);assert(requested==-2000);
     cutsceneoutput::Apply(1);d::ApplyVolume();assert(audio.volume==-2000);
-    cutsceneoutput::Apply(2);auto boosted=d::ApplyVolume();assert(boosted.verified==1&&boosted.limited==0&&audio.volume>-2000);
+    cutsceneoutput::Apply(2);auto boosted=d::ApplyVolume();assert(boosted.controlReadbacks==1&&boosted.limited==0&&audio.volume>-2000);
     for(unsigned frame=0;frame<100;++frame){audio.volume=-3000;d::ApplyVolume();assert(audio.volume==cutscenemix::decibels(-3000,2));}
     cutsceneoutput::Apply(1);d::ApplyVolume();assert(audio.volume==-3000);
     d::GuardVolume(&audio,0);cutsceneoutput::Apply(2);auto capped=d::ApplyVolume();assert(capped.limited==1&&audio.volume==0);

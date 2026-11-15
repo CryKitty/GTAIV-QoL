@@ -1,5 +1,8 @@
 #pragma once
 #include "cutscene_output.hpp"
+#include "pcm_gain.hpp"
+#include <vector>
+#include <mmreg.h>
 // DirectSound secondary Stop/Play preserves the playback cursor. Primary
 // buffers are excluded because stopping them may reset their cursor.
 namespace directaudio {
@@ -9,8 +12,8 @@ using Status=HRESULT(WINAPI*)(void*,DWORD*);
 using CreateBuffer=HRESULT(WINAPI*)(void*,const DSBUFFERDESC*,void**,IUnknown*);
 using Duplicate=HRESULT(WINAPI*)(void*,void*,void**);
 using Factory=HRESULT(WINAPI*)(LPCGUID,void**,IUnknown*);
-struct Interface {void* object=nullptr;void* table[24]{};Play play=nullptr;Stop stop=nullptr;Status status=nullptr;void* setVolume=nullptr;void* getVolume=nullptr;};
-struct Buffer {Interface views[2];LONG baseVolume=0,lastVolume=0;bool volumeTracked=false,resume=false;DWORD reserved=0,priority=0,flags=0;};
+struct Interface {void* object=nullptr;void* table[24]{};Play play=nullptr;Stop stop=nullptr;Status status=nullptr;void* setVolume=nullptr;void* getVolume=nullptr;void* getFormat=nullptr;void* getCursor=nullptr;void* lockPcm=nullptr;void* unlockPcm=nullptr;};
+struct Buffer {Interface views[2];LONG baseVolume=0,lastVolume=0;bool volumeTracked=false,resume=false;DWORD reserved=0,priority=0,flags=0,capsFlags=0;};
 struct Device {void* object=nullptr;void* table[12]{};CreateBuffer create=nullptr;Duplicate duplicate=nullptr;};
 Buffer buffers[128]{};Device devices[8]{};unsigned bufferCount=0,deviceCount=0;
 bool paused=false,overflow=false;
@@ -22,6 +25,7 @@ bool SwapTable(void* object,void** oldTable,void** newTable){
     DWORD ignored=0;if(!VirtualProtect(object,sizeof(void*),protection,&ignored))Log("DirectSound interface page protection restoration failed");return ok;
 }
 Buffer* Find(void* object,Interface** view=nullptr){for(unsigned i=0;i<bufferCount;++i)for(auto& v:buffers[i].views)if(v.object==object){if(view)*view=&v;return &buffers[i];}return nullptr;}
+#include "directsound_pcm.hpp"
 HRESULT WINAPI GuardPlay(void* object,DWORD reserved,DWORD priority,DWORD flags){
     AcquireSRWLockExclusive(&operation);Interface* view=nullptr;Buffer* b=Find(object,&view);HRESULT hr=E_FAIL;
     if(b){
@@ -42,39 +46,51 @@ HRESULT WINAPI GuardStatus(void* object,DWORD* status){
 using SetVolume=HRESULT(WINAPI*)(void*,LONG);
 HRESULT WINAPI GuardVolume(void* object,LONG value){
     AcquireSRWLockExclusive(&operation);Interface* view=nullptr;Buffer* b=Find(object,&view);HRESULT result=E_FAIL;
-    if(b){const auto target=cutscenemix::decibels(value,cutsceneoutput::gain.load());result=reinterpret_cast<SetVolume>(view->setVolume)(object,target);
+    if(b){const auto target=cutscenemix::decibels(value,pcm[b-buffers].ready?1.0f:cutsceneoutput::gain.load());result=reinterpret_cast<SetVolume>(view->setVolume)(object,target);
         if(SUCCEEDED(result)){b->baseVolume=value;b->lastVolume=target;b->volumeTracked=true;}}
     ReleaseSRWLockExclusive(&operation);return result;
 }
 HRESULT WINAPI GuardGetVolume(void* object,LONG* value){
-    AcquireSRWLockShared(&operation);Buffer* b=Find(object);if(b&&value)*value=b->baseVolume;ReleaseSRWLockShared(&operation);return b?DS_OK:E_FAIL;
+    AcquireSRWLockShared(&operation);Interface* v=nullptr;Buffer* b=Find(object,&v);
+    using GetVolume=HRESULT(WINAPI*)(void*,LONG*);const auto result=b?reinterpret_cast<GetVolume>(v->getVolume)(object,value):E_FAIL;
+    if(SUCCEEDED(result)&&value)*value=b->baseVolume;ReleaseSRWLockShared(&operation);return result;
 }
-struct VolumeEvidence {unsigned buffers=0,verified=0,failed=0,limited=0;LONG base=0,target=0,actual=0;};
+struct VolumeEvidence {unsigned buffers=0,verified=0,failed=0,limited=0,pcmSources=0,controlReadbacks=0;bool setAttempted=false;HRESULT readHr=E_PENDING,writeHr=E_PENDING;LONG base=0,target=0,actual=0;};
 VolumeEvidence ApplyVolume(){
     VolumeEvidence proof;const float gain=cutsceneoutput::gain.load();
     using GetVolume=HRESULT(WINAPI*)(void*,LONG*);
     AcquireSRWLockExclusive(&operation);
     for(unsigned i=0;i<bufferCount;++i){auto& b=buffers[i];auto& v=b.views[0];if(!v.object)continue;
         ++proof.buffers;LONG actual=0;
-        if(FAILED(reinterpret_cast<GetVolume>(v.getVolume)(v.object,&actual))){++proof.failed;continue;}
+        auto& source=pcm[i];
+        if(source.ready){++proof.pcmSources;if(reconcilePcm(b,source,gain))++proof.verified;else ++proof.failed;
+            proof.readHr=reinterpret_cast<GetVolume>(v.getVolume)(v.object,&actual);proof.base=b.baseVolume;proof.actual=actual;
+            continue; // Source samples carry gain; never also boost this buffer's volume control.
+        }
+        if(FAILED(proof.readHr=reinterpret_cast<GetVolume>(v.getVolume)(v.object,&actual))){++proof.failed;continue;}
         if(!b.volumeTracked||actual!=b.lastVolume)b.baseVolume=actual;
         const auto target=cutscenemix::decibels(b.baseVolume,gain);
-        HRESULT result=DS_OK;if(actual!=target)result=reinterpret_cast<SetVolume>(v.setVolume)(v.object,target);
+        HRESULT result=DS_OK;if(actual!=target){proof.setAttempted=true;result=reinterpret_cast<SetVolume>(v.setVolume)(v.object,target);proof.writeHr=result;}
         const auto read=reinterpret_cast<GetVolume>(v.getVolume)(v.object,&actual);
-        if(SUCCEEDED(result)&&SUCCEEDED(read)&&actual==target)++proof.verified;else ++proof.failed;
+        if(SUCCEEDED(result)&&SUCCEEDED(read)&&actual==target)++proof.controlReadbacks;
+        ++proof.failed; // A property-only fallback is not measured source gain.
         if(gain>1&&static_cast<double>(b.baseVolume)+2000.0*std::log10(static_cast<double>(gain))>0)++proof.limited; // DirectSound cannot exceed 0 dB.
         b.lastVolume=actual;b.volumeTracked=SUCCEEDED(read);proof.base=b.baseVolume;proof.target=target;proof.actual=actual;
     }
     ReleaseSRWLockExclusive(&operation);
     static float reportedGain=1;static DWORD reportedAt=0;const auto now=GetTickCount();
     if(gain!=reportedGain||(gain!=1&&now-reportedAt>=5000)){
-        reportedGain=gain;reportedAt=now;char line[240];sprintf_s(line,"Cutscene audio DirectSound: gain=%.2f buffers=%u verified=%u failed=%u headroom-limited=%u base-db=%ld target-db=%ld actual-db=%ld",gain,proof.buffers,proof.verified,proof.failed,proof.limited,proof.base,proof.target,proof.actual);Log(line);
+        reportedGain=gain;reportedAt=now;char line[340];sprintf_s(line,"Cutscene audio DirectSound: gain=%.2f buffers=%u pcm-sources=%u readback-ok=%u failed=%u headroom-limited=%u get-hr=%08lX set-attempted=%u set-hr=%08lX base-db=%ld target-db=%ld actual-db=%ld",gain,proof.buffers,proof.pcmSources,proof.verified,proof.failed,proof.limited,static_cast<unsigned long>(proof.readHr),proof.setAttempted?1u:0u,static_cast<unsigned long>(proof.writeHr),proof.base,proof.target,proof.actual);Log(line);
     }
     return proof;
 }
 bool Prepare(Interface& v,void* object,unsigned methods){
     void** table=nullptr;if(!Read(object,&table,sizeof(table))||!Read(table,v.table,methods*sizeof(void*))||!Executable(v.table[12])||!Executable(v.table[18])||!Executable(v.table[9]))return false;
     v.object=object;v.play=reinterpret_cast<Play>(v.table[12]);v.stop=reinterpret_cast<Stop>(v.table[18]);v.status=reinterpret_cast<Status>(v.table[9]);
+    v.getFormat=v.table[5];v.getCursor=v.table[4];v.lockPcm=v.table[11];v.unlockPcm=v.table[19];
+    if(v.getFormat&&v.getCursor&&v.lockPcm&&v.unlockPcm&&Executable(v.getFormat)&&Executable(v.getCursor)&&Executable(v.lockPcm)&&Executable(v.unlockPcm)){
+        v.table[11]=reinterpret_cast<void*>(&GuardLockPcm);v.table[19]=reinterpret_cast<void*>(&GuardUnlockPcm);
+    }else {v.getFormat=v.lockPcm=v.unlockPcm=nullptr;}
     v.getVolume=v.table[6];v.setVolume=v.table[15];v.table[15]=reinterpret_cast<void*>(&GuardVolume);v.table[6]=reinterpret_cast<void*>(&GuardGetVolume);
     v.table[12]=reinterpret_cast<void*>(&GuardPlay);v.table[18]=reinterpret_cast<void*>(&GuardStop);v.table[9]=reinterpret_cast<void*>(&GuardStatus);
     if(!SwapTable(object,table,v.table)){v.object=nullptr;return false;}return true;
@@ -87,7 +103,7 @@ void CaptureBuffer(void* object){
     if(Find(object)){ReleaseSRWLockExclusive(&operation);return;}
     if(bufferCount>=128){overflow=true;ReleaseSRWLockExclusive(&operation);Log("DirectSound buffer registry full; pause disabled");return;}
     IDirectSoundBuffer8* extended=nullptr;const bool modern=SUCCEEDED(base->QueryInterface(IID_IDirectSoundBuffer8,reinterpret_cast<void**>(&extended)))&&extended;
-    Buffer& entry=buffers[bufferCount];base->GetVolume(&entry.baseVolume);base->AddRef();
+    Buffer& entry=buffers[bufferCount];entry.capsFlags=caps.dwFlags;const auto volumeRead=base->GetVolume(&entry.baseVolume);base->AddRef();
     // The retained interfaces and private tables live until process exit. This
     // bounded experiment never scans unknown memory for existing sound objects.
     if(!Prepare(entry.views[0],object,modern&&extended==object?24u:21u)){
@@ -98,7 +114,12 @@ void CaptureBuffer(void* object){
         extended->Release();Log("DirectSound extended interface restart guard unavailable");
     }
     entry.lastVolume=cutscenemix::decibels(entry.baseVolume,cutsceneoutput::gain.load());
-    entry.volumeTracked=SUCCEEDED(reinterpret_cast<SetVolume>(entry.views[0].setVolume)(object,entry.lastVolume));
+    const bool volumeAttempt=SUCCEEDED(volumeRead)||!(caps.dwFlags&DSBCAPS_CTRLVOLUME);
+    const HRESULT volumeWrite=volumeAttempt?reinterpret_cast<SetVolume>(entry.views[0].setVolume)(object,entry.lastVolume):E_PENDING;
+    entry.volumeTracked=SUCCEEDED(volumeWrite);
+    {char result[220];sprintf_s(result,"DirectSound control probe: id=%u caps=%08lX get-hr=%08lX set-attempted=%u set-hr=%08lX",bufferCount,caps.dwFlags,static_cast<unsigned long>(volumeRead),volumeAttempt?1u:0u,static_cast<unsigned long>(volumeWrite));Log(result);}
+    const bool source=entry.views[0].getFormat&&initPcm(entry,pcm[bufferCount],caps.dwBufferBytes);
+    {char proof[340];sprintf_s(proof,"DirectSound source capture: id=%u caps=%08lX volume-control=%u pcm=%u bits=%u channels=%u bytes=%lu format-hr=%08lX lock-hr=%08lX unlock-hr=%08lX",bufferCount,caps.dwFlags,(caps.dwFlags&DSBCAPS_CTRLVOLUME)?1u:0u,source?1u:0u,pcm[bufferCount].format.bits,pcm[bufferCount].format.channels,caps.dwBufferBytes,static_cast<unsigned long>(pcm[bufferCount].formatHr),static_cast<unsigned long>(pcm[bufferCount].lastLock),static_cast<unsigned long>(pcm[bufferCount].lastUnlock));Log(proof);}
     ++bufferCount;
     if(extended==object)extended->Release(); // base reference is sufficient here
     char line[160];sprintf_s(line,"DirectSound secondary buffer captured object=%p bytes=%lu count=%u",object,caps.dwBufferBytes,bufferCount);Log(line);

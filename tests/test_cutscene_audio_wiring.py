@@ -16,6 +16,10 @@ class CutsceneAudioWiring(unittest.TestCase):
         self.assertIn('event=restored reason=script-stop',stop)
         output=(ROOT/'src/cutscene_output.hpp').read_text()
         self.assertNotIn('if(previous==multiplier)return',output)
-        self.assertIn('raw-before=',output)
+        self.assertIn('property-only (not audibility proof)',output)
+        pcm=(ROOT/'src/directsound_pcm.hpp').read_text()
+        for field in ['input-peak=', 'output-peak=', 'input-rms=', 'output-rms=', 'cursor-advanced=', 'lock-hr=', 'unlock-hr=']:
+            self.assertIn(field,pcm)
+        self.assertIn('return false;',pcm)
         self.assertIn('raw-after=',output)
 if __name__=='__main__':unittest.main()

@@ -1,3 +1,7 @@
+> Current b99 follow-up supersedes mastering-property amplification and adds
+> measured DS source PCM gain. See CUTSCENE_PCM_SOURCE_GAIN.md. This document
+> records the earlier b84 audit, not proof that its mastering voice was audible.
+
 # Cutscene Audio output audit (b84)
 
 ## Evidence
