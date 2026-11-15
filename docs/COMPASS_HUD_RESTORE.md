@@ -1,3 +1,8 @@
+> Historical b78 investigation. The b99 startup follow-up removes coordinate
+> displacement and overrides only the mapped radar component's gameplay display
+> answer. See COMPASS_STARTUP_PRESENTATION.md for the current narrow contract;
+> content/lifetime callbacks and all other HUD answers remain untouched.
+
 # Compass HUD restoration
 
 The b78 user test established that turning Compass HUD Off clears the stuck
