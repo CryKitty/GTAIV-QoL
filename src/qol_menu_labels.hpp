@@ -4,6 +4,7 @@
 namespace qolmenu {
 inline const wchar_t* label(const char* key,bool master){
     if(!key)return nullptr;
+    if(std::strcmp(key,"QOL_ROADNAV")==0)return L"Turn Arrows (Beta)";
     if(std::strcmp(key,"QOL_UPDATES")==0)return L"Check for QoL Updates (" QOL_VERSION_WIDE L")";
     const char* keys[]={"QOL_ESCAPE","QOL_MISSION","QOL_FRIEND","QOL_ENEMY","QOL_CUSTOM"};
     const wchar_t* enabled[]={L"    Police Escape Line",L"    Mission Line",L"    Friend Line",L"    Enemy Line (Beta)",L"    Custom Line"};

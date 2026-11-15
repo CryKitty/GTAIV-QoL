@@ -7,6 +7,12 @@
 int main(){
     qolsettings::Ensure();char temp[MAX_PATH]{},file[MAX_PATH]{};assert(GetTempPathA(MAX_PATH,temp));assert(GetTempFileNameA(temp,"qol",0,file));strcpy_s(qolsettings::path,file);
     qolsettings::Load();
+    wchar_t turnsLabel[60]{};assert(qolsettings::uiApi.MenuLabel("QOL_ROADNAV",turnsLabel,60));
+    assert(std::wcscmp(turnsLabel,L"Turn Arrows (Beta)")==0);
+    assert(qolsettings::api.Get(QOL_ROADNAV)==0); // Fresh Turn Arrows (Beta) default.
+    assert(qolsettings::api.Get(QOL_GPS_LINE)==1); // Road Line remains independent and On.
+    assert(qolsettings::api.Set(QOL_ROADNAV,1));qolsettings::Load();
+    assert(qolsettings::api.Get(QOL_ROADNAV)==1); // Preserve existing explicit On.
     assert(qolsettings::uiApi.Get(12)==0);
     assert(qolsettings::uiApi.Set(12,1));assert(qolsettings::api.Get(QOL_CHECK_UPDATES)==1);
     assert(qolsettings::uiApi.Set(12,0));

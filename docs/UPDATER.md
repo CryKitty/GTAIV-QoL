@@ -36,7 +36,7 @@ The separately retained `release` channel excludes prereleases; it is not the Ne
 Do this only after the new main build and ZIP read-back have passed CI:
 
 1. Sign into GitHub in the Deck's Desktop Mode browser. Open https://github.com/CryKitty/GTAIV-QoL/actions/workflows/build.yml and select the newest **successful main** run, not a PR run.
-2. Download artifact **GTAIV-QoL-Nexus-beta-Deck**. Extract GitHub's artifact ZIP, then extract the contained **GTAIV-QoL-0.1.0-beta.1-Deck.zip** into one folder. Keep its complete contents together; this is the integrated installer, not a source ZIP or loose ASI.
+2. Download artifact **GTAIV-QoL-Nexus-Deck**. Extract GitHub's artifact ZIP, then extract the contained **GTAIV-QoL-1.0.0-Deck.zip** into one folder. Keep its complete contents together; this is the integrated installer, not a source ZIP or loose ASI.
 3. Close GTA IV and run **Install-GTAIV-QoL.desktop** (Execute/Trust if asked). Follow the normal dependency checks/Retry/Install flow. The bundled payload needs no update token to install. An old same-version state from feature/cutscene-pause must still refresh the installed updater to main instead of handing off to the old installation. Menu settings and existing channel are preserved; no INI, Steam launch option or log-token edits.
 4. For continued **development** updates, open GitHub Settings → Developer settings → Personal access tokens → Fine-grained tokens. Edit the existing QoL read-only token's repository selection to include the **new public GTAIV-QoL**, or create a new token limited to it; permissions Actions: Read and Contents: Read. Do not broaden to all repositories or replace the separate upload token. If you kept the same token and added the new repo, no re-entry is needed; otherwise enter the replacement only in the updater's local password dialog when prompted.
 5. Launch the installed **Update GTA IV QoL** shortcut. Confirm it selects a successful new-repo/main build, preserves menu choices and reports success. Future checks use that shortcut; no archive redownload is required.
@@ -46,9 +46,9 @@ The new updater bootstrap refreshes older bootstrap revisions while preserving n
 
 ## Public source and release contract
 
-The authoritative functional pointer is **UPDATE_SOURCE** in tools/steam-deck/qol-updater.py: CryKitty/GTAIV-QoL / main. Manifest generation, Nexus metadata, release validation and beta-tag ancestry checks share it. The old GTAIV-QoL-dev stays private with its original history; this fresh repository has none of that history or private session references.
+The authoritative functional pointer is **UPDATE_SOURCE** in tools/steam-deck/qol-updater.py: CryKitty/GTAIV-QoL / main. Manifest generation, Nexus metadata, release validation and release-tag ancestry checks share it. The old GTAIV-QoL-dev stays private with its original history; this fresh repository has none of that history or private session references.
 
-Public CI uses the checksum-verified vendored FusionFix menu seed and licence, not an archive Actions artifact. See vendor/fusionfix-menu/README.md for corresponding source/build instructions. New Nexus installs use the token-free public beta channel; published betas must carry **GTAIV-QoL-update.zip** with GitHub's digest (produced by CI as **GTAIV-QoL-public-beta-update**). A tag, Actions artifact or Nexus upload alone does not publish that release. No beta release is published by this migration.
+Public CI uses the checksum-verified vendored FusionFix menu seed and licence, not an archive Actions artifact. See vendor/fusionfix-menu/README.md for corresponding source/build instructions. New Nexus installs use the token-free public channel (internal ID beta), which accepts full releases and prereleases; published versions must carry **GTAIV-QoL-update.zip** with GitHub's digest (produced by CI as **GTAIV-QoL-public-update**). A tag, Actions artifact or Nexus upload alone does not publish that release. The existing 0.1.0-beta.1 prerelease is unchanged; 1.0.0 publication requires separate approval after the preparation PR merges.
 
 ## Current UI acceptance
 

@@ -344,7 +344,7 @@ def run(dependency_source, updater_source, local_payload=None):
                 if window and window.alive():window.finish('Update check complete');window.wait()
                 return result
         if bundled and config.get('channel')=='beta':
-            if window:window.update(percent=3,phase='Checking published public betas')
+            if window:window.update(percent=3,phase='Checking published public updates')
             try:
                 candidate=updater.beta_candidate()
                 if candidate and updater.version_key(candidate['version'])>=updater.version_key(bundled[0]['release_version']):

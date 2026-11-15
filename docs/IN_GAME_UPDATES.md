@@ -69,14 +69,14 @@ manual-update invalidation. Live Deck systemd/Game Mode/exit acceptance remains.
 
 ## Build identity and visible status
 
-`VERSION` is the named-release version, currently `0.1.0-beta.1`; it is not
+`VERSION` is the named-release version, currently `1.0.0`; it is not
 bumped per PR. `write-qol-version.py` embeds the Actions run number (`b47`, for
 example) and source SHA in the running ASI. Non-CI builds use a short commit if
 provided, otherwise `local`. Each main Actions build gets a different number.
 The displayed identity comes from the running binary, never a staged candidate.
 
 The existing update toggle's label becomes a compact row such as
-`QoL 0.1.0-beta.1 b47 | Checking...`; On/Off remains the normal value control.
+`QoL 1.0.0 b47 | Checking...`; On/Off remains the normal value control.
 The 60-character native label buffer includes its terminator. Longer combinations
 omit the release version before shortening any status. States are:
 
