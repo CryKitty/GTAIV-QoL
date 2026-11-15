@@ -8,7 +8,7 @@ struct PcmState {
     pcmgain::Format format{};std::vector<unsigned char> original,scratch,observed;
     std::uintptr_t storage=0;void* first=nullptr;void* second=nullptr;DWORD firstBytes=0,secondBytes=0,offset=0,lastCursor=0;
     bool ready=false,locked=false,readback=false,advanced=false;float applied=1,requested=1;
-    unsigned writes=0;HRESULT formatHr=S_OK,lastLock=S_OK,lastUnlock=S_OK;pcmgain::Levels levels{};DWORD logged=0,retried=0;
+    unsigned writes=0;HRESULT formatHr=E_PENDING,lastLock=E_PENDING,lastUnlock=E_PENDING;pcmgain::Levels levels{};DWORD logged=0,retried=0;
 };
 PcmState pcm[128]{};unsigned pcmBytes=0;
 inline bool pcmCopy(void* destination,const void* source,DWORD bytes){SIZE_T done=0;return !bytes||(WriteProcessMemory(GetCurrentProcess(),destination,source,bytes,&done)&&done==bytes);}

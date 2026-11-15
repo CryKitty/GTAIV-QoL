@@ -19,7 +19,8 @@ static HRESULT WINAPI GetVolume(void*,LONG*){return DSERR_CONTROLUNAVAIL;}
 static HRESULT WINAPI SetVolume(void*,LONG){return DSERR_CONTROLUNAVAIL;}
 static HRESULT WINAPI Format(void*,WAVEFORMATEX* f,DWORD bytes,DWORD* needed){if(needed)*needed=sizeof(*f);if(!f||bytes<sizeof(*f))return E_FAIL;*f={};f->wFormatTag=WAVE_FORMAT_PCM;f->nChannels=1;f->nSamplesPerSec=44100;f->wBitsPerSample=16;f->nBlockAlign=2;return DS_OK;}
 static HRESULT WINAPI Cursor(void* object,DWORD* play,DWORD* write){auto* f=static_cast<Fake*>(object);f->cursor=(f->cursor+4)%32;if(play)*play=f->cursor;if(write)*write=f->cursor;return DS_OK;}
-static HRESULT WINAPI Lock(void* object,DWORD at,DWORD bytes,void** first,DWORD* one,void** second,DWORD* two,DWORD flags){auto* f=static_cast<Fake*>(object);if(flags&DSBLOCK_ENTIREBUFFER){at=0;bytes=32;}if(at>=32||bytes>32)return E_FAIL;*first=reinterpret_cast<unsigned char*>(f->data)+at;*one=std::min(bytes,32-at);*second=*one<bytes?f->data:nullptr;*two=bytes-*one;return DS_OK;}
+static bool rejectLock=false;
+static HRESULT WINAPI Lock(void* object,DWORD at,DWORD bytes,void** first,DWORD* one,void** second,DWORD* two,DWORD flags){auto* f=static_cast<Fake*>(object);if(rejectLock)return DSERR_BUFFERLOST;if(flags&DSBLOCK_ENTIREBUFFER){at=0;bytes=32;}if(at>=32||bytes>32)return E_FAIL;*first=reinterpret_cast<unsigned char*>(f->data)+at;*one=std::min(bytes,32-at);*second=*one<bytes?f->data:nullptr;*two=bytes-*one;return DS_OK;}
 static HRESULT WINAPI Unlock(void*,void*,DWORD,void*,DWORD){return DS_OK;}
 static HRESULT WINAPI Play(void*,DWORD,DWORD,DWORD){return DS_OK;}static HRESULT WINAPI Stop(void*){return DS_OK;}
 static HRESULT WINAPI Status(void*,DWORD* state){*state=DSBSTATUS_PLAYING;return DS_OK;}
@@ -35,6 +36,9 @@ int main(){
         assert(SUCCEEDED(directaudio::GuardUnlockPcm(&sound,first,one,second,two)));assert(sound.data[0]==6000);}
     cutsceneoutput::Apply(1);directaudio::ApplyVolume();assert(sound.data[0]==3000);
     for(unsigned scene=0;scene<3;++scene){cutsceneoutput::Apply(16);directaudio::ApplyVolume();assert(sound.data[0]==32767);cutsceneoutput::Apply(1);directaudio::ApplyVolume();assert(sound.data[0]==3000);}
+    cutsceneoutput::Apply(2);directaudio::ApplyVolume();assert(sound.data[0]==6000);
+    rejectLock=true;cutsceneoutput::Apply(1);auto failed=directaudio::ApplyVolume();assert(failed.failed==1&&!directaudio::pcm[0].readback&&sound.data[0]==6000);
+    rejectLock=false;directaudio::pcm[0].retried=GetTickCount()-500;auto retried=directaudio::ApplyVolume();assert(retried.verified==1&&sound.data[0]==3000);
     LONG volume=123;assert(directaudio::GuardGetVolume(&sound,&volume)==DSERR_CONTROLUNAVAIL&&volume==123);
     std::puts("PCM source: measured 2x without volume controls, streaming without stacking, exact restore after clipping and repeat scenes passed");
 }
