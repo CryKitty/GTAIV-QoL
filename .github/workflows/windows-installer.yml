@@ -1,0 +1,57 @@
+name: Windows guided installer (unchanged 1.0.0 payload)
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  python-tests:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install unicorn==2.1.4
+      - run: python -m unittest discover -s tests
+  windows-installer:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          architecture: x86
+      - run: python -m pip install pyinstaller==6.16.0
+      - name: Fetch immutable released payload (never rebuild it)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          New-Item -ItemType Directory -Force approved | Out-Null
+          gh release download v1.0.0 --repo CryKitty/GTAIV-QoL --pattern GTAIV-QoL-update.zip --dir approved
+          if ($LASTEXITCODE) { throw 'Released payload download failed' }
+      - name: Build frozen GUI and Windows ZIP
+        run: python tools/windows/build_installer.py approved/GTAIV-QoL-update.zip
+      - name: Smoke frozen Python and Tk with Python removed from PATH
+        run: |
+          $exe = (Resolve-Path build/windows-launcher/Install-GTAIV-QoL.exe).Path
+          $result = Join-Path $env:RUNNER_TEMP 'qol-frozen-proof.json'
+          $original = $env:PATH
+          $env:PATH = "$env:WINDIR\System32;$env:WINDIR"
+          try {
+            $process = Start-Process -FilePath $exe -ArgumentList @('--self-test', $result) -PassThru
+            if (!$process.WaitForExit(60000)) { $process.Kill(); throw 'Frozen smoke timed out' }
+            if ($process.ExitCode -ne 0) { throw 'Frozen smoke failed' }
+          } finally { $env:PATH = $original }
+          $proof = Get-Content $result | ConvertFrom-Json
+          if (!$proof.frozen -or !$proof.tk -or !$proof.shortcut -or $proof.console) { throw 'Bundled Python/Tk/windowless proof failed' }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GTAIV-QoL-Nexus-Windows
+          path: build/GTAIV-QoL-1.0.0-Windows.zip
+          if-no-files-found: error

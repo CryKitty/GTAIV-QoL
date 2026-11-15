@@ -1,4 +1,4 @@
-# GTAIV-QoL — Steam Deck Bundle — 1.0.0
+# GTAIV-QoL — Windows and Steam Deck Bundle — 1.0.0
 
 A guided-install bundle of seven quality-of-life components for GTA IV Complete Edition. Clearer navigation, a compact compass, usable cutscene pause and a handful of focused controls—managed from the pause menu, with no INI edits.
 
@@ -20,7 +20,11 @@ GTA IV Complete Edition **1.2.0.59**, compatible ASI loader and ScriptHook, Micr
 
 Recommended optional companion: [Liberty Loadout – Weapon and Radio Wheels](https://www.nexusmods.com/gta4/mods/1226/) by Delusional94. It is not required by GTAIV-QoL and is not downloaded by its installer.
 
-## Install and update
+## Windows first install
+
+Use GTAIV-QoL-1.0.0-Windows.zip: extract fully, close GTA IV and run Install-GTAIV-QoL.exe, keeping the update ZIP beside it. Python/Tk is bundled; no Python installation or Proton setup is required. The same file-based dependency checks/imports and final checklist apply. The Microsoft X86 dependency may request UAC; QoL itself runs per-user and needs a writable game folder. Use the real Update GTA IV QoL Desktop shortcut afterward; installer re-runs hand off to it. The executable is unsigned and may prompt SmartScreen. Native Windows compilation/loader tests pass; equivalent Windows gameplay coverage is not claimed.
+
+## Steam Deck install and update
 
 1. Close GTA IV. Extract the entire Deck ZIP into one folder, then run **Install-GTAIV-QoL.desktop** in Desktop Mode (Execute/Trust if prompted). Keep the supplied update ZIP beside it.
 2. The GUI checks for a newer published public version, or uses the verified bundled copy if unavailable, then finds GTA IV and guides one missing requirement at a time, with the checklist only at final review.
