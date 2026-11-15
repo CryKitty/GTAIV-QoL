@@ -31,7 +31,13 @@ def modules():
             module.run_in_prefix=run_native
         if name=='qol_update':
             root=adapt(module,sys.executable,Progress)
-            guide.game_lock=lambda dep:game_lock(root)
+            from contextlib import contextmanager
+            @contextmanager
+            def dependency_lock(dep):
+                try:
+                    with game_lock(root):yield
+                except RuntimeError as exc:raise dep.SetupError(str(exc)) from None
+            guide.game_lock=dependency_lock
         return module
     guide.load_source=load
     return guide,load
@@ -40,9 +46,13 @@ def main():
     install_lock_api()
     if len(sys.argv)==3 and sys.argv[1]=='--self-test':
         import ctypes
-        root=tkinter.Tk();root.withdraw();root.update();root.destroy()
+        root=tkinter.Tk();root.withdraw();root.update()
+        runtime=Path(sys._MEIPASS).resolve()
+        tcl_bundled=runtime in Path(root.tk.eval('info library')).resolve().parents
+        tk_bundled=runtime in Path(root.tk.eval('set tk_library')).resolve().parents
+        root.destroy()
         shortcut=Path(sys.argv[2]).with_suffix('.lnk');create_shortcut(Path(sys.executable),shortcut)
-        Path(sys.argv[2]).write_text(json.dumps({'shortcut':shortcut.is_file(),'frozen':bool(getattr(sys,'frozen',False)),'tk':tkinter.TkVersion,'console':bool(ctypes.windll.kernel32.GetConsoleWindow())}))
+        Path(sys.argv[2]).write_text(json.dumps({'tcl_bundled':tcl_bundled,'tk_bundled':tk_bundled,'shortcut':shortcut.is_file(),'frozen':bool(getattr(sys,'frozen',False)),'tk':tkinter.TkVersion,'console':bool(ctypes.windll.kernel32.GetConsoleWindow())}))
         return 0
     guide,load=modules()
     if '--watch' in sys.argv:

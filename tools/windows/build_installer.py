@@ -27,7 +27,13 @@ def prepare(root,payload):
 def main():
     root=Path(__file__).resolve().parents[2];payload=Path(sys.argv[1]).resolve();out=prepare(root,payload)
     subprocess.run([sys.executable,'-m','PyInstaller','--noconfirm','--clean','--onefile','--windowed','--name','Install-GTAIV-QoL','--distpath',str(root/'build/windows-launcher'),'--workpath',str(root/'build/windows-pyinstaller'),'--specpath',str(root/'build'),str(out/'bootstrap.py')],check=True)
-    target=root/'build/windows-launcher';licences=[]
+    target=root/'build/windows-launcher'
+    from PyInstaller.archive.readers import CArchiveReader
+    names={name.replace('\\','/').lower() for name in CArchiveReader(str(target/'Install-GTAIV-QoL.exe')).toc}
+    for required in ('python312.dll','vcruntime140.dll','_tkinter.pyd','_tcl_data/init.tcl','_tk_data/tk.tcl'):
+        if not any(name.endswith(required) for name in names):raise RuntimeError('Frozen runtime is incomplete: '+required)
+    print('Frozen archive includes Python DLL, MSVC runtime, Tk extension and Tcl/Tk data.')
+    licences=[]
     python_license=Path(sys.base_prefix)/'LICENSE.txt';licences.append(python_license.read_text())
     distribution=importlib.metadata.distribution('pyinstaller')
     found=[distribution.locate_file(p) for p in distribution.files if p.name.lower() in ('copying.txt','license','license.txt')]
