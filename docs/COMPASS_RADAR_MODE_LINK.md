@@ -25,8 +25,9 @@ At the existing usable-world initialization, and on Compass setting transitions:
 
 `[Compass] RadarRestoreMode` in the existing GTAIV-QoL.ini is an INTERNAL journal,
 not another user control. -1 means idle, 0/1/2 mean a saved baseline. The helper
-preserves it during verified updater installation. The Win32 profile write and
-cache flush must both succeed before the first native change. Runtime rejects
+preserves it during verified updater installation. The Win32 profile write, explicit file-buffer flush and record read-back
+must succeed before the first native change. The profile-cache flush API can
+return zero even when it flushes; that return bit is not used as proof. Runtime rejects
 malformed records; the updater preserves their fail-closed state instead of
 silently converting them to an empty journal. A failed native restore retains
 the record for a later transition/startup. No guessed default On is used. No

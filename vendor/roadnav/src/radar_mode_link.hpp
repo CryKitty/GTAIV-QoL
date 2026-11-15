@@ -70,7 +70,14 @@ class RadarModeLink {
     int load()const{char text[24]{};GetPrivateProfileStringA("Compass","RadarRestoreMode","-1",text,sizeof(text),path_.c_str());
         if(!std::strcmp(text,"-1"))return -1;if(!std::strcmp(text,"0"))return 0;if(!std::strcmp(text,"1"))return 1;if(!std::strcmp(text,"2"))return 2;return -2;}
     bool save(int value){char text[16];std::snprintf(text,sizeof(text),"%d",value);
-        return WritePrivateProfileStringA("Compass","RadarRestoreMode",text,path_.c_str())&&WritePrivateProfileStringA(nullptr,nullptr,nullptr,path_.c_str());}
+        if(!WritePrivateProfileStringA("Compass","RadarRestoreMode",text,path_.c_str()))return false;
+        // The all-NULL profile-cache flush can return zero on success. Check a
+        // real file-buffer flush and the reloaded record, not that return bit.
+        WritePrivateProfileStringA(nullptr,nullptr,nullptr,path_.c_str());
+        const auto file=CreateFileA(path_.c_str(),GENERIC_READ|GENERIC_WRITE,FILE_SHARE_READ|FILE_SHARE_WRITE|FILE_SHARE_DELETE,nullptr,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,nullptr);
+        if(file==INVALID_HANDLE_VALUE)return false;
+        const bool flushed=FlushFileBuffers(file)!=0;CloseHandle(file);
+        return flushed&&load()==value;}
     bool write(int value){if(read()==value)return true;const auto mode=static_cast<std::uint32_t>(value);SIZE_T count=0;
         return radarmodelink::valid(value)&&WriteProcessMemory(GetCurrentProcess(),reinterpret_cast<void*>(address_),&mode,sizeof(mode),&count)&&count==sizeof(mode);}
     void apply(const char* source){
