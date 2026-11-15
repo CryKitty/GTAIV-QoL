@@ -1,3 +1,9 @@
+> The user confirmed the captured DirectSound PCM source is plainly audible on
+> the Deck in the current build. The follow-up calibration applies half of the
+> gain difference from unity: applied = 1 + (requested - 1) / 2. The saved slider
+> remains requested percent; session/source logs carry requested and applied gain.
+> The b99 evidence limits below are historical, not the current user verdict.
+
 # b99 audibility investigation and source-level gain
 
 ## What the session establishes

@@ -111,18 +111,18 @@ protected:
         Discover();SetupPad();AudioModules();cinematictime::Install();ready=pauseGame&&resumeGame&&pauseConversation&&loaded&&finished&&network&&pauseMenu&&audioTime&&sceneTime&&cutsceneState&&scriptPause&&userPause;
         Log(ready?"native handlers ready; actual pause also requires captured game audio; Esc/Start; pause remains active until resumed":"pause disabled: native handlers or unique state/flag signatures missing");
     }
-    void OnKill() override{const auto proof=cutsceneoutput::Apply(1);directaudio::ApplyVolume();
-        if(audioScene){char message[160];sprintf_s(message,"Cutscene audio session: event=restored reason=script-stop xa-outputs=%u xa-signal-verified=%u xa-failed=%u",proof.outputs,proof.verified,proof.failed);Log(message);}audioScene=false;
+    void OnKill() override{const auto proof=cutsceneoutput::Apply(1,cutsceneoutput::sliderGain.load());directaudio::ApplyVolume();
+        if(audioScene){char message[240];sprintf_s(message,"Cutscene audio session: event=restored reason=script-stop requested-gain=%.2f applied-gain=1.00 xa-outputs=%u xa-signal-verified=%u xa-failed=%u",cutsceneoutput::sliderGain.load(),proof.outputs,proof.verified,proof.failed);Log(message);}audioScene=false;
         if(ready&&session.owned){Resume();session.owned=false;}pauseoverlay::Set(false);ready=false;Log("pause script stopped");}
     void RunScript() override{using Dispatch=void(__thiscall*)(ScriptThread*);auto mod=GetModuleHandleA("ScriptHook.dll");auto dispatch=mod?reinterpret_cast<Dispatch>(GetProcAddress(mod,"?RunScript@ScriptThread@@MAEXXZ")):nullptr;if(dispatch)dispatch(this);else Log("pause dispatcher export missing");}
     void RunTick() override{
         DWORD audioState=0;const bool readable=Read(cutsceneState,&audioState,4);
         const bool scene=cutscenemix::active(readable,audioState,loaded&&Query(loaded),!finished||Query(finished));
         const float multiplier=cutscenemix::gain(scene,qolclient::Enabled(QOL_VOCAL_SLIDERS),qolclient::Get(QOL_CUTSCENE_VOICE,100));
-        const auto proof=cutsceneoutput::Apply(multiplier);const auto ds=directaudio::ApplyVolume();
+        const auto proof=cutsceneoutput::Apply(multiplier,cutscenemix::requested(qolclient::Get(QOL_CUTSCENE_VOICE,100)));const auto ds=directaudio::ApplyVolume();
         const int percent=qolclient::Get(QOL_CUTSCENE_VOICE,100);
         if(scene!=audioScene||(scene&&percent!=audioPercent)){
-            char message[512];sprintf_s(message,"Cutscene audio session: event=%s percent=%d amplitude=%.2fx state=%lu enabled=%u xa-outputs=%u xa-signal-verified=%u xa-failed=%u ds-buffers=%u ds-pcm-readback=%u ds-failed=%u ds-headroom-limited=%u baseline=%.5f target=%.5f actual=%.5f",scene?(audioScene?"adjusted":"engaged"):"restored",percent,multiplier,audioState,qolclient::Enabled(QOL_VOCAL_SLIDERS)?1u:0u,proof.outputs,proof.verified,proof.failed,ds.buffers,ds.verified,ds.failed,ds.limited,proof.base,proof.target,proof.after);Log(message);
+            char message[512];sprintf_s(message,"Cutscene audio session: event=%s percent=%d requested-gain=%.2f applied-gain=%.2f state=%lu enabled=%u xa-outputs=%u xa-signal-verified=%u xa-failed=%u ds-buffers=%u ds-pcm-readback=%u ds-failed=%u ds-headroom-limited=%u baseline=%.5f target=%.5f actual=%.5f",scene?(audioScene?"adjusted":"engaged"):"restored",percent,cutscenemix::requested(percent),multiplier,audioState,qolclient::Enabled(QOL_VOCAL_SLIDERS)?1u:0u,proof.outputs,proof.verified,proof.failed,ds.buffers,ds.verified,ds.failed,ds.limited,proof.base,proof.target,proof.after);Log(message);
             audioScene=scene;audioPercent=percent;
         }
         if(!ready)return;
