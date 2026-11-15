@@ -141,6 +141,17 @@ class HelperTests(unittest.TestCase):
             self.assertTrue(capture.endswith('EIP_FINAL'))
             self.assertLess(len(capture), 1060000)
 
+    def test_native_radar_journal_survives_updater_replacement(self):
+        fresh = (ROOT/'GTAIV-QoL.ini.example').read_bytes()
+        for value in ('-1', '0', '1', '2'):
+            old = ('[Compass]\nEnabled=1\nRadarRestoreMode=%s\n' % value).encode()
+            merged = helper.merge_preferences(old, fresh)
+            self.assertIn(('RadarRestoreMode=%s' % value).encode(), merged)
+            self.assertEqual(helper.merge_preferences(merged, fresh), merged)
+        for value in ('broken', '999'):
+            merged = helper.merge_preferences(('[Compass]\nRadarRestoreMode=%s\n' % value).encode(), fresh)
+            self.assertIn(b'RadarRestoreMode=invalid', merged)
+
     def test_compass_off_preference_survives_update(self):
         fresh = b'[Compass]\nEnabled=1\nFallbackRadiusMeters=300\nMetricDistances=0\n'
         merged = helper.merge_preferences(b'[Compass]\nEnabled=0\nFallbackRadiusMeters=250\nMetricDistances=1\n', fresh)

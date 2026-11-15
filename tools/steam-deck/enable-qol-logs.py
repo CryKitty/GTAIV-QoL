@@ -308,7 +308,7 @@ def merge_preferences(previous, fresh):
               ('DefaultMapZoom', 'ZoomPercent'): (100, 400), ('CutscenePause', 'Enabled'): (0, 1),
               ('CutscenePause', 'Overlay'): (0, 1), ('VoiceVolume', 'Enabled'): (0, 1),
               ('VoiceVolume', 'GameplayPercent'): (0, 400), ('VoiceVolume', 'CutscenePercent'): (0, 1600), ('Compass', 'Enabled'): (0, 1),
-              ('Compass', 'FallbackRadiusMeters'): (50, 1000), ('Compass', 'MetricDistances'): (0, 1)}
+              ('Compass', 'RadarRestoreMode'): (-1, 2), ('Compass', 'FallbackRadiusMeters'): (50, 1000), ('Compass', 'MetricDistances'): (0, 1)}
     old = configparser.ConfigParser(interpolation=None, strict=False)
     try:
         old.read_string(previous.decode('utf-8-sig'))
@@ -343,6 +343,12 @@ def merge_preferences(previous, fresh):
                 saved[(section.lower(), key.lower())] = str(value)
         except (configparser.Error, ValueError):
             pass
+    # This internal journal must survive updater replacement of the INI. Keep
+    # malformed records fail-closed rather than silently treating them as empty.
+    if old.has_option('Compass', 'RadarRestoreMode'):
+        raw = old.get('Compass', 'RadarRestoreMode').strip()
+        if raw not in ('-1', '0', '1', '2'):
+            saved[('compass', 'radarrestoremode')] = 'invalid'
     lines, section = [], ''
     for line in fresh.decode('utf-8-sig').splitlines(keepends=True):
         match = re.match(r'\s*\[([^]]+)\]', line)

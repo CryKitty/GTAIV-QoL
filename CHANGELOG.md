@@ -1,3 +1,10 @@
+GTAIV-QoL beta — Compass HUD remembers and restores the game's Radar setting
+
+- Turning Compass HUD On now remembers the game's Radar mode and turns Radar Off. Turning Compass HUD Off restores that exact choice, including an intentional Off or Blips Only setting. It does not blindly force Radar On.
+- Remembers the saved choice across updates and interrupted sessions. Manual changes in Display → Radar are left alone until the next compass transition; the link is not reapplied every frame. The internal saved value is managed automatically and needs no file edits. Existing clean compass/ring suppression is unchanged.
+- Automatic logs pair compass setting events with native Radar modes before/after and report persistence/discovery failures. The b122 missing-map report was the game's Radar Off setting, confirmed when the user turned it On; this is a new convenience feature.
+- After approval/merge and successful main CI, update normally. Start with Display → Radar On and Compass HUD Off; in Pause → QoL toggle Compass HUD On/Off and check Radar switches Off then restores On with the complete vanilla map/ring. Repeat with Radar Off and Blips Only, change Radar manually while Compass On, and exit/relaunch with Compass On before disabling it. Check compass icons, mission/escape road lines and Map Autozoom while Radar is Off. No new control, manual file edits or release-version change. Deck acceptance remains outstanding.
+
 GTAIV-QoL beta — hide the separate native health and armour arc fills
 
 - Covers the health and armour arc fills that still drew at the minimap while Compass HUD was On. The previous fix hid two textured frames, but those frames are separate from the coloured fills. The native HUD coordinates stay untouched, and the game's message/lifetime work continues normally.

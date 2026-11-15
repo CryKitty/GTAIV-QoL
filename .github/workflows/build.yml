@@ -103,6 +103,17 @@ jobs:
           if errorlevel 1 exit /b 1
           build\primary-route-replan-tests.exe
           if errorlevel 1 exit /b 1
+      - name: Test native radar preference linking and crash recovery journal
+        shell: cmd
+        run: |
+          cl /nologo /std:c++17 /EHsc /W4 /WX /O2 /MT tests\radar_mode_link.cpp /Fe:build\radar-mode-link-tests.exe
+          if errorlevel 1 exit /b 1
+          build\radar-mode-link-tests.exe
+          if errorlevel 1 exit /b 1
+          cl /nologo /std:c++17 /EHsc /W4 /WX /O2 /MT tests\radar_mode_native.cpp build\hde32.obj /Fe:build\radar-mode-native-tests.exe
+          if errorlevel 1 exit /b 1
+          build\radar-mode-native-tests.exe
+          if errorlevel 1 exit /b 1
       - name: Test native health armour arcs without skipping parent lifecycle
         shell: cmd
         run: |
