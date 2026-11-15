@@ -13,6 +13,9 @@ class CompassHudRestore(unittest.TestCase):
         self.assertNotIn('radarfill::resolve', ring)
         self.assertIn('resolved{{frames[0][0],frames[1][0],0}}', ring)
         self.assertIn('return native;', layout)
+        self.assertIn('ring_.enable(frontend_,log,testImage)', layout)
+        self.assertIn('ring_.release()', layout)
+        self.assertIn('return ring_.selections()', layout)
         # Preserve the observer's native forwarding contract; no synthetic help
         # re-print/clear is a substitute for allowing native cleanup to run.
         observer = (ROOT / 'vendor/roadnav/src/phone_notifications.hpp').read_text()

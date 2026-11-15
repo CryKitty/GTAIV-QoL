@@ -1,3 +1,9 @@
+GTAIV-QoL beta — hide the native health/armour ring with Compass HUD
+
+- Restores the dedicated health/armour ring draw filters removed by the previous startup change. Radar visibility alone does not cover that ring. Both ring frames are handled from the first draw while Compass HUD is On; pause screens pass through, and Off immediately restores their native draw callbacks. Native HUD coordinates remain untouched.
+- Automatic logs now distinguish radar-query counts from real ring-frame calls and record the first suppressed front/back draws and restoration. Longer status records prevent the important counters from being cut off. The supplied b112 trace has later nonzero radar-query counts but zero hidden results; it does not prove those queries control the ring.
+- After approval/merge and successful main CI, update normally. Cold-load with Compass HUD On and check no native ring appears before pausing. In Pause → QoL toggle Compass HUD Off/On repeatedly, on foot and driving: the complete native HUD must restore on Off. Check help prompts and road guidance still work; exit normally for automatic ring-draw records. No file edits, new controls or release-version change. Deck acceptance remains outstanding.
+
 GTAIV-QoL beta — restore episode mission-contact icons in the compass
 
 - Recognises the game’s episode_blip textures as well as radar textures, so episode mission contacts use their real artwork/initials instead of a generic dot or dash. All 15 episode slots are supported, with the game’s own resource names when live table entries are unavailable. No letter is invented or drawn over the native icon.

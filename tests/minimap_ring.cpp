@@ -5,6 +5,9 @@
 #include <cstring>
 #include <cstdio>
 #include <thread>
+#include <string>
+static std::string trace;
+static void CaptureTrace(const char* text){trace+=text;trace+="\n";}
 #include "../vendor/roadnav/src/minimap_ring.hpp"
 int main(){
     auto* image=static_cast<unsigned char*>(VirtualAlloc(nullptr,0x10000,MEM_COMMIT|MEM_RESERVE,PAGE_EXECUTE_READWRITE));assert(image);
@@ -88,7 +91,7 @@ int main(){
     const auto meter=reinterpret_cast<Draw>(image+0x1080),border=reinterpret_cast<Draw>(image+0x10c0);
     const auto front=reinterpret_cast<Draw>(image+0x1100),back=reinterpret_cast<Draw>(image+0x1180);
     auto& meters=*reinterpret_cast<unsigned*>(image+0x3014);auto& borders=*reinterpret_cast<unsigned*>(image+0x3018);
-    MinimapRing mask;mask.enable(base+0x3300,nullptr,base);assert(mask.active());
+    MinimapRing mask;mask.enable(base+0x3300,CaptureTrace,base);assert(mask.active());
     front();back();assert(meters==0&&borders==0&&mask.hidden()==2);
     const auto nativeFill=reinterpret_cast<Draw>(image+0x1700),restoreState=reinterpret_cast<Draw>(image+0x1ec0);
     auto& fills=*reinterpret_cast<unsigned*>(image+0x3020);auto& restores=*reinterpret_cast<unsigned*>(image+0x3024);
@@ -101,9 +104,21 @@ int main(){
     image[0x3300]=0;front();nativeFill();assert(fills==3&&mask.fillHidden()==0);assert(meters==5&&mask.hidden()==3);
     std::thread worker([&](){meter();front();});worker.join();assert(meters==6&&mask.hidden()==4);
     mask.release();front();back();nativeFill();assert(fills==4);assert(meters==8&&borders==5&&!mask.active());
+    assert(trace.find("component=health-armour-front suppressed=1")!=std::string::npos);
+    assert(trace.find("component=health-armour-back suppressed=1")!=std::string::npos);
+    assert(trace.find("native-draw-restored=1")!=std::string::npos);
+    // First draw of each On cycle suppresses both health/armour frames; Off
+    // during the frontend restores the originals without another script tick.
+    for(unsigned cycle=0;cycle<3;++cycle){
+        mask.enable(base+0x3300,CaptureTrace,base);const auto beforeMeters=meters,beforeBorders=borders;
+        front();back();assert(meters==beforeMeters&&borders==beforeBorders);
+        image[0x3300]=1;front();back();assert(meters==beforeMeters+2&&borders==beforeBorders+2);
+        mask.release();image[0x3300]=0;front();back();assert(meters==beforeMeters+4&&borders==beforeBorders+4);
+    }
+    const auto afterCycles=meters;
     // A second queued function using the same sprite is ambiguous: don't hook.
     makeFrame(0x1380,0x3200);image[0x1400]=0x68;put(0x1401,address(0x1380));
-    MinimapRing ambiguous;ambiguous.enable(base+0x3300,nullptr,base);assert(!ambiguous.active());front();assert(meters==9);
+    MinimapRing ambiguous;ambiguous.enable(base+0x3300,nullptr,base);assert(!ambiguous.active());front();assert(meters==afterCycles+1);
     // No queued reference: a nearby, decodable ring-use function is insufficient.
     std::memset(image+0x1400,0xcc,5);std::memset(image+0x1200,0xcc,10);std::memset(image+0x1600,0xcc,0x100);
     MinimapRing unqueued;unqueued.enable(base+0x3300,nullptr,base);assert(!unqueued.active());
