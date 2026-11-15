@@ -23,16 +23,23 @@ class MinimapRing {
     std::array<void*,3> targets_{};
     bool attempted_=false,installed_=false;
     std::atomic<unsigned> calls_{0},hidden_{0},fillCalls_{0},fillHidden_{0};
-    const char* status_="not initialized";
+    const char* status_="not initialized";void(*log_)(const char*)=nullptr;
+    std::atomic<unsigned> frontCalls_{0},backCalls_{0},frontHidden_{0},backHidden_{0},traceStates_{0};
     template<class T> static bool read(std::uintptr_t p,T& value){SIZE_T n=0;return p>=0x10000&&ReadProcessMemory(GetCurrentProcess(),reinterpret_cast<void*>(p),&value,sizeof(value),&n)&&n==sizeof(value);}
     static bool omit(unsigned kind){
         auto* owner=owner_.load(std::memory_order_acquire);unsigned char frontend=1;
         if(!owner)return false;
         owner->calls_.fetch_add(1,std::memory_order_relaxed);
         if(kind==2)owner->fillCalls_.fetch_add(1,std::memory_order_relaxed);
-        if(!read(owner->frontend_,frontend)||frontend)return false;
-        owner->hidden_.fetch_add(1,std::memory_order_relaxed);
-        if(kind==2)owner->fillHidden_.fetch_add(1,std::memory_order_relaxed);return true;
+        const bool suppress=read(owner->frontend_,frontend)&&!frontend;
+        if(kind==0){++owner->frontCalls_;if(suppress)++owner->frontHidden_;}
+        if(kind==1){++owner->backCalls_;if(suppress)++owner->backHidden_;}
+        if(suppress){owner->hidden_.fetch_add(1,std::memory_order_relaxed);if(kind==2)++owner->fillHidden_;}
+        const unsigned bit=1u<<(kind*2+(suppress?1:0));
+        if(!(owner->traceStates_.fetch_or(bit)&bit)&&owner->log_){char text[320];
+            std::snprintf(text,sizeof(text),"Compass ring draw: t=%lu component=%s suppressed=%u frontend=%u front-calls=%u front-hidden=%u back-calls=%u back-hidden=%u geometry-writes=0",GetTickCount(),kind==0?"health-armour-front":"health-armour-back",suppress?1u:0u,static_cast<unsigned>(frontend),owner->frontCalls_.load(),owner->frontHidden_.load(),owner->backCalls_.load(),owner->backHidden_.load());owner->log_(text);
+        }
+        return suppress;
     }
     static void __cdecl front(){if(!omit(0))original_[0]();}
     static void __cdecl back(){if(!omit(1))original_[1]();}
@@ -91,12 +98,13 @@ public:
     unsigned fillHidden()const{return fillHidden_.load(std::memory_order_relaxed);}
     unsigned fillCalls()const{return fillCalls_.load(std::memory_order_relaxed);}
     void release(){
+        if(installed_&&log_){char text[220];std::snprintf(text,sizeof(text),"Compass ring release: t=%lu front-calls=%u front-hidden=%u back-calls=%u back-hidden=%u native-draw-restored=1 geometry-writes=0",GetTickCount(),frontCalls_.load(),frontHidden_.load(),backCalls_.load(),backHidden_.load());log_(text);}
         for(auto* target:targets_)if(target){MH_DisableHook(target);MH_RemoveHook(target);}
         targets_={};owner_.store(nullptr,std::memory_order_release);
         installed_=false;attempted_=false;status_="released";
     }
     void enable(std::uintptr_t frontend,void(*log)(const char*),std::uintptr_t testImage=0){
-        if(attempted_)return;attempted_=true;frontend_=frontend;
+        if(attempted_)return;attempted_=true;frontend_=frontend;log_=log;traceStates_=0;
         const auto base=testImage?testImage:reinterpret_cast<std::uintptr_t>(GetModuleHandleA(nullptr));
         IMAGE_DOS_HEADER dos{};IMAGE_NT_HEADERS32 nt{};
         if(!frontend_||!read(base,dos)||dos.e_magic!=IMAGE_DOS_SIGNATURE||dos.e_lfanew<=0||dos.e_lfanew>4096||!read(base+dos.e_lfanew,nt)||nt.Signature!=IMAGE_NT_SIGNATURE||nt.FileHeader.NumberOfSections>32){status_="image unavailable";return;}
@@ -149,7 +157,7 @@ public:
             if(MH_CreateHook(target,detours[n],reinterpret_cast<void**>(&original_[n]))!=MH_OK){release();status_="frame hook unavailable";return;}targets_[n]=target;
         }
         for(auto* target:targets_)if(target&&MH_EnableHook(target)!=MH_OK){release();status_="frame hook unavailable";return;}
-        installed_=true;status_="radar borders only; native content callbacks preserved";
+        installed_=true;status_="dedicated health/armour frame front+back; native content preserved";
         if(log)log("Compass minimap: only verified border callbacks filtered; native fill/content and lifetime callbacks never suppressed");
     }
 };

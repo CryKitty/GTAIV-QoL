@@ -1,3 +1,7 @@
+> b112 follow-up restores the independent ring frame draw hooks removed here.
+> Zero geometry writes remain. See B112_RING_DRAW_REGRESSION.md: the radar-query
+> filter alone does not cover the native health/armour ring.
+
 # First-load compass presentation
 
 The supplied b99 arrow slice orders usable-world runtime start, renderer attach,

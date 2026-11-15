@@ -1,5 +1,6 @@
 #pragma once
 #include "../../../src/minimap_layout.hpp"
+#include "minimap_ring.hpp"
 #include "../../minhook/include/MinHook.h"
 #include "../../minhook/src/hde/hde32.h"
 #include <array>
@@ -21,6 +22,7 @@ class MinimapLayout {
     bool installed_=false,attempted_=false;std::atomic<bool> enabled_{true},queryLogged_{false};
     DWORD attemptedAt_=0;
     mutable std::recursive_mutex mutex_;
+    MinimapRing ring_;
     const char* status_="not initialized";void(*log_)(const char*)=nullptr;
     std::atomic<unsigned> queries_{0},hidden_{0};
     template<class T> static bool read(std::uintptr_t address,T& value){SIZE_T count=0;return address>=0x10000&&ReadProcessMemory(GetCurrentProcess(),reinterpret_cast<const void*>(address),&value,sizeof(value),&count)&&count==sizeof(value);}
@@ -39,13 +41,14 @@ public:
     std::uintptr_t frontendAddress()const{return frontend_;}
     unsigned count()const{return queries_.load();}
     const char* status()const{std::lock_guard<std::recursive_mutex> guard(mutex_);return status_;}
-    const char* ringStatus()const{return "native content/borders untouched";}
-    unsigned ringHidden()const{return hidden_.load();}
-    unsigned ringSelections()const{return queries_.load();}
+    const char* ringStatus()const{std::lock_guard<std::recursive_mutex> guard(mutex_);return ring_.status();}
+    unsigned ringHidden()const{return ring_.hidden();}
+    unsigned ringSelections()const{return ring_.selections();}
     unsigned fillCalls()const{return 0;}
     unsigned fillHidden()const{return 0;}
     void release(){
         std::lock_guard<std::recursive_mutex> guard(mutex_);
+        ring_.release();
         owner_.store(nullptr,std::memory_order_release);
         if(installed_){MH_DisableHook(reinterpret_cast<void*>(target_));MH_RemoveHook(reinterpret_cast<void*>(target_));}
         installed_=false;attempted_=false;queryLogged_=false;status_="released; native geometry unchanged";
@@ -59,7 +62,7 @@ public:
     void enable(void(*log)(const char*),std::uintptr_t testImage=0,std::uintptr_t testWanted=0){
         std::lock_guard<std::recursive_mutex> guard(mutex_);
         if(!enabled_)return;
-        if(installed_)return;
+        if(installed_){ring_.enable(frontend_,log,testImage);return;}
         const auto now=GetTickCount();if(attempted_&&now-attemptedAt_<1000)return;attempted_=true;attemptedAt_=now;log_=log;
         const auto base=testImage?testImage:reinterpret_cast<std::uintptr_t>(GetModuleHandleA(nullptr));
         IMAGE_DOS_HEADER dos{};IMAGE_NT_HEADERS32 nt{};
@@ -109,7 +112,8 @@ public:
         if(MH_CreateHook(reinterpret_cast<void*>(target_),reinterpret_cast<void*>(&displaying),reinterpret_cast<void**>(&original_))!=MH_OK){status_="visibility hook unavailable; native radar retained";return;}
         owner_.store(this,std::memory_order_release);
         if(MH_EnableHook(reinterpret_cast<void*>(target_))!=MH_OK){owner_=nullptr;MH_RemoveHook(reinterpret_cast<void*>(target_));status_="visibility hook unavailable; native radar retained";return;}
-        installed_=true;status_="mapped radar visibility; native geometry unchanged";
+        installed_=true;status_="mapped radar visibility plus dedicated health/armour frame draws; geometry unchanged";
+        ring_.enable(frontend_,log,testImage);
         if(log){char text[180];std::snprintf(text,sizeof(text),"Compass presentation: t=%lu phase=mask-ready geometry-writes=0 mapped-component=%u source=usable-world",GetTickCount(),component()?1u:0u);log(text);}
     }
 };
