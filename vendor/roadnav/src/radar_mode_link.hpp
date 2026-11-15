@@ -10,9 +10,14 @@ namespace radarmode {
 // uint32 exactly 16 bytes after HudOn. No captured VA is used.
 inline std::uintptr_t resolve(const std::vector<radarfill::Section>& sections){
     std::vector<std::uintptr_t> modes,visited;
-    for(const auto& s:sections)if(s.executable)for(std::size_t at=2;at+16<s.bytes.size();++at){
+    for(const auto& s:sections)if(s.executable)for(std::size_t at=2;at+24<s.bytes.size();++at){
         const auto* p=s.bytes.data()+at;
-        if(p[0]!=0x83||p[1]!=0x3d||p[6]!=0||p[7]!=0x0f||p[8]!=0x85||p[13]!=0x83||p[14]!=0x3d)continue;
+        if(p[0]!=0x83||p[1]!=0x3d||p[6]!=0)continue;
+        // Captured CE uses short JNE; accept an equivalent near JNE too.
+        const unsigned next=p[7]==0x75?9u:p[7]==0x0f&&p[8]==0x85?13u:0u;
+        if(!next||p[next]!=0x83||p[next+1]!=0x3d)continue;
+        std::uint32_t first=0,second=0;std::memcpy(&first,p+2,4);std::memcpy(&second,p+next+2,4);
+        if(first>0xffffffe0u||second!=first+16)continue;
         const auto lower=at>4096?at-4096:2;
         for(auto start=at;start>=lower;--start){
             if(((s.base+start)&15)||s.bytes[start-1]!=0xcc||s.bytes[start-2]!=0xcc)continue;

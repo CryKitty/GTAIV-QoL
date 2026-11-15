@@ -17,8 +17,9 @@ int main(){
     auto& native=*reinterpret_cast<unsigned*>(image+0x3020);
     unsigned at=0x1100;
     const auto cmp=[&](unsigned address,unsigned value){image[at++]=0x83;image[at++]=0x3d;const auto p=static_cast<unsigned>(base+address);std::memcpy(image+at,&p,4);at+=4;image[at++]=static_cast<unsigned char>(value);};
-    const auto jump=[&](){image[at++]=0x0f;image[at++]=0x85;std::memset(image+at,0,4);at+=4;};
-    for(unsigned i=0;i<2;++i){cmp(0x3010,0);jump();cmp(0x3020,0);}
+    const auto jump=[&](bool nearJump){if(nearJump){image[at++]=0x0f;image[at++]=0x85;std::memset(image+at,0,4);at+=4;}else{image[at++]=0x75;image[at++]=0;}};
+    // Captured CE uses the short form; also exercise the near encoding.
+    for(unsigned i=0;i<2;++i){cmp(0x3010,0);jump(i!=0);cmp(0x3020,0);}
     cmp(0x3020,0);cmp(0x3020,2);cmp(0x3020,0);image[at]=0xc3;
     const auto sections=[&](){return std::vector<radarfill::Section>{{base+0x1000,std::vector<unsigned char>(image+0x1000,image+0x2000),true}};};
     assert(radarmode::resolve(sections())==base+0x3020);assert(radarmode::discover(base)==base+0x3020);
