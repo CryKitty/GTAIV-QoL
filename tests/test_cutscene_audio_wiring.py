@@ -13,7 +13,7 @@ class CutsceneAudioWiring(unittest.TestCase):
         self.assertIn('"restored"',tick)
         self.assertIn('ds-headroom-limited=%u',tick)
         stop=source.split('void OnKill() override{',1)[1].split('void RunScript()',1)[0]
-        self.assertIn('cutsceneoutput::Apply(1)',stop)
+        self.assertIn('cutsceneoutput::Apply(1,cutsceneoutput::sliderGain.load())',stop)
         self.assertIn('event=restored reason=script-stop',stop)
         output=(ROOT/'src/cutscene_output.hpp').read_text()
         self.assertNotIn('if(previous==multiplier)return',output)
