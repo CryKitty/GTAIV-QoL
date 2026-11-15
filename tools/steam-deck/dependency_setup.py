@@ -975,6 +975,14 @@ class TkUI:
         return Path(path)
 
 
+COMPANION_NOTE = (
+    'Recommended companion mod (optional, not required):\n'
+    'Liberty Loadout – Weapon and Radio Wheels by Delusional94\n'
+    'https://www.nexusmods.com/gta4/mods/1226/\n'
+    'QoL installs and updates without it. This installer does not download it.'
+)
+
+
 REQUIREMENTS = {
     'game': 'Game update', 'loader': 'ASI loader', 'hook': 'Native ScriptHook',
     'ce': 'Complete Edition patch', 'runtime': 'Microsoft runtime',
@@ -1011,7 +1019,7 @@ def wizard(ui):
         missing=next((key for key,(ok,_) in checks.items() if not ok),None)
         if missing is None:
             summary='\n'.join('✓ '+REQUIREMENTS[key]+' ready' for key in checks)
-            ui.choice('Ready to install',summary+'\n\nEverything is ready. Install the bundle and its updater.',[('install','Install GTA IV QoL')])
+            ui.choice('Ready to install',summary+'\n\n'+COMPANION_NOTE+'\n\nEverything is ready. Install the bundle and its updater.',[('install','Install GTA IV QoL')])
             try:install_mod(game,b'',prefix)
             except (OSError,SetupError) as exc:
                 ui.choice('Installation paused',str(exc),[('retry','Try again')]);continue
