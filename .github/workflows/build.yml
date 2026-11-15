@@ -15,6 +15,10 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - name: Guard installer-only commits from publishing a new mod payload
+        id: payload
+        shell: pwsh
+        run: python tools/windows/payload_policy.py
       - name: Validate release tag against canonical branch
         if: startsWith(github.ref, 'refs/tags/')
         shell: pwsh
@@ -381,10 +385,12 @@ jobs:
           if ($LASTEXITCODE) { throw 'Nexus archive packaging failed' }
           Copy-Item tools/steam-deck/dist/Install-QoL-Pause-Test.desktop package/
       - uses: actions/upload-artifact@v4
+        if: steps.payload.outputs.publish == 'true'
         with:
           name: GTAIV-QoL-native-pause-test-x86
           path: package/
       - uses: actions/upload-artifact@v4
+        if: steps.payload.outputs.publish == 'true'
         with:
           name: GTAIV-QoL-Deck-Log-Helper
           path: |
@@ -392,26 +398,31 @@ jobs:
             tools/steam-deck/dist/GTAIV-QoL-Deck-Log-Helper.zip
 
       - uses: actions/upload-artifact@v4
+        if: steps.payload.outputs.publish == 'true'
         with:
           name: GTAIV-QoL-native-pause-test-Deck-installer
           path: |
             tools/steam-deck/dist/Install-QoL-Pause-Test.desktop
             tools/steam-deck/dist/START-HERE.txt
       - uses: actions/upload-artifact@v4
+        if: steps.payload.outputs.publish == 'true'
         with:
           name: GTAIV-QoL-Nexus-Deck
           path: build/GTAIV-QoL-*-Deck.zip
           if-no-files-found: error
       - uses: actions/upload-artifact@v4
+        if: steps.payload.outputs.publish == 'true'
         with:
           name: GTAIV-QoL-public-update
           path: build/GTAIV-QoL-update.zip
           if-no-files-found: error
       - uses: actions/upload-artifact@v4
+        if: steps.payload.outputs.publish == 'true'
         with:
           name: GTAIV-QoL-update-payload
           path: build/update-payload/
       - uses: actions/upload-artifact@v4
+        if: steps.payload.outputs.publish == 'true'
         with:
           name: GTAIV-QoL-updater-Deck
           path: |
@@ -419,12 +430,14 @@ jobs:
             tools/steam-deck/dist/UPDATER-START-HERE.txt
 
       - uses: actions/upload-artifact@v4
+        if: steps.payload.outputs.publish == 'true'
         with:
           name: GTAIV-QoL-overlay-preview
           path: build/pause-overlay-preview.bmp
           if-no-files-found: ignore
 
       - uses: actions/upload-artifact@v4
+        if: steps.payload.outputs.publish == 'true'
         with:
           name: GTAIV-QoL-guided-installer-Deck
           path: |

@@ -66,4 +66,29 @@ def package(root):
     print('Nexus ZIP read-back verified: seven components, both ASIs and matching payload/file hashes; '+version+' @ '+manifest['sha'])
     print(out);return out
 
+
+
+def package_windows(root, launcher, payload):
+    """Add a frozen Windows front-end around an unchanged verified payload."""
+    root=Path(root);launcher=Path(launcher);payload=Path(payload)
+    data=payload.read_bytes()
+    updater=load('windows_payload_verifier',root/'tools/steam-deck/qol-updater.py')
+    with zipfile.ZipFile(io.BytesIO(data)) as z:manifest=json.loads(z.read('manifest.json'))
+    candidate={'channel':'bundle','sha':manifest['sha'],'branch':manifest['branch'],'run_id':manifest['run_id'],'digest':hashlib.sha256(data).hexdigest()}
+    updater.validate_archive(data,candidate)
+    version=(root/'VERSION').read_text().strip()
+    if manifest['release_version']!=version:raise RuntimeError('Windows bundle version mismatch.')
+    if not launcher.is_file() or launcher.read_bytes()[:2]!=b'MZ':raise RuntimeError('Frozen Windows launcher is missing.')
+    entries={'Install-GTAIV-QoL.exe':launcher.read_bytes(),'GTAIV-QoL-update.zip':data,
+             'START-HERE.txt':('GTAIV-QoL '+version+' — Windows 10/11 installer\n\nExtract the entire ZIP into one folder. Close GTA IV, then run Install-GTAIV-QoL.exe. Keep GTAIV-QoL-update.zip beside it. No Python installation is needed. The guide finds Steam libraries or lets you select GTAIV.exe, checks one requirement at a time and installs with backups. Only a verified dependency installer may request elevation. Your game folder must be writable. Use the installed Update GTA IV QoL Desktop shortcut for later updates; installer re-runs hand off to the same updater. No file placement or INI editing is required. Windows gameplay acceptance remains outstanding.\n').encode()}
+    for name,source in {'README.md':'README.md','CHANGELOG.md':'CHANGELOG.md','LICENSE':'LICENSE','BUNDLE-INVENTORY.md':'docs/BUNDLE_INVENTORY.md','KNOWN-ISSUES.md':'docs/KNOWN_ISSUES.md'}.items():entries[name]=(root/source).read_bytes()
+    entries['WINDOWS-RUNTIME-LICENSES.txt']=launcher.with_name('WINDOWS-RUNTIME-LICENSES.txt').read_bytes()
+    entries['release-info.json']=json.dumps(dict(version=version,platform='windows',commit=manifest['sha'],run_id=manifest['run_id'],payload_sha256=candidate['digest'],components=COMPONENTS),indent=2).encode()
+    out=root/'build'/('GTAIV-QoL-'+version+'-Windows.zip');out.parent.mkdir(exist_ok=True)
+    with zipfile.ZipFile(out,'w',zipfile.ZIP_DEFLATED) as z:
+        for name,raw in entries.items():z.writestr(name,raw)
+    with zipfile.ZipFile(out) as z:
+        if z.testzip() or z.read('GTAIV-QoL-update.zip')!=data:raise RuntimeError('Windows ZIP readback failed.')
+    return out
+
 if __name__=='__main__':package(Path(__file__).resolve().parents[2])

@@ -247,7 +247,7 @@ def check_runtime(game, prefix=None):
         for folder in (game, system):
             try:
                 image = PE32(find_file(folder, name))
-                found = image.is_dll and (name=='ucrtbase.dll' or b'wine builtin dll' not in image.data.lower())
+                found = image.is_dll and (sys.platform=='win32' or name=='ucrtbase.dll' or b'wine builtin dll' not in image.data.lower())
                 if found:
                     break
             except (OSError, SetupError):

@@ -142,3 +142,9 @@ and one installed updater run completes (no file copying/editing):
 
 No release or merge is performed as part of this change. These are verification
 steps, not a claim that the remote Deck/service has been exercised here.
+
+## Windows front-end and handoff
+
+The Windows ZIP bundles Python/Tk in Install-GTAIV-QoL.exe; there is no user Python dependency. Its per-user state and frozen Update-GTAIV-QoL.exe live in %LOCALAPPDATA%/GTAIV-QoL. The Desktop .lnk points to that executable with --update, not a .py file. An HKCU Run entry starts the windowless request worker at logon; only the existing pause-menu opt-in/request files cause checks, and staged updates wait for GTAIV.exe to exit. A second watcher exits under the Windows file lock. No systemd, Wine registry or Proton/prefix discovery is used. No upload credentials are created.
+
+The installer and updater execute the same payload validation and shared install_bundle transaction (backups, duplicate cleanup, retained settings and rollback). The frozen front-end selects the Windows adapter instead of executing the payload's Linux helper main/service path. Payload files and manifest are byte-identical to the published 1.0.0 update. The Windows asset is added separately after merge; installer-only main CI builds suppress all mod artifact publication, so the dev selector skips them and existing Deck/public users stay on their prior payload. Future actual component changes still publish normal mod artifacts.

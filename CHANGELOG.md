@@ -1,3 +1,10 @@
+GTAIV-QoL 1.0.0 — Windows guided installer preparation
+
+- Adds a Windows 10/11 guided installer with its own Python/Tk runtime: extract the whole Windows ZIP and run Install-GTAIV-QoL.exe. No Python installation, manual file placement, INI edits or Proton setup is needed. The same author-hosted dependency checks/imports and transactional install engine are reused; only dependency installers may request elevation. The game folder must be writable.
+- Installs a real Update GTA IV QoL Desktop shortcut and windowless per-user request worker, retaining settings, backups and same-version installer handoff. Native runtime checks use Windows files; no Linux uploader credentials are created.
+- VERSION stays 1.0.0 and the Windows ZIP carries the byte-identical released payload/manifest. Installer-only main builds do not publish replacement mod artifacts, preventing a spurious Deck update. No component, setting or pause-menu UI changes. Windows compilation/loader/installer CI is not a Windows gameplay claim.
+- After approval/merge, the Windows ZIP can be attached as an extra asset on the existing 1.0.0 release; no retag or release replacement. Acceptance still required on a stock Windows PC with no Python: extract/run, follow each requirement, install, launch/check all seven components through the pause menu, use the updater shortcut and rerun the installer to verify handoff. No release asset is uploaded by this PR.
+
 GTAIV-QoL 1.0.0 — first official release preparation
 
 - Prepares the first official 1.0 release of GTAIV-QoL, with the guided installer, integrated updater and pause-menu settings. Existing known issues and honest Deck/Windows testing limits remain; official release status does not claim that every feature or mod combination has been tested.
