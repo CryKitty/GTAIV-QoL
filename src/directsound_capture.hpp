@@ -80,7 +80,7 @@ VolumeEvidence ApplyVolume(){
     ReleaseSRWLockExclusive(&operation);
     static float reportedGain=1;static DWORD reportedAt=0;const auto now=GetTickCount();
     if(gain!=reportedGain||(gain!=1&&now-reportedAt>=5000)){
-        reportedGain=gain;reportedAt=now;char line[340];sprintf_s(line,"Cutscene audio DirectSound: gain=%.2f buffers=%u pcm-sources=%u readback-ok=%u failed=%u headroom-limited=%u get-hr=%08lX set-attempted=%u set-hr=%08lX base-db=%ld target-db=%ld actual-db=%ld",gain,proof.buffers,proof.pcmSources,proof.verified,proof.failed,proof.limited,static_cast<unsigned long>(proof.readHr),proof.setAttempted?1u:0u,static_cast<unsigned long>(proof.writeHr),proof.base,proof.target,proof.actual);Log(line);
+        reportedGain=gain;reportedAt=now;char line[340];sprintf_s(line,"Cutscene audio DirectSound: requested-gain=%.2f applied-gain=%.2f buffers=%u pcm-sources=%u readback-ok=%u failed=%u headroom-limited=%u get-hr=%08lX set-attempted=%u set-hr=%08lX base-db=%ld target-db=%ld actual-db=%ld",cutsceneoutput::sliderGain.load(),gain,proof.buffers,proof.pcmSources,proof.verified,proof.failed,proof.limited,static_cast<unsigned long>(proof.readHr),proof.setAttempted?1u:0u,static_cast<unsigned long>(proof.writeHr),proof.base,proof.target,proof.actual);Log(line);
     }
     return proof;
 }

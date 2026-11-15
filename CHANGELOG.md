@@ -1,3 +1,9 @@
+GTAIV-QoL beta — gentler cutscene audio boost
+
+- Cutscene volume boost is now half as strong at the same slider setting: 100% stays normal, 200% becomes 1.5×, and 1580% becomes about 8.4×. The saved slider value is preserved. The adjustment moves the requested gain halfway towards normal volume, including settings below 100%.
+- Keeps the working DirectSound source-sample path and exact pristine-sample restoration at scene end, skip or interruption. Automatic records show both the requested slider gain and the gain actually applied, alongside the measured source levels. The user has confirmed this source path is audible on the Deck.
+- After approval/merge and successful main CI, update normally. In Pause → QoL compare Cutscene Audio at 100%, 200% and the existing setting; the boost should be gentler. Change it mid-scene, finish/skip/interrupt, and check gameplay returns to its original level. Exit normally for automatic requested/applied records. No file edits, new control or release-version change.
+
 GTAIV-QoL beta — hide the native health/armour ring with Compass HUD
 
 - Restores the dedicated health/armour ring draw filters removed by the previous startup change. Radar visibility alone does not cover that ring. Both ring frames are handled from the first draw while Compass HUD is On; pause screens pass through, and Off immediately restores their native draw callbacks. Native HUD coordinates remain untouched.

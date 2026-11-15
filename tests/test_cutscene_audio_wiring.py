@@ -6,7 +6,8 @@ class CutsceneAudioWiring(unittest.TestCase):
     def test_runtime_reconciles_and_reports_scene_edges(self):
         source=(ROOT/'src/cutscene_pause.cpp').read_text()
         tick=source.split('void RunTick() override{',1)[1]
-        self.assertIn('const auto proof=cutsceneoutput::Apply(multiplier)',tick)
+        self.assertIn('cutsceneoutput::Apply(multiplier,cutscenemix::requested(',tick)
+        self.assertIn('requested-gain=%.2f applied-gain=%.2f',tick)
         self.assertIn('const auto ds=directaudio::ApplyVolume()',tick)
         self.assertIn('"engaged"',tick)
         self.assertIn('"restored"',tick)

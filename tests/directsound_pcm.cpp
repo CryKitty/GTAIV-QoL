@@ -42,6 +42,12 @@ int main(){
     cutsceneoutput::Apply(2);directaudio::ApplyVolume();assert(sound.data[0]==6000);
     rejectLock=true;cutsceneoutput::Apply(1);auto failed=directaudio::ApplyVolume();assert(failed.failed==1&&!directaudio::pcm[0].readback&&sound.data[0]==6000);
     rejectLock=false;directaudio::pcm[0].retried=GetTickCount()-500;auto retried=directaudio::ApplyVolume();assert(retried.verified==1&&sound.data[0]==3000);
+    const auto pristine=sound.data[0];
+    cutsceneoutput::Apply(cutscenemix::gain(true,true,200),cutscenemix::requested(200));directaudio::ApplyVolume();
+    assert(cutsceneoutput::sliderGain.load()==2&&cutsceneoutput::gain.load()==1.5f&&sound.data[0]==4500);
+    cutsceneoutput::Apply(1);directaudio::ApplyVolume();assert(sound.data[0]==pristine);
+    cutsceneoutput::Apply(cutscenemix::gain(true,true,1580),cutscenemix::requested(1580));directaudio::ApplyVolume();assert(sound.data[0]==25200);
+    cutsceneoutput::Apply(1);directaudio::ApplyVolume();assert(sound.data[0]==pristine);
     LONG volume=123;assert(directaudio::GuardGetVolume(&sound,&volume)==DSERR_CONTROLUNAVAIL&&volume==123);
     std::puts("PCM source: measured 2x without volume controls, streaming without stacking, exact restore after clipping and repeat scenes passed");
 }

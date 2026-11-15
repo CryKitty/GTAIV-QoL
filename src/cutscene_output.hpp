@@ -2,7 +2,7 @@
 #include <atomic>
 #include "cutscene_mix.hpp"
 namespace cutsceneoutput {
-std::atomic<float> gain{1};
+std::atomic<float> gain{1},sliderGain{1};
 using Set=HRESULT(WINAPI*)(void*,float,UINT32);
 using Get=void(WINAPI*)(void*,float*);
 using Destroy=void(WINAPI*)(void*);
@@ -55,7 +55,8 @@ void Capture(void* object,bool modern){
     ReleaseSRWLockExclusive(&lock);
 }
 struct Evidence {unsigned outputs=0,verified=0,failed=0,rebased=0;float base=0,before=0,target=0,after=0;};
-Evidence Apply(float multiplier){
+Evidence Apply(float multiplier,float requested=-1){
+    sliderGain.store(requested>=0?requested:multiplier);
     multiplier=std::isfinite(multiplier)?std::clamp(multiplier,0.0f,16.0f):1.0f;
     const float previous=gain.exchange(multiplier);Evidence evidence;
     AcquireSRWLockExclusive(&lock);
@@ -74,7 +75,7 @@ Evidence Apply(float multiplier){
     ReleaseSRWLockExclusive(&lock);
     static DWORD reported=0;const auto now=GetTickCount();
     if(previous!=multiplier||(multiplier!=1&&now-reported>=5000)){
-        reported=now;char message[300];sprintf_s(message,"Cutscene mastering property-only (not audibility proof): requested-gain=%.2f outputs=%u signal-verified=%u failed=%u external-writes=%u base=%.5f raw-before=%.5f target=%.5f raw-after=%.5f",multiplier,evidence.outputs,evidence.verified,evidence.failed,evidence.rebased,evidence.base,evidence.before,evidence.target,evidence.after);Log(message);
+        reported=now;char message[384];sprintf_s(message,"Cutscene mastering property-only (not audibility proof): requested-gain=%.2f applied-gain=%.2f outputs=%u signal-verified=%u failed=%u external-writes=%u base=%.5f raw-before=%.5f target=%.5f raw-after=%.5f",sliderGain.load(),multiplier,evidence.outputs,evidence.verified,evidence.failed,evidence.rebased,evidence.base,evidence.before,evidence.target,evidence.after);Log(message);
     }
     return evidence;
 }

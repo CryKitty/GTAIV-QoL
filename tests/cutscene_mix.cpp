@@ -7,12 +7,16 @@ int main(){
     for(unsigned state:{0u,1u,7u,10u,0xffffffffu})assert(!active(true,state,true,false));
     // Complete / skip / unload / failed state read all restore unity; a new
     // scene starts from unity instead of multiplying the last scene's gain.
-    for(bool scene:{true,false,true,false})assert(cutscenemix::gain(scene,true,200)==(scene?2.0f:1.0f));
-    assert(cutscenemix::gain(true,true,1600)==16);
+    for(bool scene:{true,false,true,false})assert(cutscenemix::gain(scene,true,200)==(scene?1.5f:1.0f));
+    assert(cutscenemix::gain(true,true,100)==1);
+    assert(cutscenemix::gain(true,true,200)==1.5f);
+    assert(std::fabs(cutscenemix::gain(true,true,1580)-8.4f)<.00001f);
+    assert(cutscenemix::requested(1580)==15.8f);
+    assert(cutscenemix::gain(true,true,1600)==8.5f);
     assert(cutscenemix::gain(false,true,800)==1);
     assert(cutscenemix::gain(true,false,0)==1);
-    assert(cutscenemix::gain(true,true,50)==.5f);
-    assert(cutscenemix::gain(true,true,0)==0);
+    assert(cutscenemix::gain(true,true,50)==.75f);
+    assert(cutscenemix::gain(true,true,0)==.5f);
     assert(cutscenemix::decibels(-1000,1)==-1000);
     assert(cutscenemix::decibels(-1000,0)==-10000);
     assert(cutscenemix::decibels(-1000,.5f)<-1500);
