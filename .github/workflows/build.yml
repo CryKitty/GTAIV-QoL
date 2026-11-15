@@ -229,6 +229,17 @@ jobs:
           if errorlevel 1 exit /b 1
           build\audio-engine-tests.exe
           if errorlevel 1 exit /b 1
+      - name: Test measured DirectSound PCM gain without volume controls
+        shell: cmd
+        run: |
+          cl /nologo /std:c++17 /EHsc /W4 /WX /O2 /MT tests\directsound_pcm.cpp build\buffer.obj build\hook.obj build\trampoline.obj build\hde32.obj dxguid.lib /Fe:build\pcm-source-tests.exe
+          if errorlevel 1 exit /b 1
+          build\pcm-source-tests.exe
+          if errorlevel 1 exit /b 1
+          cl /nologo /std:c++17 /EHsc /W4 /WX /O2 /MT tests\pcm_gain.cpp /Fe:build\pcm-gain-tests.exe
+          if errorlevel 1 exit /b 1
+          build\pcm-gain-tests.exe
+          if errorlevel 1 exit /b 1
       - name: Test DirectSound cursor-preserving pause and playback guards
         shell: cmd
         run: |

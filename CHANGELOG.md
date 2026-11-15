@@ -1,3 +1,9 @@
+GTAIV-QoL beta — measured cutscene source audio instead of an unproven volume flag
+
+- Cutscene Audio now scales supported DirectSound source samples, bypassing unavailable volume controls and their ceiling. Original samples are kept separately so finishing, skipping or interrupting a scene restores them exactly, including after clipping; repeated scenes never multiply a previous boost again. The unproven mastering-output boost is removed.
+- Automatic session logs report actual source peak/RMS before and after, playback/cursor activity, clipping and restoration. They also record DirectSound capability/format and exact error codes. A volume-property read-back alone is no longer called audible verification. 100% means original level, 200% twice the amplitude, and 1580% 15.8 times; high settings can clip.
+- This is a source-level candidate pending Deck acceptance: b99 lacks the samples/routing evidence needed to prove which backend carried its sound. Unsupported formats or a scene using only an uncaptured XAudio source are reported, not claimed fixed. After approval/merge and successful main CI, use the normal updater and compare the same cutscene at 100%/200% via Pause → QoL → Cutscene Audio. Change it mid-scene, finish/skip/interrupt and test back-to-back scenes; gameplay volume must restore. Exit normally for automatic measured-source logs. No file edits, new controls or release-version change.
+
 GTAIV-QoL beta — clean compass presentation from world load
 
 - Removes the off-screen coordinate mask that could leave a broken radar visible until the first pause cycle. The compass now hides only the mapped radar display during gameplay, keeping native HUD coordinates, opacity and content work intact. Pause maps and other HUD components keep their normal visibility; Compass Off removes the filter immediately.

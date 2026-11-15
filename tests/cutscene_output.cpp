@@ -17,21 +17,12 @@ static void WINAPI Destroy(void*){destroyed=true;}
 int main(){
     void* table[19]{};table[12]=reinterpret_cast<void*>(&Set);table[13]=reinterpret_cast<void*>(&Get);table[18]=reinterpret_cast<void*>(&Destroy);
     struct Fake {void** table;} voice{table};
-    cutsceneoutput::Capture(&voice,false);cutsceneoutput::Apply(.5f);assert(std::fabs(level-.4f)<.001f);
-    cutsceneoutput::SetLevel(&voice,.6f,0);assert(std::fabs(level-.3f)<.001f);
-    float requested=0;cutsceneoutput::GetLevel(&voice,&requested);assert(std::fabs(requested-.6f)<.001f);
-    cutsceneoutput::Apply(1);assert(std::fabs(level-.6f)<.001f);
-    // Full positive gain, per-frame game overwrites via a cached original
-    // setter, failed writes, deferred operations and exact non-stacking restore.
-    cutsceneoutput::Apply(2);assert(std::fabs(level-1.2f)<.001f);
-    for(unsigned frame=0;frame<100;++frame){level=.7f;const auto proof=cutsceneoutput::Apply(2);assert(proof.verified==1&&proof.rebased==1&&std::fabs(level-1.4f)<.001f);}
-    cutsceneoutput::Apply(1);assert(std::fabs(level-.7f)<.001f);
-    for(unsigned scene=0;scene<3;++scene){cutsceneoutput::Apply(4);assert(std::fabs(level-2.8f)<.001f);cutsceneoutput::Apply(1);assert(std::fabs(level-.7f)<.001f);}
-    cutsceneoutput::Apply(2);cutsceneoutput::SetLevel(&voice,.6f,1);
-    assert(std::fabs(queued-.6f)<.001f); // Deferred queue must not retain a boosted level.
-    cutsceneoutput::Apply(1);level=queued;cutsceneoutput::Apply(1);assert(std::fabs(level-.6f)<.001f);
-    reject=true;auto failed=cutsceneoutput::Apply(2);assert(failed.failed==1&&failed.verified==0&&level==.6f);
-    reject=false;cutsceneoutput::Apply(2);assert(std::fabs(level-1.2f)<.001f);
-    cutsceneoutput::Apply(1);assert(std::fabs(level-.6f)<.001f);
-    cutsceneoutput::DestroyVoice(&voice);assert(destroyed);cutsceneoutput::Apply(.5f);assert(std::fabs(level-.6f)<.001f);
+    cutsceneoutput::Capture(&voice,false);
+    // An unproven mastering property must not be amplified. PCM sources consume
+    // the request; a successful property getter is not signal verification.
+    for(float gain:{.5f,2.0f,15.8f,1.0f}){auto proof=cutsceneoutput::Apply(gain);assert(proof.verified==0&&std::fabs(level-.8f)<.001f);}
+    cutsceneoutput::SetLevel(&voice,.6f,0);assert(std::fabs(level-.6f)<.001f);
+    cutsceneoutput::Apply(2);assert(level==.6f&&cutsceneoutput::gain.load()==2);
+    cutsceneoutput::SetLevel(&voice,.7f,1);assert(queued==.7f);cutsceneoutput::Apply(1);level=queued;cutsceneoutput::Apply(1);assert(level==.7f);
+    cutsceneoutput::DestroyVoice(&voice);assert(destroyed);cutsceneoutput::Apply(2);assert(level==.7f);
 }

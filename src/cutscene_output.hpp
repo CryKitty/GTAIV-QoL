@@ -15,7 +15,7 @@ HRESULT WINAPI SetLevel(void* object,float level,UINT32 operation){
     for(auto& v:voices)if(v.object==object){
         // Deferred game operations remain unboosted in the engine's queue: a
         // later commit must never replay an old cutscene gain into gameplay.
-        result=v.set(object,operation?level:level*gain.load(),operation);
+        result=v.set(object,level,operation);
         if(SUCCEEDED(result)&&valid(level)){
             if(operation){v.pending=true;v.pendingBase=level;}
             else {v.base=level;v.pending=false;v.get(object,&v.last);v.tracked=valid(v.last);}
@@ -44,13 +44,13 @@ void Capture(void* object,bool modern){
     if(!selected||!Read(object,&table,sizeof(table))||!Read(table,methods,count*sizeof(void*))||!Executable(methods[12])||!Executable(methods[13])||!Executable(methods[18])){ReleaseSRWLockExclusive(&lock);return;}
     auto& v=*selected;v.set=reinterpret_cast<Set>(methods[12]);v.get=reinterpret_cast<Get>(methods[13]);v.destroy=reinterpret_cast<Destroy>(methods[18]);v.get(object,&v.base);v.tracked=false;v.pending=false;
     if(!valid(v.base)){ReleaseSRWLockExclusive(&lock);Log("Cutscene audio: invalid mastering baseline; capture rejected");return;}
-    std::memcpy(v.table,methods,count*sizeof(void*));v.table[12]=reinterpret_cast<void*>(&SetLevel);v.table[13]=reinterpret_cast<void*>(&GetLevel);v.table[18]=reinterpret_cast<void*>(&DestroyVoice);
+    std::memcpy(v.table,methods,count*sizeof(void*));v.table[18]=reinterpret_cast<void*>(&DestroyVoice);
     DWORD protection=0;
     if(VirtualProtect(object,sizeof(void*),PAGE_READWRITE,&protection)){
         v.object=object;
         if(InterlockedCompareExchangePointer(reinterpret_cast<void**>(object),v.table,table)!=table)v.object=nullptr;
         DWORD ignored=0;VirtualProtect(object,sizeof(void*),protection,&ignored);
-        if(v.object){v.set(object,v.base*gain.load(),0);v.get(object,&v.last);v.tracked=valid(v.last);Log("Cutscene audio: game mastering output captured");}
+        if(v.object){v.get(object,&v.last);v.tracked=valid(v.last);Log("Cutscene audio: mastering property observer captured; no mastering gain; signal proof requires source PCM");}
     }
     ReleaseSRWLockExclusive(&lock);
 }
@@ -66,18 +66,15 @@ Evidence Apply(float multiplier){
         // every normal tick, against the raw output, never the previous boost.
         if(v.pending&&close(actual,v.pendingBase)){v.base=v.pendingBase;v.pending=false;}
         else if(v.tracked&&!close(actual,v.last)){v.base=actual;++evidence.rebased;}
-        const float target=std::min(v.base*multiplier,16777216.0f);
-        HRESULT result=S_OK;
-        if(!close(actual,target))result=v.set(v.object,target,0);
-        float after=0;v.get(v.object,&after);v.last=after;v.tracked=valid(after);
-        const bool verified=SUCCEEDED(result)&&close(after,target);
-        if(verified)++evidence.verified;else ++evidence.failed;
+        // A mastering property is not proof that this engine carries the mix.
+        // Leave it at the game's level; gain now belongs to measured source PCM.
+        const float target=actual;const float after=actual;v.last=after;v.tracked=true;
         evidence.base=v.base;evidence.before=actual;evidence.target=target;evidence.after=after;
     }
     ReleaseSRWLockExclusive(&lock);
     static DWORD reported=0;const auto now=GetTickCount();
     if(previous!=multiplier||(multiplier!=1&&now-reported>=5000)){
-        reported=now;char message[300];sprintf_s(message,"Cutscene audio output: gain=%.2f outputs=%u verified=%u failed=%u external-writes=%u base=%.5f raw-before=%.5f target=%.5f raw-after=%.5f",multiplier,evidence.outputs,evidence.verified,evidence.failed,evidence.rebased,evidence.base,evidence.before,evidence.target,evidence.after);Log(message);
+        reported=now;char message[300];sprintf_s(message,"Cutscene mastering property-only (not audibility proof): requested-gain=%.2f outputs=%u signal-verified=%u failed=%u external-writes=%u base=%.5f raw-before=%.5f target=%.5f raw-after=%.5f",multiplier,evidence.outputs,evidence.verified,evidence.failed,evidence.rebased,evidence.base,evidence.before,evidence.target,evidence.after);Log(message);
     }
     return evidence;
 }
