@@ -22,6 +22,7 @@
 #include "../src/escape_gps_request.hpp"
 #include <set>
 #include <cassert>
+#include "../src/compass_icon_names.hpp"
 #include <cstdio>
 #include <limits>
 struct CameraBoolContext {
@@ -77,6 +78,20 @@ struct FakeGps {
     void configure(unsigned h){if(expireOnConfigure)blips.erase(h);}
 };
 int main(){
+    {
+        using namespace compassicons;
+        for(unsigned sprite=95;sprite<=109;++sprite){const auto name=resolve(sprite,"");assert(valid(name)&&name=="episode_blip_"+std::to_string(sprite-94));assert(draw(name,true)==Draw::Texture&&draw(name,false)==Draw::Pending);}
+        assert(resolve(101,"episode_blip_7")=="episode_blip_7");
+        assert(resolve(101,"radar_level")=="episode_blip_7"); // Generic table placeholders cannot replace a known episode icon.
+        assert(resolve(37,"radar_jimmy")=="radar_jimmy");
+        assert(resolve(999,"bad/name").empty()&&draw("",false)==Draw::Unknown);
+        for(const char* bad:{"episode_blip_0","episode_blip_16","episode_blip_01","episode_blip_7/xx","radar_","../radar_jimmy"})assert(!valid(bad));
+        const bool legacyAccepted=std::string("episode_blip_7").compare(0,6,"radar_")==0;assert(!legacyAccepted);
+        std::puts("Controlled glyph before: sprite=101 name=episode_blip_7 rejected=1 draw=symbol(.)");
+        assert(draw(resolve(101,"episode_blip_7"),true)==Draw::Texture);
+        std::puts("Controlled glyph after: sprite=101 name=episode_blip_7 rejected=0 draw=texture; native asset supplies initial");
+    }
+
     {
         worldload::Gate gate;unsigned camera=0,prune=0,scheduler=0,renderer=0;
         const auto initialize=[&]{++camera;++prune;++scheduler;++renderer;};

@@ -1,4 +1,5 @@
 #pragma once
+#include "../../../src/compass_icon_names.hpp"
 #include "../../../src/compass.hpp"
 #include "../../../src/compass_outings.hpp"
 #include "../../../src/driving_camera_height.hpp"
@@ -113,7 +114,7 @@ class CompassHud {
     bool compassDefault_=true;
     bool hidden_=false,initialized_=false,scanLogged_=false,startupComplete_=false;
     std::uintptr_t blipTable_=0;
-    float fallbackRange_=300;
+    float fallbackRange_=300;std::array<unsigned,128> glyphTrace_{};
     void (*log_)(const char*)=nullptr;
     template<class T> static bool read(std::uintptr_t address,T& value){
         SIZE_T bytes=0;return ReadProcessMemory(GetCurrentProcess(),reinterpret_cast<void*>(address),&value,sizeof(value),&bytes)&&bytes==sizeof(value);
@@ -121,8 +122,7 @@ class CompassHud {
     static std::string nameAt(std::uintptr_t address){
         char text[64]{};SIZE_T bytes=0;
         if(!address||!ReadProcessMemory(GetCurrentProcess(),reinterpret_cast<void*>(address),text,sizeof(text),&bytes)||bytes!=sizeof(text))return {};
-        if(!std::memchr(text,0,sizeof(text))||std::strncmp(text,"radar_",6)!=0)return {};
-        for(unsigned i=0;text[i];++i)if(!((text[i]>='a'&&text[i]<='z')||(text[i]>='0'&&text[i]<='9')||text[i]=='_'))return {};
+        if(!std::memchr(text,0,sizeof(text))||!compassicons::valid(text))return {};
         return text;
     }
     void discoverNames(){
@@ -161,7 +161,7 @@ class CompassHud {
             const int range=GetPrivateProfileIntA("Compass","FallbackRadiusMeters",300,path);
             fallbackRange_=static_cast<float>(std::clamp(range,50,1000));
             }
-        discoverNames();dictionary_=Scripting::GetTxd("blips");
+        names_={};discoverNames();dictionary_=Scripting::GetTxd("blips");
         if(log_)log_(dictionary_.IsValid()?"Compass: borrowed game blips texture dictionary found":"Compass: blips dictionary unavailable; fallback symbols active");
         initialized_=true;
     }
@@ -544,7 +544,7 @@ public:
         {std::lock_guard<std::mutex> lock(hostilityMutex_);hostility_={};}
         for(auto texture:textures_)if(texture.IsValid())Scripting::ReleaseTexture(texture);
         // GetTxd borrows the game-owned dictionary; never unload it.
-        textures_={};tried_={};textureRetry_={};dictionaryRetry_=0;dictionary_={};blips_.clear();enemies_.clear();healthDamage_={};armourDamage_={};blipTable_=0;initialized_=false;scanAt_=0;frameGate_={};scanLogged_=startupComplete_=false;
+        textures_={};glyphTrace_={};tried_={};textureRetry_={};dictionaryRetry_=0;dictionary_={};blips_.clear();enemies_.clear();healthDamage_={};armourDamage_={};blipTable_=0;initialized_=false;scanAt_=0;frameGate_={};scanLogged_=startupComplete_=false;
     }
     void notifyArrival(DWORD now,unsigned target=0){
         const float anchor=target&&target==feedback_.target?feedback_.x:compass::StripLayout::center;
@@ -617,7 +617,7 @@ public:
         if(awareness_.due(now)){scan();scanAt_=now;} // Fresh ownership snapshot before creating any attacker blip.
         awareness_.tick(ped,playerPoint,blips_,blipTable_!=0);
         std::vector<compass::Marker> markers;
-        unsigned displayFiltered=0,invalidPosition=0,rangeFiltered=0,alphaFiltered=0,textureIcons=0,fallbackIcons=0,outingCandidates=0;
+        unsigned displayFiltered=0,invalidPosition=0,rangeFiltered=0,alphaFiltered=0,textureIcons=0,fallbackIcons=0,pendingIcons=0,outingCandidates=0;
         for(auto blip:blips_){
             if(blip.Get()==routeHelper_||blip.Get()==forwardRouteHelper_||blip.Get()==compassWaypoint_.Get()||!DoesBlipExist(blip))continue;
             const unsigned sprite=static_cast<unsigned>(GetBlipSprite(blip));
@@ -707,16 +707,22 @@ public:
         if(!dictionary_.IsValid()&&(!dictionaryRetry_||now-dictionaryRetry_>=1000)){dictionary_=GetTxd("blips");dictionaryRetry_=now;}
         for(const auto& item:placed){
             const auto& marker=item.marker;const float x=mid+half*item.x,iconY=Layout::iconY;
+            const auto iconName=compassicons::resolve(marker.sprite,names_[marker.sprite]);
             if(dictionary_.IsValid()&&(!tried_[marker.sprite]||(!textures_[marker.sprite].IsValid()&&now-textureRetry_[marker.sprite]>=1000))){
-                tried_[marker.sprite]=true;textureRetry_[marker.sprite]=now;if(!names_[marker.sprite].empty())textures_[marker.sprite]=GetTexture(dictionary_,names_[marker.sprite].c_str());
+                tried_[marker.sprite]=true;textureRetry_[marker.sprite]=now;if(!iconName.empty())textures_[marker.sprite]=GetTexture(dictionary_,iconName.c_str());
             }
             const bool centered=marker.handle==focused_;const float scale=compass::iconScale(marker.enemy,marker.priority>=2);const float height=(centered?.023f:.020f)*2.10f*scale;
-            if(textures_[marker.sprite].IsValid()){
+            const auto glyph=compassicons::draw(iconName,textures_[marker.sprite].IsValid());
+            if(glyph==compassicons::Draw::Texture){
                 ++textureIcons;
                 if(!startupComplete_&&log_){char line[80];std::snprintf(line,sizeof(line),"Compass: drawing texture sprite=%u",marker.sprite);log_(line);}
                 const auto rgb=compass::markerColour(marker.colour);
                 NativeInvoke::Invoke<NATIVE_DRAW_SPRITE,ScriptVoid>(textures_[marker.sprite],x,iconY,height/aspect,height,0.0f,rgb[0],rgb[1],rgb[2],std::min(marker.alpha,210u));
-            }else {++fallbackIcons;const auto rgb=compass::markerColour(marker.colour);textStyle(.672f*scale,marker.alpha);SetTextColour(static_cast<u8>(rgb[0]),static_cast<u8>(rgb[1]),static_cast<u8>(rgb[2]),static_cast<u8>(marker.alpha));DisplayTextWithLiteralString(x,iconY-.011f,"STRING",compass::fallbackSymbol(marker.sprite));}
+            }else if(glyph==compassicons::Draw::Pending){++pendingIcons;}else {++fallbackIcons;const auto rgb=compass::markerColour(marker.colour);textStyle(.672f*scale,marker.alpha);SetTextColour(static_cast<u8>(rgb[0]),static_cast<u8>(rgb[1]),static_cast<u8>(rgb[2]),static_cast<u8>(marker.alpha));DisplayTextWithLiteralString(x,iconY-.011f,"STRING",compass::fallbackSymbol(marker.sprite));}
+            if(log_&&glyphTrace_[marker.sprite]!=static_cast<unsigned>(glyph)){
+                glyphTrace_[marker.sprite]=static_cast<unsigned>(glyph);char line[320];
+                std::snprintf(line,sizeof(line),"Compass glyph draw: t=%lu sprite=%u name=%s mode=%s texture-ready=%u fallback=%u native-call=%s",now,marker.sprite,iconName.empty()?"unknown":iconName.c_str(),glyph==compassicons::Draw::Texture?"texture":glyph==compassicons::Draw::Pending?"pending":"symbol",textures_[marker.sprite].IsValid()?1u:0u,glyph==compassicons::Draw::Unknown?1u:0u,glyph==compassicons::Draw::Pending?"not-yet-ready":"finished");log_(line);
+            }
             const bool holding=hold>0&&marker.handle==waypointHold_.target;
             if(holding){caption=compass::caption("Setting waypoint",x);noticeFrame.holdX=x;noticeFrame.holdY=iconY;noticeFrame.holdRadius=height*.62f;noticeFrame.holdProgress=hold;}
             if(compass::hoverReadout(marker.handle,havePinned?(pinned.Get()==compassWaypoint_.Get()?compassWaypointSource_:pinned.Get()):0,centered,holding,
@@ -769,6 +775,6 @@ public:
             std::snprintf(line,sizeof(line),"Compass objective: mission=%u social=%u target=%u focused-sprite=%u focused-objective=%u brief-chars=%u",mission?1u:0u,social_?1u:0u,missionTarget.Get(),focusedSprite,focusedObjective,static_cast<unsigned>(missionBrief.size()));log_(line);
             std::snprintf(line,sizeof(line),"Compass bound objective: focus-chars=%u target-chars=%u",static_cast<unsigned>(awareness_.briefFor(focused_).size()),static_cast<unsigned>(awareness_.briefFor(missionTarget.Get()).size()));log_(line);
             std::snprintf(line,sizeof(line),"Compass outing venues: date=%u friend-activity=%u candidates=%u visibility=native-metadata",dating_?1u:0u,outing_.friendActivity?1u:0u,outingCandidates);log_(line);
-            std::snprintf(line,sizeof(line),"Compass filters: display=%u alpha=%u position=%u range=%u icons=%u fallback-icons=%u",displayFiltered,alphaFiltered,invalidPosition,rangeFiltered,textureIcons,fallbackIcons);log_(line);}logAt_=now;}
+            std::snprintf(line,sizeof(line),"Compass filters: display=%u alpha=%u position=%u range=%u icons=%u fallback-icons=%u pending-icons=%u",displayFiltered,alphaFiltered,invalidPosition,rangeFiltered,textureIcons,fallbackIcons,pendingIcons);log_(line);}logAt_=now;}
     }
 };
