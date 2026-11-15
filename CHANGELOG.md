@@ -1,3 +1,8 @@
+GTAIV-QoL beta — optional Liberty Loadout companion recommendation
+
+- The installer's final dependency review now recommends Liberty Loadout – Weapon and Radio Wheels by Delusional94, with its Nexus page. It is clearly optional: QoL installs and updates without it, and the installer does not detect, require or download it.
+- Adds the same short recommendation to the installation guide and Nexus description. No gameplay, menu settings, dependency checks or release-version changes. In the normal bundled installer, check the optional note beside the final checklist and continue installing without Liberty Loadout; no new step or file edits are needed.
+
 GTAIV-QoL beta — Compass HUD remembers and restores the game's Radar setting
 
 - Turning Compass HUD On now remembers the game's Radar mode and turns Radar Off. Turning Compass HUD Off restores that exact choice, including an intentional Off or Blips Only setting. It does not blindly force Radar On.

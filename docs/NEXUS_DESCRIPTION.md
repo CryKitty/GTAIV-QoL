@@ -18,6 +18,8 @@ A guided-install bundle of seven quality-of-life components for GTA IV Complete 
 
 GTA IV Complete Edition **1.2.0.59**, compatible ASI loader and ScriptHook, Microsoft X86 runtime, and supported **FusionFix 5.1.2 assets/menu host**. The guided installer checks dependencies and supplies the verified modified FusionFix menu host. Unsupported/custom hosts are not blindly replaced. Steam Deck/Linux Desktop Mode needs Python 3 and KDE or Zenity dialogs; missing dependencies require author-hosted downloads. Setup can run the verified Microsoft X86 installer inside GTA IV’s existing Proton prefix; setup detects Steam’s configured compatibility tool automatically and launch the game once from Steam first if its prefix is missing.
 
+Recommended optional companion: [Liberty Loadout – Weapon and Radio Wheels](https://www.nexusmods.com/gta4/mods/1226/) by Delusional94. It is not required by GTAIV-QoL and is not downloaded by its installer.
+
 ## Install and update
 
 1. Close GTA IV. Extract the entire beta Deck ZIP into one folder, then run **Install-GTAIV-QoL.desktop** in Desktop Mode (Execute/Trust if prompted). Keep the supplied update ZIP beside it.
