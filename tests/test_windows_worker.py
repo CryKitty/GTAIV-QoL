@@ -135,6 +135,16 @@ class WindowsWorker(unittest.TestCase):
             self.assertEqual(adapter.watch(self.u,exe,Mock()),0);spawn.assert_not_called();tick.assert_not_called()
         adapter.stop_worker_for_refresh(self.u.ROOT)
         self.assertFalse((self.u.ROOT/'stop-watcher').exists())
+    def test_successor_loads_only_hash_verified_installed_shared_worker(self):
+        import hashlib
+        source=self.u.ROOT/'qol-updater.py';raw=b"WORKER_REVISION='new'\n"
+        source.write_bytes(raw)
+        state=self.u.ROOT/'installed.json'
+        state.write_text(json.dumps({'files':{'qol-updater.py':hashlib.sha256(raw).hexdigest()}}))
+        self.assertEqual(adapter.installed_updater_source('embedded',self.u.ROOT),raw.decode())
+        source.write_bytes(b'tampered')
+        self.assertEqual(adapter.installed_updater_source('embedded',self.u.ROOT),'embedded')
+        source.unlink();self.assertEqual(adapter.installed_updater_source('embedded',self.u.ROOT),'embedded')
     @unittest.skipUnless(sys.platform=='win32','Real Windows process creation-time API')
     def test_real_windows_process_creation_time(self):
         # Exercise GetProcessTimes against an actual process,

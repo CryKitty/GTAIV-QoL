@@ -196,7 +196,9 @@ EXEs have content-addressed names: a mapped EXE is never replaced in place. The
 registered worker rereads the configured game path each poll. A changed executable
 causes the old worker to release its singleton lock before starting its successor;
 its own apply completes before that handoff. Reinstalling a newer Windows bundle
-refreshes frozen code; payload-only updates reuse it. No extra runtime download or
+refreshes frozen platform code. Payload updates refresh the shared updater script;
+the successor loads it only when its hash matches the installed verified manifest.
+Missing/tampered copies fall back to embedded code so manual repair stays available. No extra runtime download or
 unverified code-loading mechanism is added. A killed worker can be restarted by
 rerunning setup/the manual shortcut or at the next logon; HKCU Run is not a crash
 supervisor. Stale busy state recovers on that restart. Offline/error cases leave

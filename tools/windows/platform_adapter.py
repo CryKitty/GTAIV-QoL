@@ -261,3 +261,18 @@ def stop_worker_for_refresh(root):
             if time.monotonic()>=deadline:raise RuntimeError('The old updater is busy. Retry setup after it finishes.')
             time.sleep(.2)
     signal.unlink(missing_ok=True)
+
+
+def installed_updater_source(embedded, root):
+    # Only the script delivered by the verified payload transaction may replace
+    # the embedded shared updater. A broken/missing local copy falls back to
+    # the bundled updater so the manual shortcut can still repair installation.
+    try:
+        source=Path(root)/'qol-updater.py';state=Path(root)/'installed.json'
+        saved=json.loads(state.read_text());expected=saved['files']['qol-updater.py']
+        if source.is_symlink() or source.stat().st_size>2*1024*1024:return embedded
+        raw=source.read_bytes()
+        if hashlib.sha256(raw).hexdigest()!=expected:return embedded
+        text=raw.decode('utf-8');compile(text,'<verified installed updater>','exec')
+        return text
+    except (OSError,ValueError,KeyError,TypeError,SyntaxError,UnicodeError):return embedded

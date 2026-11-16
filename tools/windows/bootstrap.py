@@ -12,7 +12,7 @@ import tkinter.filedialog
 import tkinter.simpledialog
 import winreg
 import msvcrt
-from platform_adapter import adapt,game_lock,install_lock_api,native_runtime,steam_roots,create_shortcut,watch,windows_tick,process_ids
+from platform_adapter import adapt,game_lock,install_lock_api,native_runtime,steam_roots,create_shortcut,watch,windows_tick,process_ids,installed_updater_source
 from progress_ui import Progress
 from embedded_sources import SOURCES,CANDIDATE
 
@@ -21,6 +21,8 @@ def modules():
     guide=types.ModuleType('windows_guide');exec(compile(SOURCES['guide'],'<guide>','exec'),guide.__dict__)
     original=guide.load_source
     def load(name,source):
+        if name=='qol_update':
+            source=installed_updater_source(source,Path(os.environ['LOCALAPPDATA'])/'GTAIV-QoL')
         module=original(name,source)
         if name=='qol_dependencies':
             module.steam_roots=lambda:steam_roots(winreg)
