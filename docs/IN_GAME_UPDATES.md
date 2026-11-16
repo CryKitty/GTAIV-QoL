@@ -1,11 +1,13 @@
-# In-game update checks on Steam Deck / Proton
+# In-game update checks on Steam Deck / Proton and Windows
 
 Pause → QoL → **Check for QoL Updates** is Off by default. Turn it On to queue a
 check; it also queues one check at each game startup while already On and repeats
 every ten minutes during the session while idle. Off does
 not contact GitHub, cancels a staged apply, and preserves the other menu choices.
 The toggle and installed worker arrive through the normal updater; no file edits
-or manual systemd commands are needed.
+or manual service commands are needed.
+
+## Steam Deck backend
 
 The installer still handles first-time game discovery, dependencies and placement.
 It now places `GTAIV-QoL-Updater.py` beside GTAIV.exe and installs/enables the Linux
@@ -40,8 +42,8 @@ invalidates an older pending stage, preventing a stale overwrite. Turning the
 option Off prevents apply. Failed/tampered stages never install. Offline/auth/
 service errors leave the manual Update GTA IV QoL shortcut available; Off → On
 or the next enabled startup queues a fresh check. The first-time installer and
-manual fallback remain available. This worker backend is Deck/Linux-specific;
-it is not a Windows-native updater executable.
+manual fallback remain available. The Linux service described above is Deck-specific; native Windows uses the same
+updater state machine through the frozen adapter below.
 
 Local worker status: `GTAIV-QoL-update-status.json` beside GTAIV.exe. The request
 file is `GTAIV-QoL-update-request.txt`; it is consumed after a check request. No
@@ -88,7 +90,7 @@ omit the release version before shortening any status. States are:
   cancelled for cancelled staging. Off shows the retained Updated timestamp when
   available, otherwise Updates off.
 
-Dates use the Deck's configured local time. The successful-install record survives
+Dates use the computer's configured local time. The successful-install record survives
 relaunch, errors and same-build checks; staging never changes it. Enabled startup
 checks can briefly replace Updated with Checking, then Up to date plus Updated.
 Only a successful install records a new time. The first upgrade also seeds this
@@ -159,3 +161,66 @@ cancellation, failed retry, stale request cleanup and Linux process-start parsin
 Use the newest changelog's updater-only acceptance steps. Download/publish times,
 worker polling and network latency add to the interval; no hard completion time
 is promised for failed/slow networks or a worker that is not running.
+
+
+## Native Windows backend
+
+Extract the complete Windows bundle and run **Install-GTAIV-QoL.exe**; no Python
+installation is needed. Setup registers **GTAIV QoL Updates** in the current user's
+HKCU Run key and starts the windowless frozen updater with `--watch`. It runs at
+logon, without a Windows service, administrator rights or an authorization dialog.
+The existing **Update GTA IV QoL** Desktop shortcut remains the manual fallback.
+A writable game directory is required. Only dependency installers may request UAC.
+
+The worker uses the very same `game_update_tick`, channel selection, GitHub digest,
+manifest/file verification, stage and apply functions as Deck. The default public
+channel includes published releases and prereleases, never drafts or PR artifacts.
+The exact request/status/info protocol above is unchanged. Checking is committed
+before request consumption; Off cancels stages during play. Requests older than
+GTAIV.exe's **GetProcessTimes creation time** are rejected. Failure to read that
+time fails closed, rather than accepting a possibly stale request. No-game polls
+remove stale request/temp files and reset abandoned busy receipts under the shared
+update lock. Process enumeration uses an in-process Toolhelp snapshot, not a shell/tasklist
+process. Idle polling is every three seconds; there is no network polling
+without an enabled game request and no window over gameplay.
+
+Private staging, installed records, session/update/watch locks and frozen EXEs live
+under `%LOCALAPPDATA%\GTAIV-QoL`. Apply revalidates the archive and process absence,
+then uses the same verified installer transaction, backups, rollback and settings
+preservation. A busy session lock defers the retained stage to another poll. Manual
+updates share the update lock; installer transactions also take it. Successful
+manual installs invalidate older stages even when the source SHA is unchanged.
+
+Every successful install refreshes registration and the Desktop shortcut. Frozen
+EXEs have content-addressed names: a mapped EXE is never replaced in place. The
+registered worker rereads the configured game path each poll. A changed executable
+causes the old worker to release its singleton lock before starting its successor;
+its own apply completes before that handoff. Reinstalling a newer Windows bundle
+refreshes frozen platform code. Payload updates refresh the shared updater script;
+the successor loads it only when its hash matches the installed verified manifest.
+Missing/tampered copies fall back to embedded code so manual repair stays available. No extra runtime download or
+unverified code-loading mechanism is added. A killed worker can be restarted by
+rerunning setup/the manual shortcut or at the next logon; HKCU Run is not a crash
+supervisor. Stale busy state recovers on that restart. Offline/error cases leave
+the manual shortcut available; Off → On queues a fresh request as usual.
+
+### Windows acceptance (not yet performed on a stock user PC)
+
+1. Fresh stock Windows 10/11 install with no Python; reboot and confirm worker
+   running. CI covers frozen Python/Tk loading and registration idempotence, not
+   actual user logon/reboot or the complete dependency/install flow.
+2. Launch GTA IV; Pause → QoL → Check for QoL Updates starts Off. Turn On; observe
+   Checking then downloading/staged without a window or changed loaded ASIs.
+   CI covers request ordering, live staging and process guards, not gameplay/UI.
+3. With a newer published release, exit and wait for apply; relaunch to confirm
+   new build, retained choices and Updated timestamp. CI covers verified stage
+   revalidation/exit apply and lock deferral; a real published upgrade remains.
+4. Stage, turn Off before exit: nothing applies. CI covers cancellation during play.
+5. Kill/restart the worker mid-stage; confirm recovery/no partial or duplicate
+   apply and working manual shortcut. CI covers restart receipts, singleton
+   handoff, manual invalidation and tamper rejection. Real interruption remains.
+
+Windows CI also exercises GetProcessTimes on an actual Windows child process.
+None of these tests claims native Windows GTA IV gameplay acceptance. This PR
+changes only the Windows installer/backend: VERSION and the released five-file
+payload/manifest remain unchanged; Deck delivery/behaviour is untouched.

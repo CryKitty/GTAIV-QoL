@@ -1,3 +1,10 @@
+GTAIV-QoL 1.0.0 — Windows in-game update worker
+
+- Completes Windows in-game updates: turn Pause → QoL → Check for QoL Updates On to check and stage while playing, then apply after closing GTA IV. The same toggle defaults Off; Off cancels a waiting update. The Desktop update shortcut remains available.
+- Setup refreshes a silent per-user worker that starts at logon, without Python, a Windows service or administrator rights. It shares the manual updater's locks, rejects stale requests and resumes safely after restart. Installer refreshes never overwrite a running program; an applying worker finishes before handing off to the hash-verified installed updater.
+- Keeps VERSION 1.0.0 and the exact released mod payload, settings and pause-menu UI unchanged. Deck users receive no new mod update. No release asset is changed by this PR.
+- Windows test after the refreshed bundle is approved: install normally, reboot, enable the existing toggle and watch Checking/staging while playing; exit to apply a newer published release, relaunch and check retained choices/Updated time. Also stage then turn Off, and test worker restart/manual shortcut recovery. Native Windows lifecycle/frozen tests are automated; real Windows gameplay/reboot acceptance remains outstanding. No manual file edits.
+
 GTAIV-QoL 1.0.0 — Windows guided installer preparation
 
 - Adds a Windows 10/11 guided installer with its own Python/Tk runtime: extract the whole Windows ZIP and run Install-GTAIV-QoL.exe. No Python installation, manual file placement, INI edits or Proton setup is needed. The same author-hosted dependency checks/imports and transactional install engine are reused; only dependency installers may request elevation. The game folder must be writable.
