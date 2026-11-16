@@ -143,5 +143,6 @@ class WindowsWorker(unittest.TestCase):
         self.addCleanup(lambda:child.poll() is None and child.kill())
         with patch.object(adapter,'running_pid',return_value=child.pid):
             created=adapter.game_start_time()
+        self.assertIn(child.pid,adapter.process_ids(Path(sys.executable).name))
         self.assertGreaterEqual(created,before-2);self.assertLessEqual(created,time.time())
         child.terminate();child.wait(timeout=10)

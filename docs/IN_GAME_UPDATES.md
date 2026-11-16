@@ -180,7 +180,8 @@ before request consumption; Off cancels stages during play. Requests older than
 GTAIV.exe's **GetProcessTimes creation time** are rejected. Failure to read that
 time fails closed, rather than accepting a possibly stale request. No-game polls
 remove stale request/temp files and reset abandoned busy receipts under the shared
-update lock. Idle polling is every three seconds; there is no network polling
+update lock. Process enumeration uses an in-process Toolhelp snapshot, not a shell/tasklist
+process. Idle polling is every three seconds; there is no network polling
 without an enabled game request and no window over gameplay.
 
 Private staging, installed records, session/update/watch locks and frozen EXEs live

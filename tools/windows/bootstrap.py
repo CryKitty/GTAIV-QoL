@@ -12,7 +12,7 @@ import tkinter.filedialog
 import tkinter.simpledialog
 import winreg
 import msvcrt
-from platform_adapter import adapt,game_lock,install_lock_api,native_runtime,steam_roots,create_shortcut,watch,windows_tick
+from platform_adapter import adapt,game_lock,install_lock_api,native_runtime,steam_roots,create_shortcut,watch,windows_tick,process_ids
 from progress_ui import Progress
 from embedded_sources import SOURCES,CANDIDATE
 
@@ -70,7 +70,8 @@ def main():
             request=game/'GTAIV-QoL-update-request.txt';request.write_text('stale')
             updater.update_status(game,'downloading');windows_tick(updater,game)
             idle_cleanup=not request.exists() and json.loads((game/'GTAIV-QoL-update-status.json').read_text())['code']=='failed'
-        Path(sys.argv[2]).write_text(json.dumps({'worker_idle_cleanup':idle_cleanup,'shared_sources_loaded':True,'payload_verified':manifest['sha']==CANDIDATE['sha'],'tcl_bundled':tcl_bundled,'tk_bundled':tk_bundled,'shortcut':shortcut.is_file(),'frozen':bool(getattr(sys,'frozen',False)),'tk':tkinter.TkVersion,'console':bool(ctypes.windll.kernel32.GetConsoleWindow())}))
+        snapshot_ok=isinstance(process_ids(),list)
+        Path(sys.argv[2]).write_text(json.dumps({'process_snapshot':snapshot_ok,'worker_idle_cleanup':idle_cleanup,'shared_sources_loaded':True,'payload_verified':manifest['sha']==CANDIDATE['sha'],'tcl_bundled':tcl_bundled,'tk_bundled':tk_bundled,'shortcut':shortcut.is_file(),'frozen':bool(getattr(sys,'frozen',False)),'tk':tkinter.TkVersion,'console':bool(ctypes.windll.kernel32.GetConsoleWindow())}))
         return 0
     guide,load=modules()
     if '--watch' in sys.argv:

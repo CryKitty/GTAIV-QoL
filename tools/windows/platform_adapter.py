@@ -1,10 +1,8 @@
 """Windows-only front-end adapters; never rewrite the verified mod payload."""
 import base64
 from contextlib import contextmanager
-import csv
 from datetime import datetime, timezone
 import hashlib
-import io
 import json
 import os
 from pathlib import Path
@@ -37,11 +35,35 @@ def install_lock_api():
         except OSError as exc:raise BlockingIOError('Another QoL operation is active.') from exc
     api.flock=flock;sys.modules['fcntl']=api
 
+def process_ids(image='GTAIV.exe'):
+    # In-process snapshot avoids spawning tasklist/PowerShell every idle poll.
+    import ctypes as c
+    from ctypes import wintypes as w
+    class Entry(c.Structure):
+        _fields_=[('dwSize',w.DWORD),('cntUsage',w.DWORD),('th32ProcessID',w.DWORD),
+                  ('th32DefaultHeapID',c.c_size_t),('th32ModuleID',w.DWORD),
+                  ('cntThreads',w.DWORD),('th32ParentProcessID',w.DWORD),
+                  ('pcPriClassBase',w.LONG),('dwFlags',w.DWORD),('szExeFile',w.WCHAR*260)]
+    kernel=c.WinDLL('kernel32',use_last_error=True)
+    kernel.CreateToolhelp32Snapshot.argtypes=[w.DWORD,w.DWORD];kernel.CreateToolhelp32Snapshot.restype=w.HANDLE
+    for name in ('Process32FirstW','Process32NextW'):
+        fn=getattr(kernel,name);fn.argtypes=[w.HANDLE,c.POINTER(Entry)];fn.restype=w.BOOL
+    kernel.CloseHandle.argtypes=[w.HANDLE]
+    handle=kernel.CreateToolhelp32Snapshot(2,0)
+    if handle==c.c_void_p(-1).value:raise RuntimeError('Cannot verify whether GTA IV is running.')
+    try:
+        entry=Entry();entry.dwSize=c.sizeof(entry);result=[]
+        ok=kernel.Process32FirstW(handle,c.byref(entry))
+        while ok:
+            if entry.szExeFile.lower()==image.lower():result.append(entry.th32ProcessID)
+            ok=kernel.Process32NextW(handle,c.byref(entry))
+        if c.get_last_error()!=18:raise RuntimeError('Cannot finish checking running processes.')
+        return result
+    finally:kernel.CloseHandle(handle)
+
+
 def running_pid():
-    result=subprocess.run(['tasklist.exe','/FI','IMAGENAME eq GTAIV.exe','/FO','CSV','/NH'],capture_output=True,text=True,creationflags=NO_WINDOW,check=True)
-    for row in csv.reader(io.StringIO(result.stdout)):
-        if len(row)>1 and row[0].lower()=='gtaiv.exe':return int(row[1])
-    return None
+    return next(iter(process_ids()),None)
 
 @contextmanager
 def game_lock(root):

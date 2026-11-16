@@ -52,7 +52,7 @@ jobs:
           } finally { $env:PATH = $original }
           $proof = Get-Content $result | ConvertFrom-Json
           $proof | ConvertTo-Json -Compress | Write-Output
-          if (!$proof.worker_idle_cleanup -or !$proof.shared_sources_loaded -or !$proof.payload_verified -or !$proof.frozen -or !$proof.tk -or !$proof.tcl_bundled -or !$proof.tk_bundled -or !$proof.shortcut -or $proof.console) { throw 'Bundled Python/Tk/windowless proof failed' }
+          if (!$proof.process_snapshot -or !$proof.worker_idle_cleanup -or !$proof.shared_sources_loaded -or !$proof.payload_verified -or !$proof.frozen -or !$proof.tk -or !$proof.tcl_bundled -or !$proof.tk_bundled -or !$proof.shortcut -or $proof.console) { throw 'Bundled Python/Tk/windowless proof failed' }
       - uses: actions/upload-artifact@v4
         with:
           name: GTAIV-QoL-Nexus-Windows
