@@ -12,6 +12,7 @@ import shutil
 import subprocess
 import sys
 import types
+import time
 
 NO_WINDOW = 0x08000000
 
@@ -85,10 +86,10 @@ def game_start_time():
     kernel.GetProcessTimes.argtypes=[w.HANDLE,c.POINTER(w.FILETIME),c.POINTER(w.FILETIME),c.POINTER(w.FILETIME),c.POINTER(w.FILETIME)]
     kernel.CloseHandle.argtypes=[w.HANDLE]
     handle=kernel.OpenProcess(0x1000,False,pid)
-    if not handle:return None
+    if not handle:raise RuntimeError('Cannot verify GTA IV process creation time; retry after exit.')
     try:
         created=w.FILETIME();ended=w.FILETIME();system=w.FILETIME();user=w.FILETIME()
-        if not kernel.GetProcessTimes(handle,c.byref(created),c.byref(ended),c.byref(system),c.byref(user)):return None
+        if not kernel.GetProcessTimes(handle,c.byref(created),c.byref(ended),c.byref(system),c.byref(user)):raise RuntimeError('Cannot verify GTA IV process creation time; retry after exit.')
         return ((created.dwHighDateTime<<32)|created.dwLowDateTime)/10000000-11644473600
     finally:kernel.CloseHandle(handle)
 
@@ -111,35 +112,45 @@ def adapt(updater, exe, progress_class):
     def shortcut():
         import winreg
         root.mkdir(parents=True,exist_ok=True)
-        target=root/'Update-GTAIV-QoL.exe'
-        if Path(exe).resolve()!=target.resolve() and (not target.exists() or hashlib.sha256(target.read_bytes()).digest()!=hashlib.sha256(Path(exe).read_bytes()).digest()):
-            # A running frozen watcher maps its EXE. Ask it to stop before a
-            # front-end replacement; a same-binary rerun never rewrites it.
-            import time,fcntl
-            signal=root/'stop-watcher';signal.touch()
-            deadline=time.monotonic()+15
-            while True:
-                try:
-                    with (root/'watch.lock').open('a') as watch:fcntl.flock(watch,fcntl.LOCK_EX|fcntl.LOCK_NB)
-                    break
-                except BlockingIOError:
-                    if time.monotonic()>=deadline:raise RuntimeError('The old updater is busy. Close GTA IV and retry setup.')
-                    time.sleep(.2)
+        if not getattr(updater,'WINDOWS_WORKER',False):stop_worker_for_refresh(root)
+        # Content-addressed executables avoid replacing a mapped Windows EXE.
+        # Old workers finish under their lock; their successor loads this path.
+        target=root/('Update-GTAIV-QoL-'+hashlib.sha256(Path(exe).read_bytes()).hexdigest()[:16]+'.exe')
+        if not target.exists():
             temporary=target.with_suffix('.exe.tmp');shutil.copyfile(exe,temporary);temporary.replace(target)
-            (root/'stop-watcher').unlink(missing_ok=True)
-        # WScript uses the actual redirected/localised Desktop, not a guessed path.
+        updater.atomic(root/'worker-target.json',json.dumps({'exe':str(target)}).encode())
         script="[Environment]::GetFolderPath('Desktop')"
         desktop=subprocess.run([powershell(),'-NoProfile','-NonInteractive','-Command',script],check=True,capture_output=True,text=True,creationflags=NO_WINDOW).stdout.strip()
         if not desktop:raise RuntimeError('Windows Desktop location is unavailable.')
         create_shortcut(target,Path(desktop)/'Update GTA IV QoL.lnk')
-        command=subprocess.list2cmdline([str(target),'--watch'])
-        with winreg.CreateKey(winreg.HKEY_CURRENT_USER,r'Software\Microsoft\Windows\CurrentVersion\Run') as key:winreg.SetValueEx(key,'GTAIV QoL Updates',0,winreg.REG_SZ,command)
-        subprocess.Popen([str(target),'--watch'],creationflags=NO_WINDOW,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+        register_worker(target,winreg)
+        if not getattr(updater,'WINDOWS_WORKER',False):
+            # Successful manual installs invalidate even a same-SHA old stage.
+            game=updater.selected_game()
+            if game:
+                folder=updater.pending_directory(game)
+                for name in ('candidate.json','payload.zip'):(folder/name).unlink(missing_ok=True)
+            start_worker(target)
     updater.shortcut=shortcut
+    original_perform=updater._perform_update
+    def perform():
+        updater.WINDOWS_MANUAL=True
+        try:return original_perform()
+        finally:updater.WINDOWS_MANUAL=False
+    updater._perform_update=perform
+    @contextmanager
+    def transaction_lock():
+        if getattr(updater,'WINDOWS_WORKER',False) or getattr(updater,'WINDOWS_MANUAL',False):yield
+        else:
+            import fcntl
+            root.mkdir(parents=True,exist_ok=True)
+            with (root/'update.lock').open('a') as stream:
+                fcntl.flock(stream,fcntl.LOCK_EX|fcntl.LOCK_NB)
+                yield
     def apply_update(manifest,files,channel):
         game=updater.selected_game()
         if game is None:raise RuntimeError('Select GTAIV.exe before installing.')
-        with game_lock(root):
+        with transaction_lock(),game_lock(root):
             helper=types.ModuleType('verified_windows_installer')
             exec(compile(files['install-helper.py'],'<verified installer>','exec'),helper.__dict__)
             helper.BUNDLE={name:{'data':base64.b64encode(files[name]).decode(),'sha256':manifest['files'][name]} for name in ('GTAIV-QoL.asi','GTAIV-QoL-Pause.asi','GTAIV-QoL.ini')}
@@ -153,3 +164,78 @@ def adapt(updater, exe, progress_class):
             updater.update_status(game,'updated')
     updater.apply_update=apply_update
     return root
+
+
+def register_worker(target, registry):
+    """Per-user logon registration, refreshed on every successful install."""
+    command=subprocess.list2cmdline([str(target),'--watch'])
+    with registry.CreateKey(registry.HKEY_CURRENT_USER,r'Software\Microsoft\Windows\CurrentVersion\Run') as key:
+        registry.SetValueEx(key,'GTAIV QoL Updates',0,registry.REG_SZ,command)
+
+
+def start_worker(target):
+    return subprocess.Popen([str(target),'--watch'],creationflags=NO_WINDOW,
+                            stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+
+
+def worker_target(root):
+    return Path(json.loads((root/'worker-target.json').read_text())['exe'])
+
+
+def windows_tick(updater,game):
+    applied=updater.game_update_tick(game)
+    if not applied and not updater.game_running():
+        # Shared Deck recovery covers live games. Also recover an abandoned
+        # busy receipt at idle Windows logon, under the same manual-update lock.
+        import fcntl
+        with (updater.ROOT/'update.lock').open('a') as lock:
+            try:fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+            except BlockingIOError:return False
+            if updater.game_running():return False
+            try:busy=json.loads((game/'GTAIV-QoL-update-status.json').read_text()).get('code') in ('checking','downloading','applying')
+            except (OSError,ValueError):busy=False
+            if busy:updater.update_status(game,'failed')
+    return applied
+
+
+def watch(updater, executable, sleep=time.sleep):
+    """Windowless singleton; no network unless the shared request path asks."""
+    import fcntl
+    root=updater.ROOT;root.mkdir(parents=True,exist_ok=True)
+    restart=False
+    updater.WINDOWS_WORKER=True
+    with (root/'watch.lock').open('a') as lock:
+        try:fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+        except BlockingIOError:return 0
+        while True:
+            if (root/'stop-watcher').exists():break
+            try:
+                if worker_target(root).resolve()!=Path(executable).resolve():
+                    restart=True;break
+                game=updater.selected_game()
+                if game and windows_tick(updater,game):
+                    restart=True;break
+            except Exception:
+                # game_update_tick already publishes a safe failed state.
+                # Never display an auth/error dialog over gameplay.
+                pass
+            sleep(3)
+    # Release singleton only after the transaction completed, then hand off.
+    if restart:start_worker(worker_target(root))
+    return 0
+
+
+def stop_worker_for_refresh(root):
+    # Also understood by the original PR #37 watcher, allowing a one-install
+    # migration from its fixed-name EXE and otherwise non-reloading loop.
+    import fcntl
+    signal=root/'stop-watcher';signal.touch()
+    deadline=time.monotonic()+15
+    while True:
+        try:
+            with (root/'watch.lock').open('a') as lock:fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+            break
+        except BlockingIOError:
+            if time.monotonic()>=deadline:raise RuntimeError('The old updater is busy. Retry setup after it finishes.')
+            time.sleep(.2)
+    signal.unlink(missing_ok=True)

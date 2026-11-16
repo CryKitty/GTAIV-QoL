@@ -12,7 +12,7 @@ import tkinter.filedialog
 import tkinter.simpledialog
 import winreg
 import msvcrt
-from platform_adapter import adapt,game_lock,install_lock_api,native_runtime,steam_roots,create_shortcut
+from platform_adapter import adapt,game_lock,install_lock_api,native_runtime,steam_roots,create_shortcut,watch,windows_tick
 from progress_ui import Progress
 from embedded_sources import SOURCES,CANDIDATE
 
@@ -60,22 +60,22 @@ def main():
         tk_bundled=runtime in Path(root.tk.eval('set tk_library')).resolve().parents
         root.destroy()
         shortcut=Path(sys.argv[2]).with_suffix('.lnk');create_shortcut(Path(sys.executable),shortcut)
-        Path(sys.argv[2]).write_text(json.dumps({'shared_sources_loaded':True,'payload_verified':manifest['sha']==CANDIDATE['sha'],'tcl_bundled':tcl_bundled,'tk_bundled':tk_bundled,'shortcut':shortcut.is_file(),'frozen':bool(getattr(sys,'frozen',False)),'tk':tkinter.TkVersion,'console':bool(ctypes.windll.kernel32.GetConsoleWindow())}))
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            state=Path(tmp);game=state/'Game';game.mkdir();(game/'GTAIV.exe').write_bytes(b'fixture')
+            (game/'GTAIV-QoL.ini').write_text('[Updates]\nCheckForUpdates=0\n')
+            updater.ROOT=state/'state';updater.ROOT.mkdir();updater.CONFIG=updater.ROOT/'config.json'
+            updater.CONFIG.write_text(json.dumps({'game':str(game),'channel':'beta'}))
+            updater.game_running=lambda:False
+            request=game/'GTAIV-QoL-update-request.txt';request.write_text('stale')
+            updater.update_status(game,'downloading');windows_tick(updater,game)
+            idle_cleanup=not request.exists() and json.loads((game/'GTAIV-QoL-update-status.json').read_text())['code']=='failed'
+        Path(sys.argv[2]).write_text(json.dumps({'worker_idle_cleanup':idle_cleanup,'shared_sources_loaded':True,'payload_verified':manifest['sha']==CANDIDATE['sha'],'tcl_bundled':tcl_bundled,'tk_bundled':tk_bundled,'shortcut':shortcut.is_file(),'frozen':bool(getattr(sys,'frozen',False)),'tk':tkinter.TkVersion,'console':bool(ctypes.windll.kernel32.GetConsoleWindow())}))
         return 0
     guide,load=modules()
     if '--watch' in sys.argv:
         updater=load('qol_update',SOURCES['updater']);updater.ROOT.mkdir(parents=True,exist_ok=True)
-        import fcntl
-        with (updater.ROOT/'watch.lock').open('a') as lock:
-            try:fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
-            except BlockingIOError:return 0
-            while not (updater.ROOT/'stop-watcher').exists():
-                game=updater.selected_game()
-                if game:
-                    try:updater.game_update_tick(game)
-                    except Exception:pass # Shared worker publishes failed status; no popup while playing.
-                time.sleep(1)
-        return 0
+        return watch(updater,sys.executable)
     if '--update' in sys.argv:return load('qol_update',SOURCES['updater']).main()
     return guide.run(SOURCES['dependency'],SOURCES['updater'],(Path(sys.executable).with_name('GTAIV-QoL-update.zip'),CANDIDATE))
 
@@ -84,5 +84,6 @@ if __name__=='__main__':
     except Exception as exc:
         if '--self-test' in sys.argv:
             Path(sys.argv[2]).write_text(json.dumps({'error':type(exc).__name__+': '+str(exc)}));raise SystemExit(1)
+        if '--watch' in sys.argv:raise SystemExit(1)
         tkinter.messagebox.showerror('GTA IV QoL setup',str(exc) if isinstance(exc,RuntimeError) else 'Setup could not finish. Existing backups remain available.')
         raise SystemExit(1)

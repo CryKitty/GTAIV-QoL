@@ -1,6 +1,6 @@
 The recurring update can now be enabled in Pause → QoL → **Check for QoL Updates**
 (default Off). The installer puts the updater in the game folder and registers a
-Deck Linux user worker. The ASI queues a request; checks/staging happen on the
+Deck Linux user worker or native Windows per-user logon worker. The ASI queues a request; checks/staging happen on the
 host and the existing installer applies only after exit. No loaded ASI is replaced.
 First-time setup and the manual updater remain. Full flow, errors and acceptance:
 [IN_GAME_UPDATES.md](IN_GAME_UPDATES.md). Canonical channel selection below is unchanged.
@@ -148,3 +148,18 @@ steps, not a claim that the remote Deck/service has been exercised here.
 The Windows ZIP bundles Python/Tk in Install-GTAIV-QoL.exe; there is no user Python dependency. Its per-user state and frozen Update-GTAIV-QoL.exe live in %LOCALAPPDATA%/GTAIV-QoL. The Desktop .lnk points to that executable with --update, not a .py file. An HKCU Run entry starts the windowless request worker at logon; only the existing pause-menu opt-in/request files cause checks, and staged updates wait for GTAIV.exe to exit. A second watcher exits under the Windows file lock. No systemd, Wine registry or Proton/prefix discovery is used. No upload credentials are created.
 
 The installer and updater execute the same payload validation and shared install_bundle transaction (backups, duplicate cleanup, retained settings and rollback). The frozen front-end selects the Windows adapter instead of executing the payload's Linux helper main/service path. Payload files and manifest are byte-identical to the published 1.0.0 update. The Windows asset is added separately after merge; installer-only main CI builds suppress all mod artifact publication, so the dev selector skips them and existing Deck/public users stay on their prior payload. Future actual component changes still publish normal mod artifacts.
+
+
+## Native Windows in-game updates
+
+The frozen Windows installer registers the existing updater's windowless worker
+in HKCU Run (current user, no service/admin). Enable **Pause → QoL → Check for
+QoL Updates** to check/stage during play and apply after exit; the real Desktop
+shortcut is the manual fallback. Creation-time guards use GetProcessTimes, and
+the same request/status/info files, verified public release channel, private
+staging and installer transaction apply. Reinstalling refreshes the worker and
+selected game; its own apply finishes before successor handoff. See
+[Windows lifecycle and acceptance](IN_GAME_UPDATES.md#native-windows-backend).
+The rebuilt Windows bundle retains the exact 1.0.0 release payload; it creates
+no new mod build, tag or release asset in this PR. Stock Windows gameplay and
+reboot acceptance remain outstanding despite native lifecycle/frozen CI coverage.
